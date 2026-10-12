@@ -10,8 +10,8 @@ Three cells, meeting in the plane's shared state (``Jobs.selected``):
 
 - ``jobs``: every job, drawn again when a job, its boot, restart or run
   changes. A row click selects it.
-- ``new``: a name and a button that makes a job, starting as the ``program``
-  snippet, and selects it.
+- ``new``: a name and a button that makes a job, starting as :data:`MAIN`,
+  and selects it.
 - ``job``: the selected job's code, boot switch, restart setting and delete.
   Restart is plane level: the supervisor keeps the job running.
 """
@@ -20,10 +20,25 @@ from __future__ import annotations
 
 from nuspace import Plane
 
-from ..snippets import program
+
+__all__ = ["DETAIL", "MAIN", "NEW", "PLANE", "TABLE"]
 
 
-__all__ = ["DETAIL", "NEW", "PLANE", "TABLE"]
+#: What a new job's main cell starts as: one key in its own state, then done.
+MAIN = """\
+import nu
+import nustd.kv
+import nuspace
+from nuspace import ops
+
+
+class Note(nuspace.CellState):
+    hello = nustd.kv.StrRef.slot()
+
+
+# Bare state: the kernel lands it under this cell, whichever it is.
+out = ops.atomic_state(Note.hello.set(nu.Str("world")))
+"""
 
 
 TABLE = """\
@@ -136,7 +151,7 @@ from nuspace import ops
 
 #: What a new job's main cell starts as.
 STARTER = """
-    + repr(program.SNIPPET.source)
+    + repr(MAIN)
     + """
 
 

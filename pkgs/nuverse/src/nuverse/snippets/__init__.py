@@ -37,7 +37,6 @@ _ORDER = (
     "switch",
     "select",
     "date",
-    "program",
     "code",
     "lens",
     "plane_lens",
