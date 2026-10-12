@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nuverse"
+version = "0.3.2"
+description = "nuverse std: the Planes and snippets every nuspace space ships with."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    # nuverse imports nuspace, nuspace never imports nuverse: it finds this
+    # package through the entry point below, the same one a third party uses.
+    "nuspace",
+]
+
+[project.urls]
+Repository = "https://github.com/nustackdev/nuverse"
+
+[project.entry-points."nuspace.extensions"]
+nuverse = "nuverse:extension"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nuverse"]

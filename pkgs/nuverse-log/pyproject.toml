@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nuverse-log"
+version = "0.0.1"
+description = "nulog as a nuspace extension: a Log plane for entries and metrics."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    "nuspace",
+]
+
+[project.urls]
+Repository = "https://github.com/nustackdev/nuverse"
+
+[project.entry-points."nuspace.extensions"]
+nuverse-log = "nuverse_log:extension"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nuverse_log"]

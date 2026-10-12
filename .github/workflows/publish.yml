@@ -1,0 +1,94 @@
+# Publishes one nuverse distribution to PyPI on a tag push like `<dist>@X.Y.Z`,
+# eg `nuverse@0.4.0` or `nuverse-log@0.1.0`. The dist is built from pkgs/<dist>.
+#
+# Every package here is its own PyPI project. One-time setup per package, on
+# PyPI, "Add a new pending publisher" (or "Add a publisher" once it exists):
+#     PyPI project name: <dist>
+#     Owner: nustackdev
+#     Repository name: nuverse
+#     Workflow name: publish.yml
+#     Environment name: (leave blank)
+#
+# Ordering on a coordinated release with nuspace: nuspace depends on nuverse
+# and nuverse on nuspace, so push `nuverse@` first, then nuspace's tag. pip
+# resolves the cycle once both are up.
+#
+# Release:
+#   1. Bump `version` in `pkgs/<dist>/pyproject.toml`.
+#   2. Commit, push.
+#   3. `git tag <dist>@X.Y.Z && git push origin <dist>@X.Y.Z`.
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["*@*"]
+  workflow_dispatch:
+    inputs:
+      dist:
+        description: "Distribution to build, a directory under pkgs/"
+        type: string
+        required: true
+      publish:
+        description: "Publish to PyPI (otherwise build only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write   # PyPI trusted publishing (OIDC)
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: resolve the distribution
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            DIST="${TAG%@*}"
+            echo "TAG_VERSION=${TAG#*@}" >> "$GITHUB_ENV"
+          else
+            DIST="${{ inputs.dist }}"
+          fi
+          if [ ! -f "pkgs/$DIST/pyproject.toml" ]; then
+            echo "no package at pkgs/$DIST"
+            exit 1
+          fi
+          echo "PKG_DIR=pkgs/$DIST" >> "$GITHUB_ENV"
+
+      - name: verify tag matches pyproject.toml version
+        if: github.event_name == 'push'
+        working-directory: ${{ env.PKG_DIR }}
+        run: |
+          PKG_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "tag version $TAG_VERSION does not match pyproject.toml version $PKG_VERSION"
+            exit 1
+          fi
+
+      # The workspace sources are dev-only; a hatchling build is metadata-only,
+      # so the wheel carries the plain PyPI requirements.
+      - name: build distribution
+        working-directory: ${{ env.PKG_DIR }}
+        run: uv build --out-dir dist
+
+      - name: publish
+        if: github.event_name == 'push' || inputs.publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ${{ env.PKG_DIR }}/dist
+          skip-existing: true
