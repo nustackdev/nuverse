@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from nuspace.host import discover
+from nuspace.ext import discover
 
 
 def test_discovery_finds_the_log_plane():
