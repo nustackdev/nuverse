@@ -29,8 +29,6 @@ nustd = { path = "../nu/pkgs/nustd", editable = true }
 dev = [
     "nuverse",
     "nuverse-log",
-    # Every fabric, for the planes and snippets that reach past the defaults (cc chat).
-    "nuspace[all]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
     "pytest>=7.0.0",

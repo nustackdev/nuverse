@@ -19,7 +19,7 @@ __all__ = ["PLANES"]
 
 
 #: The plane modules, in picker order. Plain first.
-_ORDER = ("plain", "cc_chat", "jobs", "runs", "workers", "planes")
+_ORDER = ("plain", "jobs", "runs", "workers", "planes")
 
 
 def __getattr__(name: str) -> Any:  # noqa: ANN401
