@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     import torch
 
 
-__all__ = ["LAYERS", "Trainer", "checkpoint_dir", "data_dir", "pick_device"]
+__all__ = ["LAYERS", "Trainer", "build", "data_dir", "load", "pick_device"]
 
 
 #: The layers whose weights and grads are binned, in model order.
@@ -50,11 +50,6 @@ BINS = 32
 def data_dir() -> Path:
     """Where MNIST is cached: ``$NUVERSE_MNIST_DATA``, else ``~/.cache/nuverse-mnist``."""
     return Path(os.environ.get("NUVERSE_MNIST_DATA") or Path.home() / ".cache" / "nuverse-mnist")
-
-
-def checkpoint_dir() -> Path:
-    """Where runs keep their checkpoints: ``checkpoints`` under :func:`data_dir`."""
-    return data_dir() / "checkpoints"
 
 
 def pick_device(asked: str = "auto") -> str:
@@ -78,7 +73,7 @@ def pick_device(asked: str = "auto") -> str:
     return "cpu"
 
 
-def _model(channels: int, dropout: float) -> torch.nn.Module:
+def build(channels: int, dropout: float) -> torch.nn.Module:
     """Two conv blocks and two dense layers, named as :data:`LAYERS`."""
     from collections import OrderedDict
 
@@ -185,7 +180,7 @@ class Trainer:
         self.device = pick_device(self.asked_device)
         self.gen = torch.Generator().manual_seed(self.hp["seed"])
         (self.x, self.y), (self.tx, self.ty) = self._load()
-        self.model = _model(self.hp["channels"], self.hp["dropout"]).to(self.device)
+        self.model = build(self.hp["channels"], self.hp["dropout"]).to(self.device)
         self.opt = _optimizer(self.hp["optimizer"], self.model.parameters(), self.hp["lr"])
         self.x, self.y = self.x.to(self.device), self.y.to(self.device)
         self.tx, self.ty = self.tx.to(self.device), self.ty.to(self.device)
@@ -341,35 +336,71 @@ class Trainer:
 
     # -- checkpoints ---------------------------------------------------------------
 
-    def save(self, path: str, step: int) -> str:
-        """Model, optimizer, random state and histogram ranges to ``path``, at ``step``."""
+    def _arch(self) -> dict:
+        return {"channels": self.hp["channels"], "dropout": self.hp["dropout"]}
+
+    def checkpoint(self, step: int) -> bytes:
+        """Everything to resume from at ``step``, as bytes: model, optimizer, random state, histogram ranges.
+
+        The model's shape rides along (``arch``), so a reader builds it from the bytes alone.
+        """
         import torch
 
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        tmp = path + ".tmp"
+        buf = io.BytesIO()
         torch.save(
             {
-                "model": self.model.state_dict(),
-                "opt": self.opt.state_dict(),
+                "model": _cpu(self.model.state_dict()),
+                "arch": self._arch(),
+                "opt": _cpu(self.opt.state_dict()),
                 "gen": self.gen.get_state(),
                 "ranges": self.ranges,
                 "step": int(step),
             },
-            tmp,
+            buf,
         )
-        Path(tmp).replace(path)
-        return path
+        return buf.getvalue()
 
-    def load(self, path: str) -> int:
-        """Restore from ``path``. The step it was saved at, 0 when there is no file."""
+    def weights(self, step: int) -> bytes:
+        """The model alone at ``step``, as bytes: enough to read digits with, not to resume."""
         import torch
 
-        if not path or not Path(path).exists():
+        buf = io.BytesIO()
+        torch.save(
+            {"model": _cpu(self.model.state_dict()), "arch": self._arch(), "step": int(step)}, buf
+        )
+        return buf.getvalue()
+
+    def restore(self, blob: bytes) -> int:
+        """Resume from a :meth:`checkpoint`. The step it was taken at, 0 for no bytes."""
+        if not blob:
             return 0
-        saved = torch.load(path, map_location=self.device, weights_only=False)
+        saved = load(blob)
         self.model.load_state_dict(saved["model"])
         self.opt.load_state_dict(saved["opt"])
         self.gen.set_state(saved["gen"])
         self.ranges = dict(saved.get("ranges") or {})
         self.steps = int(saved["step"])
         return self.steps
+
+
+def _cpu(state: dict) -> dict:
+    """A state dict with every tensor on the cpu, so the bytes load on any device."""
+    import torch
+
+    def move(v: object) -> object:
+        if isinstance(v, torch.Tensor):
+            return v.detach().cpu()
+        if isinstance(v, dict):
+            return {k: move(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [move(x) for x in v]
+        return v
+
+    return move(state)
+
+
+def load(blob: bytes) -> dict:
+    """What :meth:`Trainer.checkpoint` or :meth:`Trainer.weights` wrote, on the cpu. Tensors and plain values only."""
+    import torch
+
+    return torch.load(io.BytesIO(blob), map_location="cpu", weights_only=True)

@@ -19,6 +19,8 @@ from nuspace import ops
 from nuspace.shapes import Space
 from nuspace.system.utils import snap
 
+from .ink import sample, strokes_of, strokes_to_image
+from .reader import image_png
 from .state import Run, job_cell, job_of, runs_of, status_of
 from .trainer import LAYERS
 
@@ -29,20 +31,26 @@ if TYPE_CHECKING:
 
 __all__ = [
     "TONES",
+    "answer",
     "at",
     "board",
     "cards",
+    "choices",
     "curves",
+    "drawn",
     "go",
     "heatmaps",
+    "ink",
     "leader",
     "lr_label",
     "lr_text",
     "overlay",
+    "picture",
     "plan",
     "rows",
     "run_view",
     "series",
+    "shelf",
     "summary",
     "with_job",
 ]
@@ -373,4 +381,96 @@ def overlay(runs: list, picked: list | None) -> dict:
                 "selected": {name: not picked or page in picked for page, name, _, _ in runs},
             }
         },
+    }
+
+
+# --- reading -----------------------------------------------------------------------------------
+
+
+def shelf(root: nu.StrArg) -> nu.Nu:
+    """Every run as ``[job, name, view, models]``, models ``{slot: {step, acc}}`` (no bytes), oldest first. Bare."""
+
+    def model(job: nu.Str, slot: str) -> nu.Nu:
+        m = Run.models[slot]
+        return nu.Dict.of(step=at(job, m.step.fallback(-1)), acc=at(job, m.acc.fallback(-1.0)))
+
+    def row(r: nu.Nu) -> nu.Nu:
+        run = nu.List(r)
+        job = nu.Str(run[1])
+        models = nu.Dict.of(latest=model(job, "latest"), best=model(job, "best"))
+        return nu.List.of(job, run[2], run_view(job), models)
+
+    return runs_of(root).iter().map(row).to_list()
+
+
+def _choice(job: str, name: str, v: dict, models: dict) -> dict:
+    status = v["status"]
+    score = _pct(v["final"]) if v["final"] >= 0 else _pct(v["best"] or None)
+    saved = models["latest"]["step"] >= 0
+    tail = score if saved else "no checkpoint yet"
+    return {"value": job, "label": f"{name} · {status} · {tail}"}
+
+
+@nu.host
+def choices(runs: list) -> dict:
+    """The run picker: ``{options, first, newest}``, newest first.
+
+    ``first`` is the newest run with a model, ``newest`` the newest run of all.
+    """
+    options = [_choice(job, name, v, models) for job, name, v, models in reversed(runs)]
+    stored = [job for job, _, _, models in reversed(runs) if models["latest"]["step"] >= 0]
+    newest = options[0]["value"] if options else ""
+    return {"options": options, "first": stored[0] if stored else newest, "newest": newest}
+
+
+def _ink(value: object) -> list:
+    return strokes_to_image(strokes_of(value))
+
+
+#: :func:`~.ink.strokes_to_image` as a term over a pad's value: what the drawing looks like to the model.
+ink = nu.host(_ink, name="Ink")
+
+
+#: :func:`~.reader.image_png` as a term: a 28x28 field as the run page draws its digits.
+picture = nu.host(image_png, name="Picture")
+
+
+@nu.host
+def drawn(n: int) -> list:
+    """``[digit, strokes]``, a sample digit drawn by hand, a different one for each ``n``."""
+    return sample(None, None)
+
+
+def _model_line(slot: str, model: dict | None) -> str:
+    if not model or model.get("step", -1) < 0:
+        return "No checkpoint stored yet: a run saves one every few hundred steps."
+    acc = model.get("acc", -1.0)
+    scored = f", {100 * acc:.1f}% on the test set" if acc is not None and acc >= 0 else ""
+    return f"The {slot} checkpoint, step {model['step']:,}{scored}."
+
+
+@nu.host
+def answer(said: dict | None, label: int, slot: str, model: dict | None) -> dict:
+    """What a read shows: the digit, how sure, a bar per digit, and a line on the model that read it.
+
+    ``label`` is the true digit for an MNIST test digit, -1 for one drawn here.
+    """
+    said = said or {}
+    line = _model_line(slot, model)
+    if not said:
+        blank = model and model.get("step", -1) >= 0
+        return {
+            "digit": "-",
+            "sure": "draw a digit" if blank else "nothing to read with",
+            "bars": [_bar(k, 0.0, -1, True) for k in range(10)],
+            "line": line,
+        }
+    digit, probs = said["digit"], said["probs"]
+    ok = label < 0 or digit == label
+    known = "" if label < 0 else (f" · label {label}, right" if ok else f" · label {label}, wrong")
+    return {
+        "digit": str(digit),
+        "sure": f"{100 * probs[digit]:.0f}% sure{known}",
+        "bars": [_bar(k, p, digit, ok) for k, p in enumerate(probs)],
+        "line": line,
     }

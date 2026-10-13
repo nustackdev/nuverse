@@ -1,6 +1,6 @@
-"""The trainer's interactions: what a Nu program asks the :class:`~.trainer.Trainer` it provides.
+"""The interactions: what a Nu program asks the :class:`~.trainer.Trainer` or :class:`~.reader.Reader` it provides.
 
-Each reads the ``Trainer`` bound on the Context by ``nu.Provide`` and calls
+Each reads the resource bound on the Context by ``nu.Provide`` and calls
 one of its methods off-thread, so a chunk of training never stalls the event
 loop the program runs on: its reads, writes and subscriptions go on. Their
 arguments are ordinary children, so any of them may be a ref read at run
@@ -12,7 +12,15 @@ time, eg the learning rate a slider just wrote.
 - :class:`Digits`: the sample digits themselves: ``[{src, label}, ...]``.
 - :class:`Histograms`: weights and grads per layer, binned, as JSON.
 - :class:`Info`: device, steps per epoch, data sizes, parameter count.
-- :class:`Save` and :class:`Load`: a checkpoint, by path. Load yields the step.
+- :class:`Checkpoint` and :class:`Restore`: everything to resume from, as bytes, and back. Restore yields the step.
+- :class:`Weights`: the model alone, as bytes, for reading digits with.
+
+The reader's, over a :class:`~.reader.Reader`:
+
+- :class:`Holds`: whether a model is loaded under a key, using it when it is.
+- :class:`Use`: load stored weights under a key and use them.
+- :class:`Classify`: a 28x28 field of pixels read: ``{digit, probs, model}``.
+- :class:`MnistDigit`: a random MNIST test digit: ``{pixels, label}``.
 """
 
 from __future__ import annotations
@@ -22,40 +30,56 @@ from typing import TYPE_CHECKING, ClassVar
 
 from nu.lang import ScalarQuery
 
+from .reader import Reader
 from .trainer import Trainer
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from nu.lang import FloatArg, IntArg, StrArg
+    from nu.lang import BytesArg, FloatArg, IntArg, ListArg, StrArg
     from nu.lang.runtime import Runtime
 
 
-__all__ = ["Digits", "Evaluate", "Histograms", "Info", "Load", "Predict", "Save", "TrainChunk"]
+__all__ = [
+    "Checkpoint",
+    "Classify",
+    "Digits",
+    "Evaluate",
+    "Histograms",
+    "Holds",
+    "Info",
+    "MnistDigit",
+    "Predict",
+    "Restore",
+    "TrainChunk",
+    "Use",
+    "Weights",
+]
 
 
 class _Call(ScalarQuery):
-    """Calls :attr:`method` on the bound ``Trainer`` with the children's values, off-thread."""
+    """Calls :attr:`method` on the bound :attr:`resource` with the children's values, off-thread."""
 
+    resource: ClassVar[type] = Trainer
     method: ClassVar[str] = ""
 
     def _compile(self, nid: int, children: tuple[Callable, ...]) -> Callable:
-        method = self.method
+        resource, method = self.resource, self.method
 
         def thunk(rt: Runtime) -> object:
-            trainer = rt.ctx.fabrics.get(Trainer)
-            return getattr(trainer, method)(*(c(rt) for c in children))
+            held = rt.ctx.fabrics.get(resource)
+            return getattr(held, method)(*(c(rt) for c in children))
 
         return thunk
 
     def _acompile(self, nid: int, children: tuple[Callable, ...]) -> Callable:
-        method = self.method
+        resource, method = self.resource, self.method
 
         async def athunk(rt: Runtime) -> object:
-            trainer = rt.ctx.fabrics.get(Trainer)
+            held = rt.ctx.fabrics.get(resource)
             args = [await c(rt) for c in children]
-            return await asyncio.to_thread(getattr(trainer, method), *args)
+            return await asyncio.to_thread(getattr(held, method), *args)
 
         return athunk
 
@@ -102,19 +126,68 @@ class Info(_Call):
     method = "info"
 
 
-class Save(_Call):
-    """Write a checkpoint to ``path``, recording ``step``. Yields the path."""
+class Checkpoint(_Call):
+    """Everything to resume from at ``step``, as bytes."""
 
-    method = "save"
+    method = "checkpoint"
 
-    def __init__(self, path: StrArg, step: IntArg) -> None:
-        super().__init__(path, step)
+    def __init__(self, step: IntArg) -> None:
+        super().__init__(step)
 
 
-class Load(_Call):
-    """Restore from the checkpoint at ``path``. Yields its step, 0 when there is none."""
+class Weights(_Call):
+    """The model alone at ``step``, as bytes."""
 
-    method = "load"
+    method = "weights"
 
-    def __init__(self, path: StrArg) -> None:
-        super().__init__(path)
+    def __init__(self, step: IntArg) -> None:
+        super().__init__(step)
+
+
+class Restore(_Call):
+    """Resume from a :class:`Checkpoint`'s bytes. Yields its step, 0 for no bytes."""
+
+    method = "restore"
+
+    def __init__(self, blob: BytesArg) -> None:
+        super().__init__(blob)
+
+
+# --- the reader --------------------------------------------------------------------------------
+
+
+class _Read(_Call):
+    resource = Reader
+
+
+class Holds(_Read):
+    """Whether the reader has the model stored under ``key`` loaded. Uses it when it has."""
+
+    method = "holds"
+
+    def __init__(self, key: StrArg) -> None:
+        super().__init__(key)
+
+
+class Use(_Read):
+    """Load ``blob``, stored weights or a whole checkpoint, under ``key`` and use it. Yields the key, ``""`` for no bytes."""
+
+    method = "use"
+
+    def __init__(self, key: StrArg, blob: BytesArg) -> None:
+        super().__init__(key, blob)
+
+
+class Classify(_Read):
+    """What the model in use reads in a 28x28 field of pixels in 0..1: ``{digit, probs, model}``, ``{}`` for none."""
+
+    method = "classify"
+
+    def __init__(self, image: ListArg) -> None:
+        super().__init__(image)
+
+
+class MnistDigit(_Read):
+    """A random MNIST test digit, as is: ``{pixels, label}``."""
+
+    method = "test_digit"

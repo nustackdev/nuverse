@@ -10,11 +10,11 @@ from nuspace.shapes import Reroot, Space
 from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel.body import Rewrites
 from nustd.kv import Snapshot
-from nuverse_demos.mnist import PLANE, compare, launch, run, views
+from nuverse_demos.mnist import PLANE, compare, launch, read, run, views
 from nuverse_demos.mnist.job import job_source
 
 
-SPECS = [PLANE, launch.PLANE, compare.PLANE, run.PAGE]
+SPECS = [PLANE, launch.PLANE, compare.PLANE, read.PLANE, run.PAGE]
 SOURCES = {f"{spec.name}.{name}": source for spec in SPECS for name, source in spec.cells}
 SOURCES["job.train"] = job_source({})
 
@@ -26,11 +26,11 @@ def test_discovery_finds_the_mnist_plane():
     assert PLANE in ext.planes
 
 
-def test_the_mnist_plane_nests_launch_and_compare():
+def test_the_mnist_plane_nests_launch_compare_and_read():
     from nuspace.system.backends import BACKENDS
 
     assert PLANE.group == "Demos"
-    assert PLANE.children == (launch.PLANE, compare.PLANE)
+    assert PLANE.children == (launch.PLANE, compare.PLANE, read.PLANE)
     assert all(spec.backend in BACKENDS and spec.icon and spec.description for spec in SPECS)
 
 
@@ -38,7 +38,11 @@ async def test_the_mnist_plane_is_created_with_its_children(store):
     await store.run(ops.create_plane(PLANE, plane_id="m"))
     kids = await store.read(ops.children("m"))
     rows = {r["id"]: r for r in await store.read(ops.plane_rows())}
-    assert [rows[k]["props"]["made_by"] for k in kids] == ["mnist_launch", "mnist_compare"]
+    assert [rows[k]["props"]["made_by"] for k in kids] == [
+        "mnist_launch",
+        "mnist_compare",
+        "mnist_read",
+    ]
     for kid, spec in zip(kids, PLANE.children, strict=True):
         cells = await store.read(ops.cell_rows(kid))
         assert [(c["name"], c["prog"]) for c in cells] == list(spec.cells)

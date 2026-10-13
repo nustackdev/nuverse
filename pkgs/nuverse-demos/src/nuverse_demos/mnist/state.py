@@ -10,10 +10,16 @@ The metric series are kh57 maps keyed by step: they grow with the run, and a
 chart samples a few hundred points out of them at the same cost however long
 it trained.
 
+The models are here too, as bytes, under :attr:`Run.models`: ``latest``,
+the whole checkpoint the run resumes from and pages read live, and ``best``,
+the weights at its best test accuracy. Each with the step it was taken at and
+the test accuracy it had (:class:`Model`). Nothing that draws reads ``blob``:
+the bytes go from the job to the store to a reader, never to a browser.
+
 The planes hang as the Launch plane makes them::
 
     MNIST                 the root, made from :data:`nuverse_demos.mnist.PLANE`
-      Launch, Compare
+      Launch, Compare, Read
       <run>               a run page (ui), made_by ``mnist_run``
         train             the job (headless, mp), made_by ``mnist_job``
 """
@@ -27,11 +33,34 @@ from nuspace import ops
 from nuspace.shapes import Space
 
 
-__all__ = ["JOB", "PAGE", "Pick", "Run", "job_cell", "job_of", "runs_of", "status_of"]
+__all__ = [
+    "JOB",
+    "PAGE",
+    "SLOTS",
+    "Model",
+    "Pick",
+    "Run",
+    "job_cell",
+    "job_of",
+    "runs_of",
+    "status_of",
+]
 
 
 #: ``made_by`` of a run page, and of the job under it.
 PAGE, JOB = "mnist_run", "mnist_job"
+
+
+#: The models a run keeps, by slot.
+SLOTS = ("latest", "best")
+
+
+class Model(nu.Shape):
+    """A stored model: its bytes, the step they were taken at, and the test accuracy then (-1 for none yet)."""
+
+    blob = nustd.kv.BytesRef.slot()
+    step = nustd.kv.IntRef.slot()
+    acc = nustd.kv.FloatRef.slot()
 
 
 class Run(nuspace.CellState):
@@ -50,11 +79,13 @@ class Run(nuspace.CellState):
     started = nustd.kv.FloatRef.slot()
     beat = nustd.kv.FloatRef.slot()
     speed = nustd.kv.FloatRef.slot()
-    # The latest chunk's train metrics, and the best and final test accuracy.
+    # The latest chunk's train metrics, the latest, best and final test accuracy.
     now = nustd.kv.ObjectRef.slot()
+    tested = nustd.kv.FloatRef.slot()
     best = nustd.kv.FloatRef.slot()
     final = nustd.kv.FloatRef.slot()
-    saved = nustd.kv.IntRef.slot()
+    # The models by slot (:data:`SLOTS`): ``latest`` a whole checkpoint, ``best`` the weights alone.
+    models = nustd.kv.DictRef.slot(Model)
     # Series by step.
     loss = nustd.kv.Kh57Ref.slot(float)
     acc = nustd.kv.Kh57Ref.slot(float)

@@ -17,7 +17,7 @@ from nuspace.shapes import reroot
 from nuverse_demos.mnist.interactions import Evaluate, Histograms, Predict, TrainChunk
 from nuverse_demos.mnist.job import job_source
 from nuverse_demos.mnist.state import Run
-from nuverse_demos.mnist.trainer import LAYERS, Trainer
+from nuverse_demos.mnist.trainer import LAYERS, Trainer, load
 
 
 SYNTHETIC = {"data": "synthetic", "device": "cpu", "batch_size": 16}
@@ -66,14 +66,25 @@ def test_eval_predict_and_histograms():
     assert all(d["src"].startswith("data:image/png;base64,") for d in digits)
 
 
-def test_a_checkpoint_round_trips(tmp_path):
+def test_a_checkpoint_round_trips_as_bytes():
     one = _trainer()
     one.train(3, 1e-3)
-    one.save(str(tmp_path / "c.pt"), 3)
+    blob = one.checkpoint(3)
+    assert isinstance(blob, bytes)
     two = _trainer()
-    assert two.load(str(tmp_path / "c.pt")) == 3
+    assert two.restore(blob) == 3
     assert two.evaluate() == one.evaluate()
-    assert _trainer().load(str(tmp_path / "missing.pt")) == 0
+    assert two.gen.get_state().equal(one.gen.get_state())
+    assert _trainer().restore(b"") == 0
+
+
+def test_weights_are_the_model_alone_and_smaller():
+    trainer = _trainer()
+    trainer.train(1, 1e-3)
+    weights, whole = trainer.weights(1), trainer.checkpoint(1)
+    assert len(weights) < len(whole) / 2
+    assert set(load(weights)) == {"model", "arch", "step"}
+    assert load(whole)["arch"] == {"channels": 16, "dropout": 0.25}
 
 
 async def test_the_interactions_call_the_provided_trainer():
@@ -151,8 +162,17 @@ async def test_the_job_trains_to_the_end_and_logs_into_kh57(store):
         12,
     ]
     assert len(await store.read(_state(Run.preds))) == 12
-    assert 0.0 <= await store.read(_state(Run.final)) <= 1.0
-    assert await store.read(_state(Run.saved)) == 12
+    final = await store.read(_state(Run.final))
+    assert 0.0 <= final <= 1.0
+    latest = await store.read(_state(Run.models["latest"].step))
+    assert latest == 12
+    assert await store.read(_state(Run.models["latest"].acc)) == final
+    blob = await store.read(_state(Run.models["latest"].blob))
+    assert load(blob)["step"] == 12
+    # The best weights are the ones at the best score seen, the final one among them.
+    best = await store.read(_state(Run.models["best"].acc))
+    assert best == max(final, await store.read(_state(Run.best)))
+    assert set(load(await store.read(_state(Run.models["best"].blob)))) == {"model", "arch", "step"}
     assert (await store.read(_state(Run.hp)))["batch_size"] == 16
 
 
@@ -176,7 +196,7 @@ async def test_the_job_honors_stop_and_resumes_from_its_checkpoint(store):
     assert await store.read(_state(Run.status)) == "stopped"
     step = await store.read(_state(Run.step))
     assert 8 <= step < await store.read(_state(Run.total))
-    assert await store.read(_state(Run.saved)) == step
+    assert await store.read(_state(Run.models["latest"].step)) == step
 
     # A stopped run ends at once when it is started again.
     await asyncio.wait_for(await _start(store, cell), 10)
