@@ -14,6 +14,14 @@ requires-python = ">=3.10"
 package = false
 default-groups = ["dev"]
 
+# torch (the nuverse-demos mnist extra) stopped shipping Intel macOS wheels
+# after 2.2, and 2.2 wants numpy 1.
+constraint-dependencies = [
+    "torch<2.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torchvision<0.18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
 [tool.uv.workspace]
 members = ["pkgs/*"]
 
@@ -30,7 +38,7 @@ nustd = { path = "../nu/pkgs/nustd", editable = true }
 dev = [
     "nuverse",
     "nuverse-log",
-    "nuverse-demos",
+    "nuverse-demos[mnist]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
     "pytest>=7.0.0",

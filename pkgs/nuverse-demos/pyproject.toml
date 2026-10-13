@@ -5,13 +5,19 @@ build-backend = "hatchling.build"
 [project]
 name = "nuverse-demos"
 version = "0.0.1"
-description = "The Nu demos as nuspace Planes: a counter, a sampled series and a film base."
+description = "The Nu demos as nuspace Planes: a counter, a sampled series, a film base and MNIST trained live."
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
     "nuspace",
+]
+
+[project.optional-dependencies]
+mnist = [
+    "torch>=2.2",
+    "torchvision>=0.17",
 ]
 
 [project.urls]
