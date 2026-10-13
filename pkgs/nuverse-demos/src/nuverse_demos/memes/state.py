@@ -74,7 +74,6 @@ class Memes(nuspace.PlaneState):
     lag = nustd.kv.Kh57Ref.slot(float)
     latency = nustd.kv.Kh57Ref.slot(float)
     errors_n = nustd.kv.Kh57Ref.slot(float)
-    coverage = nustd.kv.Kh57Ref.slot(float)
 
 
 class Control(nuspace.PlaneState):
@@ -89,6 +88,8 @@ class Control(nuspace.PlaneState):
     start = nustd.kv.IntRef.slot()
     epoch = nustd.kv.IntRef.slot()
     stop = nustd.kv.BoolRef.slot()
+    # Coins' own images, off by default: launches are anyone's, and some images are explicit.
+    images = nustd.kv.BoolRef.slot()
 
 
 def _made_by(plane: nu.StrArg) -> nu.Str:

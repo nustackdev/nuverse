@@ -5,7 +5,8 @@ Every cell is ``def out(plane)``: the plane it runs on comes in, and
 writes. The cells follow ``Memes.beat``, which moves once per commit of the
 sync, and redraw only what reads differently.
 
-- :data:`BAR`: the sync's status, where it is, and Start or Stop. On every plane.
+- :data:`BAR`: the sync's status, where it is, and Start or Stop, with a notice while it
+  runs behind the chain. On every plane.
 - :data:`TILES`: the headline numbers.
 - :data:`PULSE`: the last few hundred trades as dots, buys over sells.
 - :data:`INTRO`, :data:`LAUNCHES`: the root's welcome, and the newest coins as cards.
@@ -25,6 +26,7 @@ import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import drawing, redraw, redraws, snap
 from nuverse_demos.memes import control, views
+from nuverse_demos.memes.book import RATE
 from nuverse_demos.memes.state import Control, Memes, at_root, root_of
 """
 
@@ -44,6 +46,7 @@ class Bar(nustd.ui.Row):
 
 class View(nustd.ui.Column):
     bar = Bar.slot(gap=3, align="center")
+    notice = nustd.ui.TextRef.slot()
 
 
 def read(root):
@@ -59,6 +62,7 @@ def draw(v):
         >> b.pill.set(v["status"], tone=v["tone"])
         >> b.line.set(v["line"])
         >> b.toggle.set(v["button"], variant=v["variant"], icon=v["icon"], disabled=v["disabled"])
+        >> View.notice.set(v["notice"])
     )
 
 
@@ -253,8 +257,11 @@ def opener(root, plane, i):
 
 def out(plane):
     def follow(root):
-        read = views.launch_cards(at_root(root, Memes.launches.fallback([])), nustd.time.time(), N)
-        shown = redraws([at_root(root, Memes.beat.on_change())], read, draw, every=5.0)
+        # A coin's own image only once the Sync plane's "Show images" is on.
+        images = at_root(root, Control.images.fallback(False))
+        read = views.launch_cards(at_root(root, Memes.launches.fallback([])), nustd.time.time(), N, images)
+        moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.images.on_change())]
+        shown = redraws(moves, read, draw, every=5.0)
         opens = [opener(root, plane, i) for i in range(N)]
         return View.head.set("New launches") >> nu.Frame(Shown, nu.ParallelAsync(shown, *opens), mints=[])
 

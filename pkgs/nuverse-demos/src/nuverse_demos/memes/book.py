@@ -16,14 +16,13 @@ What it keeps, bounded so it can run for days:
 - running totals, and every few seconds a point per metric for the kh57
   series the Monitor charts.
 
-How it follows the chain: two slots behind the confirmed tip, at most
-``rate`` blocks a second, a few calls at once. Solana makes a slot about
-every 220ms, so keeping up whole takes 4 to 5 blocks a second. Started from
-the tip, a slower sync jumps forward whenever it falls more than ``max_lag``
-slots behind: it stays live and reads a share of the blocks, the share it
-reports as ``coverage``. Started from a given slot it never jumps. Skipped
-slots are passed over, a block not out yet is asked again shortly, anything
-else backs off, 1s doubling to 30s.
+How it follows the chain: every block in order, from the tip or a given
+slot, two slots behind the confirmed tip, at most ``rate`` blocks a second, a
+few calls at once. Solana makes a slot about every 220ms, so keeping up takes
+4 to 5 blocks a second. A slower sync never skips: it falls behind and says
+so (:meth:`Book.stats`), and the numbers stay whole. Skipped slots are passed
+over, a block not out yet is asked again shortly, anything else backs off, 1s
+doubling to 30s.
 """
 
 from __future__ import annotations
@@ -81,9 +80,20 @@ BEHIND = 2
 #: Blocks asked for at once, at most: the rate's burst.
 AHEAD = 4
 
-#: The pace on the public endpoint, whatever the rate says: it serves about 100MB every 30s
-#: to an address, and a block is 3 to 6MB, so one block every two seconds, one at a time.
+#: The pace on the public endpoint, whatever the rate says: it allows 6 ``getBlock`` calls
+#: in 10 seconds, and a block is 3 to 6MB, so one block every two seconds, one at a time.
 PUBLIC_RATE = 0.5
+
+#: The pace a sync starts at when the Sync plane sets none: the chain's own, with room to catch up.
+RATE = 5.0
+
+#: Slots behind the tip a sync may be and still be live; past it, it is behind.
+LIVE = 20
+
+#: Seconds a rate limit answer (a 429) is remembered for: the sync behind is the endpoint's doing.
+LIMITED_FOR = 60.0
+
+_LIMITED = re.compile(r"\b429\b|too many requests|rate.?limit", re.IGNORECASE)
 
 #: Seconds between metric points.
 EVERY = 5.0
@@ -197,7 +207,6 @@ class Book:
     Args:
         keep_hours: How long a token stays after its last trade.
         max_tokens: The most tokens kept; the quietest go first.
-        max_lag: Slots behind the tip that make a tip-following sync jump.
         clock: Seconds now, ``time.time`` unless a test drives it.
     """
 
@@ -205,12 +214,10 @@ class Book:
         self,
         keep_hours: float = 6.0,
         max_tokens: int = 4000,
-        max_lag: int = 40,
         clock: Callable[[], float] | None = None,
     ) -> None:
         self.keep = keep_hours * 3600.0
         self.max_tokens = max_tokens
-        self.max_lag = max_lag
         self.clock = clock or time.time
         self.tokens: dict[str, dict[str, Any]] = {}
         self.trades: dict[str, list[list]] = {}
@@ -225,7 +232,6 @@ class Book:
             (
                 "blocks",
                 "skipped",
-                "jumped",
                 "txs",
                 "failed",
                 "trades",
@@ -255,6 +261,7 @@ class Book:
         self.meta_at = 0.0
         self.backoff = 0.0
         self.until = 0.0
+        self.limited_at = 0.0
         self.not_yet = 0
         self.url = DEFAULT_RPC
         # Metadata to look up, and what was already asked.
@@ -329,7 +336,7 @@ class Book:
         control = control or {}
         now = self.clock()
         self.url = endpoint(control.get("rpc"))
-        rate = max(0.1, float(control.get("rate") or 2.0))
+        rate = max(0.1, float(control.get("rate") or RATE))
         public = self.url == DEFAULT_RPC
         burst = 1 if public else AHEAD
         if public:
@@ -357,14 +364,7 @@ class Book:
             if self.cursor == 0:
                 self.cursor = self.tip - BEHIND
                 self.moved = True
-            # On the public endpoint a sync reads a fraction of the blocks: it reads the newest.
-            lag_cap = BEHIND + 2 if public else self.max_lag
-            if self.mode == "tip" and self.tip - self.cursor > lag_cap:
-                jump = self.tip - BEHIND - self.cursor
-                self.totals["jumped"] += jump
-                self.cursor += jump
-                self.done = {s for s in self.done if s >= self.cursor}
-                self.moved = True
+            # Every block in order: a sync slower than the chain falls behind, it never skips.
             slot = self.cursor
             while self.allow >= 1.0 and slot <= self.tip - BEHIND and len(calls) < burst + 1:
                 if slot not in self.done:
@@ -449,6 +449,8 @@ class Book:
         if isinstance(exc, BaseException):
             message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
         now = self.clock()
+        if _LIMITED.search(str(message)):
+            self.limited_at = now
         self.backoff = min(30.0, self.backoff * 2 if self.backoff else 1.0)
         self.until = now + self.backoff
         self.totals["errors"] += 1
@@ -788,7 +790,6 @@ class Book:
             "errors": w.get("errors", 0.0),
             "latency": sum(lat) / len(lat) if lat else 0.0,
             "lag": float(max(0, self.tip - self.cursor)) if self.tip and self.cursor else 0.0,
-            "coverage": self.coverage(),
         }
         self.point = {"t": int(now), **{k: round(v, 3) for k, v in self.rates.items()}}
         self.window, self.latency, self.window_at = {}, [], now
@@ -860,12 +861,6 @@ class Book:
             "mayhem": r["mayhem"],
         }
 
-    def coverage(self) -> float:
-        """The share of slots passed that were read, skipped ones counted as read: 0 to 1."""
-        t = self.totals
-        seen = t["blocks"] + t["skipped"]
-        return seen / (seen + t["jumped"]) if seen else 0.0
-
     def _tape(self) -> list[dict[str, Any]]:
         """The tape, each trade under its token's name as known now: names land after trades."""
         out = []
@@ -876,16 +871,17 @@ class Book:
 
     def stats(self) -> dict[str, Any]:
         """The sync's status and totals, as the Sync, Monitor and Overview planes show them."""
+        now = self.clock()
         lag = max(0, self.tip - self.cursor) if self.tip and self.cursor else 0
+        public = self.url == DEFAULT_RPC
         status = self.status
         if status not in ("stopped",):
-            if self.until > self.clock() and self.backoff:
+            if self.until > now and self.backoff:
                 status = "backing off"
             elif not self.tip:
                 status = "starting"
             else:
-                # A sync slower than the chain runs up to max_lag behind and jumps: that is syncing too.
-                status = "syncing" if lag <= max(20, self.max_lag + 5) else "catching up"
+                status = "syncing" if lag <= LIVE else "behind"
         self.status = status
         return {
             "status": status,
@@ -894,7 +890,9 @@ class Book:
             "lag": lag,
             "mode": self.mode,
             "rpc": masked(self.url),
-            "public": self.url == DEFAULT_RPC,
+            "public": public,
+            "limited": public or now - self.limited_at < LIMITED_FOR,
+            "notice": self.notice(lag, public, now),
             "backoff": self.backoff,
             "started": self.started,
             "beat": self.clock(),
@@ -902,6 +900,25 @@ class Book:
             "totals": dict(self.totals),
             "rates": dict(self.rates),
         }
+
+    def notice(self, lag: int, public: bool, now: float) -> str:
+        """Why the view runs behind the chain, when it does: empty while it keeps up."""
+        if self.status == "stopped" or lag <= LIVE:
+            return ""
+        if public:
+            return (
+                "The public RPC is rate limited, so this view runs behind the chain. "
+                "Set your own RPC on Sync to keep up."
+            )
+        if now - self.limited_at < LIMITED_FOR:
+            return (
+                "Your RPC is rate limiting the sync, so this view runs behind the chain. "
+                "Lower the pace on Sync, or use an endpoint with a higher limit."
+            )
+        return (
+            "The sync reads every block in order and is behind the chain. "
+            "Raise the pace on Sync to catch up."
+        )
 
     def flush(self) -> dict[str, Any]:
         """Everything that changed since the last flush, as the job writes it: a dict of lists.

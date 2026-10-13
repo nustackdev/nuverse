@@ -6,7 +6,7 @@ what it read. Times are relative to the reader's clock (``ago``), amounts are
 short (``1.2K``), addresses are cut (``3kth..9Ppx``). Nothing here touches
 the store.
 
-- :func:`status`: the sync's state as a pill, a line and a button.
+- :func:`status`: the sync's state as a pill, a line, a notice and a button.
 - :func:`tiles`: the headline numbers.
 - :func:`token_rows`, :func:`tape_rows`, :func:`launch_cards`, :func:`error_rows`: the tables and feeds.
 - :func:`pulse`: recent trades as a scatter, buys and sells apart.
@@ -40,6 +40,7 @@ __all__ = [
     "error_rows",
     "health",
     "launch_cards",
+    "picture",
     "pulse",
     "short",
     "status",
@@ -55,7 +56,7 @@ __all__ = [
 #: The pill tone for each status.
 TONES = {
     "syncing": "ok",
-    "catching up": "info",
+    "behind": "warn",
     "starting": "info",
     "backing off": "warn",
     "stopping": "warn",
@@ -173,11 +174,14 @@ def _idle(said: str, parts: list[str]) -> dict[str, Any]:
         "disabled": False,
         "pulse": False,
         "beat": "",
+        "notice": "",
     }
 
 
 def status_of(stats: dict | None, live: bool, stop: bool, now: float) -> dict[str, Any]:
-    """The sync's state for the bar: ``{status, tone, line, button, variant, icon, pulse}``.
+    """The sync's state for the bar: ``{status, tone, line, notice, button, variant, icon, pulse}``.
+
+    ``notice`` says why the view runs behind the chain while it does, empty otherwise.
 
     ``live`` says the job has a run, ``stop`` that a stop was asked for. A job
     that says it syncs but has no run is ``down``; one never started is ``idle``.
@@ -198,9 +202,8 @@ def status_of(stats: dict | None, live: bool, stop: bool, now: float) -> dict[st
     if s.get("tip"):
         parts.append(f"slot {s.get('cursor', 0):,}")
         parts.append(f"{s.get('lag', 0)} behind tip")
-    if rates and said in ("syncing", "catching up"):
+    if rates and said in ("syncing", "behind"):
         parts.append(f"{rates.get('blocks', 0):.1f} blocks/s")
-        parts.append(f"{100 * rates.get('coverage', 0):.0f}% of blocks read")
     if s.get("rpc"):
         parts.append(s["rpc"] + (" (public)" if s.get("public") else ""))
     if not s:
@@ -209,7 +212,7 @@ def status_of(stats: dict | None, live: bool, stop: bool, now: float) -> dict[st
         parts.append(f"retrying in {s['backoff']:.0f}s")
     if said in ("stopped", "idle") and totals.get("blocks"):
         parts.append(f"{totals['blocks']:,.0f} blocks read")
-    running = said in ("syncing", "catching up", "starting", "backing off")
+    running = said in ("syncing", "behind", "starting", "backing off")
     if not running and importlib.util.find_spec("httpx") is None:
         # The calls go through nustd.http, which the memes extra brings.
         parts = [
@@ -224,8 +227,9 @@ def status_of(stats: dict | None, live: bool, stop: bool, now: float) -> dict[st
         "variant": "secondary" if running or said == "stopping" else "primary",
         "icon": "square" if running else "play",
         "disabled": said == "stopping",
-        "pulse": said in ("syncing", "catching up"),
+        "pulse": said in ("syncing", "behind"),
         "beat": ago(s.get("beat"), now) if s else "",
+        "notice": (s.get("notice") or "") if running else "",
     }
 
 
@@ -323,13 +327,19 @@ def tape_rows(tape: list | None, now: float) -> list[dict[str, Any]]:
 
 
 @nu.host
-def launch_cards(launches: list | None, now: float, n: int = 12) -> list[dict[str, Any]]:
-    """The newest launches as cards: picture, ticker, name, how long ago, a link to its page."""
+def launch_cards(
+    launches: list | None, now: float, n: int = 12, images: bool = False
+) -> list[dict[str, Any]]:
+    """The newest launches as cards: picture, ticker, name, how long ago, a link to its page.
+
+    A coin's own image only with ``images`` on (the Sync plane's "Show images"): launches
+    are anyone's, some images are explicit, so a painted avatar stands in by default.
+    """
     return [
         {
             "i": str(i),
             "mint": x["mint"],
-            "src": x.get("image") or avatar_url(x["mint"], x["symbol"]),
+            "src": picture(x.get("image"), x["mint"], x["symbol"], images),
             "symbol": label(x),
             "name": (x["name"] or "")[:24] or "unnamed",
             "note": f"{ago(x['t'], now)} ago  ·  by {short(x['creator'])}",
@@ -369,9 +379,17 @@ def pulse(points: list | None) -> dict[str, list]:
 
 
 def token_view_of(
-    rec: dict | None, trades: list | None, candles: list | None, quotes: dict | None, now: float
+    rec: dict | None,
+    trades: list | None,
+    candles: list | None,
+    quotes: dict | None,
+    now: float,
+    images: bool = False,
 ) -> dict[str, Any]:
-    """Everything a token page shows, from its record, its trades and its candles."""
+    """Everything a token page shows, from its record, its trades and its candles.
+
+    Its own image only with ``images`` on, as in :func:`launch_cards`.
+    """
     r = rec or {}
     if not r:
         return {"found": False}
@@ -420,7 +438,7 @@ def token_view_of(
         "found": True,
         "title": r.get("name") or label(r),
         "symbol": label(r),
-        "src": r.get("image") or avatar_url(mint, r.get("symbol") or ""),
+        "src": picture(r.get("image"), mint, r.get("symbol") or "", images),
         "state": state,
         "tone": tone,
         "facts": "  ·  ".join(facts),
@@ -440,6 +458,7 @@ def token_view_of(
         "rows": rows,
         "candles": bars,
         "chart_title": f"Market cap, a candle {bucket}",
+        "volume_title": f"Volume, a bar {bucket}",
         "volume": volume,
         "unit": unit,
         "split": {
@@ -500,8 +519,8 @@ def chart_of(trades: list, candles: list) -> tuple[list, list, str]:
 # --- the monitor ---------------------------------------------------------------------------
 
 
-def _series(points: list | None, scale: float = 1.0) -> list[list]:
-    return [[int(k) * 1000, round(v * scale, 3)] for k, v in sorted(points or [])]
+def _series(points: list | None) -> list[list]:
+    return [[int(k) * 1000, round(v, 3)] for k, v in sorted(points or [])]
 
 
 @nu.host
@@ -513,7 +532,6 @@ def health(
     lag: list,
     latency: list,
     errors: list,
-    coverage: list,
 ) -> dict[str, Any]:
     """The Monitor's charts, each a series by time from a kh57 sample."""
     return {
@@ -522,7 +540,6 @@ def health(
         "lag": _series(lag),
         "latency": _series(latency),
         "errors": _series(errors),
-        "coverage": _series(coverage, 100.0),
     }
 
 
@@ -536,7 +553,7 @@ def endpoint_hint(setting: str) -> str:
     env = os.environ.get(ENV, "").strip()
     if env:
         return f"Using ${ENV} ({masked(env)})."
-    return f"Using the public {masked(DEFAULT_RPC)}: 6 blocks in 10 seconds at most, so the sync reads the newest block every 2 seconds there."
+    return f"Using the public {masked(DEFAULT_RPC)}: 6 blocks in 10 seconds at most, so the sync reads every block but falls behind the chain there."
 
 
 # --- pictures ------------------------------------------------------------------------------------
@@ -580,6 +597,11 @@ def avatar(mint: str, symbol: str = "") -> str:
         f'fill="#fff" letter-spacing="-0.5">{text}</text>'
         "</svg>"
     )
+
+
+def picture(image: str | None, mint: str, symbol: str, images: bool) -> str:
+    """A coin's picture: its own image when ``images`` is on and it has one, else its avatar."""
+    return image if images and image else avatar_url(mint, symbol)
 
 
 def avatar_url(mint: str, symbol: str = "") -> str:

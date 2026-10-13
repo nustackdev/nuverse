@@ -4,13 +4,13 @@ The page knows its token from its meta (``mint``) and its root from
 ``base``; every cell reads the token's record, trades and candles from the
 root's state, as the sync rewrites them.
 
-- ``head``: its picture, name, facts and links out. The picture is the
-  coin's own, read by the sync from its metadata, or painted from the mint
-  until then and when it has none.
+- ``head``: its picture, name, facts and links out. The picture is painted
+  from the mint; the coin's own, read by the sync from its metadata, shows
+  only once the Sync plane's "Show images" is on.
 - ``numbers``: market cap, price, volume, trades, buys and sells, traders,
   and how far along the curve it is.
-- ``chart``: market cap as candles, and the volume under them: a minute
-  each, or finer for a token only minutes old.
+- ``chart``: market cap as candles, and the volume under them, one bar a
+  candle: a minute each, or finer for a token only minutes old.
 - ``trades``: its newest trades, and how buys and sells split.
 """
 
@@ -36,6 +36,7 @@ def view_of(root, mint):
     return views.token_view(
         at_root(root, m.tokens[mint].fallback({})), at_root(root, m.trades[mint].fallback([])),
         at_root(root, m.candles[mint].fallback([])), at_root(root, m.quotes.fallback({})), nustd.time.time(),
+        at_root(root, Control.images.fallback(False)),
     )
 
 
@@ -45,7 +46,8 @@ def on_token(plane, body):
 
 
 def following(root, mint, draw, every=2.0):
-    return redraws([at_root(root, Memes.beat.on_change())], view_of(root, mint), draw, every=every)
+    moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.images.on_change())]
+    return redraws(moves, view_of(root, mint), draw, every=every)
 """
 
 
@@ -71,7 +73,7 @@ class View(nustd.ui.Column):
 
 
 def draw(v):
-    # Its own picture once the sync has read it from the coin's metadata, a painted one till then.
+    # Its own picture with "Show images" on and once the sync has read it, a painted one otherwise.
     h = View.head
     found = (
         h.face.set(v["src"], alt=v["symbol"], width=96, height=96, fit="contain", rounded=True)
@@ -138,7 +140,7 @@ class Charts(nustd.ui.Column):
     candles = nustd.ui.CandlestickChart.slot(
         title="Market cap, a candle a minute", height=300, option={"animation": False},
     )
-    volume = nustd.ui.BarChart.slot(title="Volume a minute", height=140, option={"animation": False})
+    volume = nustd.ui.BarChart.slot(title="Volume, a bar a minute", height=140, option={"animation": False})
 
 
 class View(nustd.ui.Column):
@@ -148,8 +150,13 @@ class View(nustd.ui.Column):
 def paint(root, mint):
     def draw(v):
         c = View.charts
-        title = nu.Dict.of(title=nu.List.of(nu.Dict.of(id="title", text=v["chart_title"])))
-        drawn = c.candles.set(v["candles"]) >> c.candles.merge(title) >> c.volume.set(v["volume"])
+        def titled(text):
+            return nu.Dict.of(title=nu.List.of(nu.Dict.of(id="title", text=text)))
+
+        drawn = (
+            c.candles.set(v["candles"]) >> c.candles.merge(titled(v["chart_title"]))
+            >> c.volume.set(v["volume"]) >> c.volume.merge(titled(v["volume_title"]))
+        )
         return nu.IfDo(nu.Bool(v["found"]), drawn)
 
     return nu.let(snap(view_of(root, mint)), draw)

@@ -2,7 +2,7 @@
 
 - ``bar``: the sync's state, as everywhere.
 - ``health``: blocks and trades a second, lag behind the tip, RPC latency,
-  how many of the chain's blocks it reads, errors.
+  errors.
 - ``charts``: the same over time, each a kh57 series sampled at a fixed
   cost however long the sync has run: the whole run, or the last half hour.
 - ``errors``: the newest errors the sync met, and what it did about them.
@@ -24,27 +24,24 @@ class Tiles(nustd.ui.Grid):
     trades = nustd.ui.StatRef.slot(label="Trades a second")
     lag = nustd.ui.StatRef.slot(label="Behind the tip")
     latency = nustd.ui.StatRef.slot(label="RPC latency")
-    coverage = nustd.ui.StatRef.slot(label="Blocks read")
     errors = nustd.ui.StatRef.slot(label="Errors")
     calls = nustd.ui.StatRef.slot(label="RPC calls")
     uptime = nustd.ui.StatRef.slot(label="Up")
 
 
 class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=8, min_width=128, gap=3)
+    tiles = Tiles.slot(columns=7, min_width=128, gap=3)
 
 
 @nu.host
 def shaped(stats, now):
     s = stats or {}
     t, r = s.get("totals") or {}, s.get("rates") or {}
-    jumped, read = t.get("jumped", 0), t.get("blocks", 0) + t.get("skipped", 0)
     return {
         "blocks": [f"{r.get('blocks', 0):.2f}", f"{t.get('blocks', 0):,.0f} in all"],
         "trades": [f"{r.get('trades', 0):.1f}", f"{t.get('trades', 0):,.0f} in all"],
-        "lag": [f"{s.get('lag', 0):,} slots", ("reads the newest" if s.get("public") else "jumps past 40") if s.get("mode") == "tip" else "from a slot, never jumps"],
+        "lag": [f"{s.get('lag', 0):,} slots", "every block, in order"],
         "latency": [f"{r.get('latency', 0):.0f} ms", "a call, on average"],
-        "coverage": [views.pct(r.get("coverage", 0.0)), f"{jumped:,.0f} slots jumped, {read:,.0f} read"],
         "errors": [f"{t.get('errors', 0):,.0f}", f"{r.get('errors', 0):.0f} in the last few seconds"],
         "calls": [f"{t.get('calls', 0):,.0f}", s.get("rpc", "")],
         "uptime": [views.ago(s.get("started"), now) if s.get("started") else "-", "this run"],
@@ -53,7 +50,7 @@ def shaped(stats, now):
 
 def draw(v):
     t = View.tiles
-    keys = ("blocks", "trades", "lag", "latency", "coverage", "errors", "calls", "uptime")
+    keys = ("blocks", "trades", "lag", "latency", "errors", "calls", "uptime")
     return nu.Sequential(*(getattr(t, k).set(v[k][0], delta=v[k][1]) for k in keys))
 
 
@@ -88,7 +85,6 @@ class Charts(nustd.ui.Grid):
     flow = nustd.ui.LineChart.slot(["launches/min", "SOL/min"], title="Launches and volume", x_type="time", height=220, option=TWO)
     lag = nustd.ui.AreaChart.slot(title="Slots behind the tip", x_type="time", height=220, option=TIME)
     latency = nustd.ui.LineChart.slot(title="RPC latency, ms", x_type="time", height=220, option=TIME)
-    coverage = nustd.ui.AreaChart.slot(title="Blocks read, %", x_type="time", y_min=0, y_max=100, height=220, option=TIME)
     errors = nustd.ui.BarChart.slot(title="Errors", x_type="time", height=220, option=TIME)
 
 
@@ -114,13 +110,13 @@ def paint(root):
         return at_root(root, series.sample(POINTS, begin=begin))
 
     m = Memes
-    read = views.health(*(sample(s) for s in (m.blocks_s, m.trades_s, m.launches_m, m.volume_m, m.lag, m.latency, m.errors_n, m.coverage)))
+    read = views.health(*(sample(s) for s in (m.blocks_s, m.trades_s, m.launches_m, m.volume_m, m.lag, m.latency, m.errors_n)))
     c = View.charts
 
     def draw(d):
         return (
             c.throughput.set(d["throughput"]) >> c.flow.set(d["flow"]) >> c.lag.set(d["lag"])
-            >> c.latency.set(d["latency"]) >> c.coverage.set(d["coverage"]) >> c.errors.set(d["errors"])
+            >> c.latency.set(d["latency"]) >> c.errors.set(d["errors"])
         )
 
     return nu.let(snap(read), draw)

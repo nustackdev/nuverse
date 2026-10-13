@@ -342,15 +342,38 @@ def test_a_caught_error_names_its_type_when_its_message_is_empty():
     assert b.errors[0]["message"] == "TimeoutError"
 
 
-def test_a_tip_follower_jumps_when_far_behind_and_a_from_slot_never_does():
+def test_a_slow_sync_reads_every_block_in_order_and_falls_behind(monkeypatch):
+    monkeypatch.delenv(booklib.ENV, raising=False)
     clock = Clock()
-    b = Book(clock=clock, max_lag=40)
-    b.plan({"epoch": 0})
+    b = Book(clock=clock)
+    b.plan({"epoch": 0, "rpc": MINE})
     b.on_reply({"what": "slot", "sent": clock()}, {"result": 1000})
-    b.plan({"epoch": 0})
+    b.plan({"epoch": 0, "rpc": MINE})
     b.cursor = 900
+    clock.t += 1.0
+    p = b.plan({"epoch": 0, "rpc": MINE, "rate": 2})
+    # Far behind the tip it still asks for the next blocks in order: it never skips.
+    slots = [c["slot"] for c in p["calls"] if c["method"] == "getBlock"]
+    assert slots == list(range(900, 900 + len(slots))) and slots
+    assert b.cursor == 900 and "jumped" not in b.totals
+    s = b.stats()
+    assert (s["status"], s["lag"], s["limited"]) == ("behind", 100, False)
+    assert "Raise the pace on Sync" in s["notice"]
+    # A 429 says the endpoint is the reason.
+    b.on_error({"what": "block", "slot": 900}, "Client error '429 Too Many Requests'")
+    clock.t += 31.0
+    s = b.stats()
+    assert s["limited"] and "Your RPC is rate limiting" in s["notice"]
+    # On the public endpoint the notice points to Sync.
     b.plan({"epoch": 0})
-    assert b.cursor == 998 and b.totals["jumped"] == 98
+    s = b.stats()
+    assert s["public"] and s["notice"] == (
+        "The public RPC is rate limited, so this view runs behind the chain. "
+        "Set your own RPC on Sync to keep up."
+    )
+    # Close to the tip it is live, with nothing to say.
+    b.cursor = 995
+    assert (b.stats()["status"], b.stats()["notice"]) == ("syncing", "")
     b.plan({"epoch": 1, "start": 500})
     assert (b.cursor, b.mode) == (500, "from")
     b.plan({"epoch": 1, "start": 500})
@@ -471,7 +494,7 @@ def test_metrics_land_a_point_every_few_seconds():
     assert point["t"] == int(clock())
     assert point["blocks"] == pytest.approx(1 / booklib.EVERY)
     assert point["trades"] == pytest.approx(6 / booklib.EVERY)
-    assert point["coverage"] == 1.0
+    assert "coverage" not in point
 
 
 def test_a_book_picks_up_from_what_it_wrote():
@@ -546,6 +569,14 @@ def test_the_status_says_what_the_sync_is_doing():
     assert shape(stats, False, False, 1.0)["status"] == "down"
     assert shape({**stats, "status": "stopped"}, False, True, 1.0)["button"] == "Start"
     assert shape({**stats, "status": "stopped"}, True, False, 1.0)["status"] == "starting"
+    assert live["notice"] == ""
+    behind = shape(
+        {**stats, "status": "behind", "lag": 300, "notice": "runs behind"}, True, False, 1.0
+    )
+    assert (behind["status"], behind["tone"], behind["button"]) == ("behind", "warn", "Stop")
+    assert behind["notice"] == "runs behind" and "300 behind tip" in behind["line"]
+    stopped = {**stats, "status": "stopped", "notice": "runs behind"}
+    assert shape(stopped, False, True, 1.0)["notice"] == ""
 
 
 def test_a_token_page_reads_its_record_trades_and_candles():
@@ -562,6 +593,8 @@ def test_a_token_page_reads_its_record_trades_and_candles():
     (candle,) = v["candles"]
     assert len(candle) == 5 and candle[3] <= candle[1] <= candle[4]
     assert v["split"]["sells"] == 0 and v["split"]["buys"] > 0
+    assert v["chart_title"] == "Market cap, a candle every 5s"
+    assert v["volume_title"] == "Volume, a bar every 5s"
     assert views.token_view_of({}, [], [], {}, 0.0) == {"found": False}
 
 
@@ -609,14 +642,22 @@ def test_a_launch_queues_its_picture_and_the_image_lands_in_its_record():
     rec = b.tokens[LAUNCHED]
     assert rec["image"].startswith(booklib.GATEWAY) and rec["picture"] == "ok"
     assert b.launches[0]["image"] == rec["image"]
+    # Painted by default: a coin's own image shows only with "Show images" on.
     (card,) = _cards(b)
+    assert card["src"].startswith("data:image/svg+xml")
+    (card,) = _cards(b, images=True)
     assert card["src"] == rec["image"]
+    shown = views.token_view_of(rec, [], [], {}, clock(), images=True)
+    assert shown["src"] == rec["image"]
+    assert views.token_view_of(rec, [], [], {}, clock())["src"].startswith("data:image/svg+xml")
     clock.t += 1.0
     assert b.picture() == {}  # asked once: nothing more to fetch
 
 
-def _cards(b: Book) -> list:
-    return [{"src": x.get("image") or views.avatar_url(x["mint"], x["symbol"])} for x in b.launches]
+def _cards(b: Book, images: bool = False) -> list:
+    return [
+        {"src": views.picture(x.get("image"), x["mint"], x["symbol"], images)} for x in b.launches
+    ]
 
 
 def test_a_failing_fetch_is_tried_again_once_then_remembered():

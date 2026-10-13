@@ -32,7 +32,7 @@ import nustd.http
 from nu.engine.structure import Declared
 from nu.lang import ScalarAction
 
-from .book import Book
+from .book import RATE, Book
 from .state import Control, Memes
 
 
@@ -202,7 +202,7 @@ def control() -> nu.Nu:
     c = Control
     return nu.Dict.of(
         rpc=c.rpc.fallback(""),
-        rate=c.rate.fallback(2.0),
+        rate=c.rate.fallback(RATE),
         epoch=c.epoch.fallback(0),
         start=c.start.fallback(0),
     )
@@ -239,7 +239,6 @@ def written(d: nu.Nu) -> nu.Nu:
             "lag": m.lag,
             "latency": m.latency,
             "errors": m.errors_n,
-            "coverage": m.coverage,
         }
         return nu.Sequential(*(ref.set_item(t, nu.Float(p[k])) for k, ref in series.items()))
 
@@ -274,7 +273,7 @@ from nuverse_demos.memes.state import Control, at_root, root_of
 
 #: Seconds one call may take, one metadata fetch, and what the book is told about the chain and its memory.
 TIMEOUT, OFFCHAIN = 10.0, 8.0
-BOOK = {"keep_hours": 6.0, "max_tokens": 4000, "max_lag": 40}
+BOOK = {"keep_hours": 6.0, "max_tokens": 4000}
 
 
 def commit(root):

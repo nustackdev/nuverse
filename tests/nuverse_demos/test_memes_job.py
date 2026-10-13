@@ -187,4 +187,5 @@ async def test_starting_over_from_a_slot_reads_from_there(store, chain):
     await store.run(control.stop("m"))
     await asyncio.wait_for(task, 20)
     stats = await store.read(_at(Memes.stats))
-    assert stats["mode"] == "from" and stats["totals"]["jumped"] == 0
+    assert stats["mode"] == "from" and "jumped" not in stats["totals"]
+    assert stats["cursor"] > 1000  # every block from 998 on, in order
