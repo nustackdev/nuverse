@@ -38,7 +38,7 @@ nustd = { path = "../nu/pkgs/nustd", editable = true }
 dev = [
     "nuverse",
     "nuverse-log",
-    "nuverse-demos[mnist,memes]",
+    "nuverse-demos[mnist,memes,agents]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
     "pytest>=7.0.0",

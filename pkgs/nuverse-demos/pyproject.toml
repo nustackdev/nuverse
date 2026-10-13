@@ -23,6 +23,10 @@ mnist = [
 memes = [
     "nustd[http]",
 ]
+# The agents demo drives Claude Code through nustd.cc, on the local claude login.
+agents = [
+    "nustd[cc]",
+]
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"

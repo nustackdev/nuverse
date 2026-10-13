@@ -7,6 +7,7 @@ The Nu demos as [nuspace](https://github.com/nustackdev/nuspace) Planes `+` crea
 - **Movies**: a film base where every film and person is its own live page.
 - **MNIST**: train a small CNN, steer it while it trains, and track every run. Needs the `mnist` extra.
 - **Memes**: a live terminal over the meme market on Solana: launches, trades and every coin's page, synced from public mainnet. Needs the `memes` extra.
+- **Agents**: Claude Code sessions run, watched, steered and orchestrated from a space. One agent is one Claude Code session in a page, driven by a short Nu loop; fan-out with a judge, chains and task boards are a few lines of Nu each. Needs the `agents` extra and a logged-in `claude` CLI, no API key.
 - **Nu demos**: all three at once, nested under one plane.
 
 ```

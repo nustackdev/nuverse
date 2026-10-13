@@ -100,7 +100,15 @@ def test_discovery_finds_the_tour_and_the_demos():
     from nuspace.ext import discover
 
     (ext,) = [e for e in discover() if e.name == "nuverse-demos"]
-    assert [p.name for p in ext.planes] == ["demos", "counter", "sampled", "movies", "mnist", "memes"]
+    assert [p.name for p in ext.planes] == [
+        "demos",
+        "counter",
+        "sampled",
+        "movies",
+        "mnist",
+        "memes",
+        "agents",
+    ]
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.name)
