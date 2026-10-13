@@ -6,7 +6,7 @@ Extensions for [nuspace](https://github.com/nustackdev/nuspace): the Planes `+` 
 | --- | --- |
 | [nuverse](pkgs/nuverse) | std: the Planes and snippets every space ships with. `pip install nuspace` pulls it |
 | [nuverse-log](pkgs/nuverse-log) | nulog as a Log plane, for entries and metrics. Placeholder |
-| [nuverse-demos](pkgs/nuverse-demos) | The Nu demos as Planes: a counter, a sampled series, a film base, MNIST trained live |
+| [nuverse-demos](pkgs/nuverse-demos) | The Nu demos as Planes: a counter, a sampled series, a film base, MNIST trained live, a live meme market |
 
 `nuverse` is std and has no suffix. Everything else is `nuverse-<name>`, installed when you want it:
 

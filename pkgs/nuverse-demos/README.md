@@ -6,6 +6,7 @@ The Nu demos as [nuspace](https://github.com/nustackdev/nuspace) Planes `+` crea
 - **Sampled**: a series that grows forever, charted from a reservoir sample.
 - **Movies**: a film base where every film and person is its own live page.
 - **MNIST**: train a small CNN, steer it while it trains, and track every run. Needs the `mnist` extra.
+- **Memes**: a live terminal over the meme market on Solana: launches, trades and every coin's page, synced from public mainnet. Needs the `memes` extra.
 - **Nu demos**: all three at once, nested under one plane.
 
 ```

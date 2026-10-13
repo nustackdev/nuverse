@@ -1,0 +1,162 @@
+"""nuverse-demos memes: every plane's cells, run against a store the sync has written. Offline.
+
+The root's state is seeded the way the job writes it, a :class:`~.book.Book`
+flush over the fixture blocks, and each cell runs as the kernel runs it, in
+a session whose browser keeps what it is sent.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+
+import pytest
+
+import nu
+import nustd.http
+import nustd.kv
+from nuspace import ops
+from nuspace.shapes import Reroot, Space
+from nuspace.system.devices.web.env import session_env
+from nuspace.system.kernel.body import Rewrites
+from nustd.ui.core import Frame, WsSession
+from nustd.ui.core.session import Session
+from nuverse_demos.memes import PLANE, cells, monitor, overview, sync, token
+from nuverse_demos.memes.book import Book
+from nuverse_demos.memes.chain import decode_block
+from nuverse_demos.memes.job import written
+from nuverse_demos.memes.state import TOKEN, at_root, token_page
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "memes"
+BLOCKS = {
+    456413524: json.loads((FIXTURES / "block_456413524.json").read_text()),
+    456413622: json.loads((FIXTURES / "block_456413622_create.json").read_text()),
+}
+#: The coin the launch block makes.
+CAP = decode_block(BLOCKS[456413622], 456413622)["events"][0]["mint"]
+
+
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    """No call leaves the test: a token page asking for its picture gets refused."""
+
+    async def refused(self, verb, path, **wire):
+        raise ConnectionError(f"offline: {path}")
+
+    monkeypatch.setattr(nustd.http.HttpFabric, "arequest", refused)
+
+
+class _Browser(WsSession):
+    """A session with no socket. Keeps the frames it is sent."""
+
+    def __init__(self) -> None:
+        super().__init__(ws=None)
+        self.frames: list[Frame] = []
+
+    async def send(self, frame: Frame) -> None:
+        self.frames.append(frame)
+
+    async def aread(self, path: tuple[str, ...]) -> object:
+        return ""
+
+    def drawn(self, name: str) -> list:
+        return [f.payload for f in self.frames if f.ref and f.ref[-1] == name]
+
+
+async def _seed(store) -> None:
+    """The root ``m`` and its children, and the state a sync over the fixtures writes."""
+    await store.run(ops.create_plane(PLANE, plane_id="m"))
+    book = Book(clock=lambda: 1791888300.0)
+    book.tip, book.tip_at, book.epoch = 456413700, book.clock(), 0
+    for slot, block in BLOCKS.items():
+        book.cursor = slot
+        book.on_reply({"what": "block", "slot": slot, "sent": book.clock()}, {"result": block})
+    await store.run(ops.atomic_state(at_root("m", written(book.flush()))))
+
+
+async def _cells(store, plane: str) -> dict:
+    return {c["name"]: c["id"] for c in await store.read(ops.cell_rows(plane))}
+
+
+async def _drive(store, plane: str, cell: str, seconds: float = 1.5) -> _Browser:
+    """Run the cell for a while as the kernel would, then cancel it. Raises what it raised."""
+    browser = _Browser()
+    env = session_env("127.0.0.1:9")("s1")
+    load = Space.cells[cell].prog.load(
+        scope={"plane": plane, "cell": cell}, rewrite=Rewrites(Reroot(plane, cell), env.rewrite)
+    )
+    term = nu.Frame(
+        ops.Here, await store.run(nustd.kv.Snapshot(load, scope=Space)), plane=plane, cell=cell
+    )
+    task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
+    await asyncio.sleep(seconds)
+    if task.done():
+        task.result()  # a cell that ended raised, or drew once and parked: either way, say so
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    return browser
+
+
+def _plane_of(spec) -> str:
+    return {"memes_overview": 0, "memes_monitor": 1, "memes_sync": 2}[spec.name]
+
+
+@pytest.mark.parametrize(
+    "spec", [PLANE, overview.PLANE, monitor.PLANE, sync.PLANE], ids=lambda p: p.name
+)
+async def test_every_cell_runs_and_draws(store, spec):
+    await _seed(store)
+    plane = "m" if spec is PLANE else (await store.read(ops.children("m")))[_plane_of(spec)]
+    ids = await _cells(store, plane)
+    browsers = await asyncio.gather(*(_drive(store, plane, ids[name]) for name, _ in spec.cells))
+    for (name, _), browser in zip(spec.cells, browsers, strict=True):
+        assert browser.frames, f"{spec.name}.{name} drew nothing"
+
+
+async def test_the_bar_offers_start_while_nothing_runs(store):
+    await _seed(store)
+    browser = await _drive(store, "m", (await _cells(store, "m"))["sync"])
+    (pill, *_) = browser.drawn("pill")
+    assert pill["label"] in ("idle", "down")
+    assert browser.drawn("toggle")[-1]["label"] == "Start"
+
+
+async def test_the_tokens_table_lists_the_launch_first(store):
+    await _seed(store)
+    view = (await store.read(ops.children("m")))[0]
+    browser = await _drive(store, view, (await _cells(store, view))["tokens"])
+    rows = [p["rows"] for p in browser.drawn("table") if isinstance(p, dict) and "rows" in p][-1]
+    # Newest first, and only coins whose launch the sync saw: the rest have no date.
+    assert [(r["mint"], r["token"], r["curve"]) for r in rows] == [(CAP, "cap", rows[0]["curve"])]
+    assert rows[0]["age"] != "-"
+
+
+async def test_a_token_page_shows_its_token(store):
+    await _seed(store)
+    page = await store.read(token_page("m", CAP))
+    from nuspace import Plane
+
+    spec = Plane(TOKEN, "Token", cells=token.CELLS, backend="async")
+    await store.run(
+        ops.create_plane(spec, parent="m", name=CAP, plane_id=page)
+        >> ops.set_plane_meta(page, nu.Dict.of(base="m", mint=CAP))
+    )
+    ids = await _cells(store, page)
+    head = await _drive(store, page, ids["head"])
+    assert head.drawn("title")[-1]["label"] == "dog wif cap"
+    assert head.drawn("face")[0]["src"].startswith("data:image/svg+xml")
+    assert await store.read(ops.plane_title(page)) == "cap"
+    numbers = await _drive(store, page, ids["numbers"])
+    assert numbers.drawn("mc")[-1]["value"].endswith(" SOL")
+    trades = await _drive(store, page, ids["trades"])
+    rows = [p["rows"] for p in trades.drawn("table") if isinstance(p, dict) and "rows" in p][-1]
+    assert [r["side"] for r in rows] == ["▲ BUY"]
+
+
+def test_the_planes_hang_as_the_docs_say():
+    assert [c.name for c in PLANE.children] == ["memes_overview", "memes_monitor", "memes_sync"]
+    assert [n for n, _ in PLANE.cells] == ["intro", "sync", "tiles", "pulse", "launches"]
+    assert all(dict(p.cells)["sync"] == cells.BAR for p in PLANE.children)
+    assert PLANE.group == "Demos" and PLANE.backend == "async"

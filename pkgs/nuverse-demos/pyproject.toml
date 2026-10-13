@@ -19,6 +19,10 @@ mnist = [
     "torch>=2.2",
     "torchvision>=0.17",
 ]
+# The memes demo's JSON-RPC calls go through nustd.http.
+memes = [
+    "nustd[http]",
+]
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"

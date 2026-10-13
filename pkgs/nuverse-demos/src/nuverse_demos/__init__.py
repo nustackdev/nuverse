@@ -5,6 +5,7 @@
 - :mod:`.tour`: the two above, nested under one plane.
 - :mod:`.movies`: a film base, every film and person its own live page.
 - :mod:`.mnist`: a CNN trained on MNIST, steered live, every run tracked. Needs the ``mnist`` extra.
+- :mod:`.memes`: a live terminal over a meme market, synced from Solana.
 
 nuspace finds this package through the ``nuspace.extensions`` entry point,
 which names :func:`extension`. Nothing is imported here at module scope.
@@ -26,6 +27,6 @@ def extension() -> Extension:
     """The tour and the demo planes, as one extension."""
     from nuspace import Extension
 
-    from . import counter, mnist, movies, sampled, tour
+    from . import counter, memes, mnist, movies, sampled, tour
 
-    return Extension(planes=(tour.PLANE, counter.PLANE, sampled.PLANE, movies.PLANE, mnist.PLANE))
+    return Extension(planes=(tour.PLANE, counter.PLANE, sampled.PLANE, movies.PLANE, mnist.PLANE, memes.PLANE))
