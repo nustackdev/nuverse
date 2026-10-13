@@ -23,8 +23,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-DEMOS = [counter, sampled, movies]
-SPECS = [tour.PLANE, *(m.PLANE for m in DEMOS)]
+DEMOS = [counter, sampled]
+MOVIES = [movies]
+SPECS = [tour.PLANE, *(m.PLANE for m in (*DEMOS, *MOVIES))]
 SOURCES = [source for spec in SPECS for _, source in spec.cells]
 
 
@@ -38,18 +39,6 @@ class _Series(nuspace.PlaneState):
     """The sampled plane's state, as its cells declare it."""
 
     cursor = nustd.kv.IntRef.slot()
-
-
-class _Movie(nuspace.CellState):
-    """A movie card's state, as its source declares it."""
-
-    rating = nustd.kv.FloatRef.slot()
-
-
-class _Shelf(nuspace.PlaneState):
-    """The movies plane's state, as its cells declare it."""
-
-    cards = nustd.kv.DictRef.slot(object)
 
 
 class _Browser(WsSession):
@@ -107,7 +96,7 @@ async def _stop(*tasks: asyncio.Task) -> None:
 # --- the specs -------------------------------------------------------------------------------
 
 
-def test_discovery_finds_the_tour_and_the_three_demos():
+def test_discovery_finds_the_tour_and_the_demos():
     from nuspace.ext import discover
 
     (ext,) = [e for e in discover() if e.name == "nuverse-demos"]
@@ -129,28 +118,15 @@ def test_each_spec_is_a_demo(spec: Plane):
     assert len(set(names)) == len(names)
 
 
-def test_the_tour_nests_the_three_demos():
+def test_the_tour_nests_the_demos():
     assert tour.PLANE.children == tuple(m.PLANE for m in DEMOS)
     assert all(not m.PLANE.children for m in DEMOS)
-
-
-def test_seeded_cards_bake_their_defaults_in():
-    dune = dict(movies.PLANE.cells)["Dune"]
-    assert 'TITLE = "Dune"' in dune
-    assert "RATING = 8.0" in dune
-    assert "WATCHED = True" in dune
-    heat = dict(movies.PLANE.cells)["Heat"]
-    assert 'TITLE = "Heat"' in heat
-    assert "RATING = 0.0" in heat
-    assert "WATCHED = False" in heat
-    # The Add cell carries the card template unchanged, for its own swap.
-    assert repr(movies.CARD) in movies.ADD
 
 
 # --- creating them ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("module", DEMOS, ids=lambda m: m.PLANE.name)
+@pytest.mark.parametrize("module", [*DEMOS, *MOVIES], ids=lambda m: m.PLANE.name)
 async def test_each_demo_is_created_with_its_cells(store, module):
     spec = module.PLANE
     await store.run(ops.create_plane(spec, plane_id="p1"))
@@ -168,7 +144,7 @@ async def test_the_tour_is_created_with_the_demos_under_it(store):
     assert [c["name"] for c in await store.read(ops.cell_rows("t"))] == ["intro"]
     kids = await store.read(ops.children("t"))
     rows = {r["id"]: r for r in await store.read(ops.plane_rows())}
-    assert [rows[k]["props"]["made_by"] for k in kids] == ["counter", "sampled", "movies"]
+    assert [rows[k]["props"]["made_by"] for k in kids] == ["counter", "sampled"]
     assert all(rows[k]["parent"] == "t" for k in kids)
     for kid, module in zip(kids, DEMOS, strict=True):
         cells = await store.read(ops.cell_rows(kid))
@@ -234,51 +210,3 @@ async def test_sampled_feeds_in_batches_and_charts_a_sample(store):
     assert 0 < len(keys) <= 200
     assert keys == sorted(keys)
     assert all(-11.0 <= y <= 11.0 for _, y in points)
-
-
-async def test_movies_shelf_tallies_the_seeded_cards(store):
-    await store.run(ops.create_plane(movies.PLANE, plane_id="p"))
-    ids = await _cells(store, "p")
-    shelf = _Browser()
-    tasks = [await _run(store, "p", ids["shelf"], shelf)]
-    tasks += [await _run(store, "p", ids[t], _Browser()) for t, _, _ in movies.SEEDS]
-
-    def tiles() -> dict:
-        return {
-            name: shelf.drawn(name)[-1]["value"]
-            for name in ("movies", "watched", "rating")
-            if shelf.drawn(name)
-        }
-
-    try:
-        await _until(lambda: tiles() == {"movies": "3", "watched": "2 of 3", "rating": "8.5"})
-    finally:
-        await _stop(*tasks)
-
-
-async def test_movies_card_takes_its_baked_defaults_until_its_state_says_otherwise(store):
-    await store.run(ops.create_plane(movies.PLANE, plane_id="p"))
-    cid = (await _cells(store, "p"))["Dune"]
-    tab = _Browser()
-    task = await _run(store, "p", cid, tab)
-    try:
-        await _until(lambda: bool(tab.drawn("rating")) and bool(tab.drawn("watched")))
-        assert tab.drawn("rating")[0] == 8.0
-        assert tab.drawn("watched")[0] is True
-        report = await store.read(reroot(_Shelf.cards[cid], "p", cid))
-        assert report == {"rating": 8.0, "watched": True}
-        await store.run(ops.atomic_state(reroot(_Movie.rating, "p", cid).set(6.5)))
-        await _until(lambda: tab.drawn("rating")[-1] == 6.5)
-    finally:
-        await _stop(task)
-
-
-async def test_movies_add_writes_a_card_with_its_title_baked_in(store):
-    await store.run(ops.create_plane(movies.PLANE, plane_id="p"))
-    namespace: dict = {}
-    exec(compile(movies.ADD, "cell", "exec"), namespace)  # noqa: S102
-    term = nu.Frame(ops.Here, namespace["add"](nu.Str("Past Lives")), plane="p", cell="add")
-    await nu.arun(term, store.ctx.bind(Session, _Browser()))
-    cells = await store.read(ops.cell_rows("p"))
-    assert cells[-1]["name"] == "Past Lives"
-    assert cells[-1]["prog"] == movies.card("Past Lives")

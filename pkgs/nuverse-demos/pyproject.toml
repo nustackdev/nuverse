@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nuverse-demos"
 version = "0.0.1"
-description = "The Nu demos as nuspace Planes: a counter, a sampled series and a movie shelf."
+description = "The Nu demos as nuspace Planes: a counter, a sampled series and a film base."
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]

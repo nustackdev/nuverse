@@ -4,7 +4,7 @@ The Nu demos as [nuspace](https://github.com/nustackdev/nuspace) Planes `+` crea
 
 - **Counter**: a count ticking once a second, kept in its cell's state.
 - **Sampled**: a series that grows forever, charted from a reservoir sample.
-- **Movies**: a shelf where every movie is a cell, and a cell that writes them.
+- **Movies**: a film base where every film and person is its own live page.
 - **Nu demos**: all three at once, nested under one plane.
 
 ```
