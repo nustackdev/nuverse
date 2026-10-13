@@ -27,7 +27,6 @@ members = ["pkgs/*"]
 
 [tool.uv.sources]
 nuverse = { workspace = true }
-nuverse-log = { workspace = true }
 nuverse-demos = { workspace = true }
 nuspace = { path = "../nuspace", editable = true }
 nuspace-ui = { path = "../nuspace/pkgs/ts/nuspace-ui", editable = true }
@@ -37,7 +36,6 @@ nustd = { path = "../nu/pkgs/nustd", editable = true }
 [dependency-groups]
 dev = [
     "nuverse",
-    "nuverse-log",
     "nuverse-demos[mnist,memes,agents]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
@@ -136,7 +134,6 @@ convention = "google"
 [tool.ruff.lint.isort]
 known-first-party = [
     "nuverse",
-    "nuverse_log",
     "nuverse_demos",
     "nuspace",
     "nu",

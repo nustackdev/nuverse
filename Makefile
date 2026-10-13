@@ -23,7 +23,7 @@ help:
 	@echo "  make check           Run format-check + lint"
 	@echo ""
 	@echo "$(GREEN)Packages:$(NC)"
-	@echo "  make build PKG=<dist> Build one wheel, eg PKG=nuverse-log"
+	@echo "  make build PKG=<dist> Build one wheel, eg PKG=nuverse-demos"
 	@echo ""
 	@echo "$(GREEN)Cleanup:$(NC)"
 	@echo "  make clean           Remove build artifacts"
