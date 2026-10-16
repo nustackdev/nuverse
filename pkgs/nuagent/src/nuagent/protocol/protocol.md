@@ -23,7 +23,7 @@ def out():
 ```
 
 - `out()` takes **no arguments** and returns one Nu term. That term is the program.
-- Bind nothing. The host provides every fabric around your program, so return the bare term: a `nu.Provide` or `nu.With` of your own puts your writes in a store the host never reads.
+- The host already wraps your program in its providers: the world and its storage are bound for you, so the Shapes you declare read and write them as they are. No `nu.Provide` around them is needed. Provide only what is genuinely yours, such as scratch state the host does not need to see.
 - Do not write `try`/`except` in `out()`. Every failure is caught for you and comes back as text you need to read.
 
 ## What happens to it

@@ -2,6 +2,8 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nuagent 0.2.1 on nuskills 0.2.0, chaining-first prompts
+- Tell the agent its world is already provided, no wrapping needed
 - Release nuagent 0.2.0, the Nu agent loop, on nu 0.6.4
 - Rename nuverse-demos to nudemos
 - Add nuagent kv store: durable runs on one sqlite file, no lock held across model calls

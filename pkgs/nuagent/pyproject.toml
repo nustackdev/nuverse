@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nuagent"
-version = "0.2.0"
+version = "0.2.1"
 description = "nuagent: the model answers in Nu, Nu runs the answer."
 readme = "README.md"
 license = "Apache-2.0"
@@ -15,7 +15,7 @@ dependencies = [
     "nucore>=0.6.4",
     "nustd[kv]>=0.6.4",
     # The generic Nu prose the opening prompt is assembled from.
-    "nuskills>=0.1.0",
+    "nuskills>=0.2.0",
 ]
 
 [project.optional-dependencies]

@@ -6,4 +6,4 @@
 - :mod:`.presets`: what you swap: the store and the backend.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
