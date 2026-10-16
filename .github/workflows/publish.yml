@@ -1,5 +1,5 @@
 # Publishes one nuverse distribution to PyPI on a tag push like `<dist>@X.Y.Z`,
-# eg `nuverse@0.4.0` or `nuverse-demos@0.1.0`. The dist is built from pkgs/<dist>.
+# eg `nuverse@0.4.0` or `nudemos@0.1.0`. The dist is built from pkgs/<dist>.
 #
 # Every package here is its own PyPI project. One-time setup per package, on
 # PyPI, "Add a new pending publisher" (or "Add a publisher" once it exists):

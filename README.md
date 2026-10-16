@@ -42,7 +42,7 @@ Install a package and it shows up in your space, nothing to wire up. Build your 
 | Package | What |
 | --- | --- |
 | [nuverse](pkgs/nuverse) | The everyday planes and cells: tables, charts, forms, jobs, workers |
-| [nuverse-demos](pkgs/nuverse-demos) | Ready made spaces: a film base, MNIST trained live, a live meme market, Claude Code agents |
+| [nudemos](pkgs/nudemos) | Ready made spaces: a film base, MNIST trained live, a live meme market, Claude Code agents |
 
 ## Install
 
@@ -50,7 +50,7 @@ Each package installs on its own and brings nuspace with it.
 
 ```bash
 pip install nuverse          # everyday planes and cells
-pip install nuverse-demos    # ready made spaces
+pip install nudemos          # ready made spaces
 ```
 
 Then open one:

@@ -1,7 +1,4 @@
-# The nuverse workspace: a collection of nuspace extensions, one distribution
-# per directory under pkgs/. `nuverse` is the std set every space ships with,
-# every other package is `nuverse-<name>` and installed on demand, except
-# `nuagent`, the agent loop, which needs nu but not nuspace.
+# The nuverse workspace: the packages under pkgs/, each its own PyPI project.
 #
 # Not a package itself. It holds the uv workspace, the shared dev deps, and
 # the ruff and pytest config every package uses.
@@ -15,7 +12,7 @@ requires-python = ">=3.10"
 package = false
 default-groups = ["dev"]
 
-# torch (the nuverse-demos mnist extra) stopped shipping Intel macOS wheels
+# torch (the nudemos mnist extra) stopped shipping Intel macOS wheels
 # after 2.2, and 2.2 wants numpy 1.
 constraint-dependencies = [
     "torch<2.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
@@ -28,7 +25,7 @@ members = ["pkgs/*"]
 
 [tool.uv.sources]
 nuverse = { workspace = true }
-nuverse-demos = { workspace = true }
+nudemos = { workspace = true }
 nuagent = { workspace = true }
 nuspace = { path = "../nuspace", editable = true }
 nuspace-ui = { path = "../nuspace/pkgs/ts/nuspace-ui", editable = true }
@@ -39,7 +36,7 @@ nuskills = { path = "../nuskills", editable = true }
 [dependency-groups]
 dev = [
     "nuverse",
-    "nuverse-demos[mnist,memes,agents]",
+    "nudemos[mnist,memes,agents]",
     "nuagent[cc,llm]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
@@ -138,7 +135,7 @@ convention = "google"
 [tool.ruff.lint.isort]
 known-first-party = [
     "nuverse",
-    "nuverse_demos",
+    "nudemos",
     "nuagent",
     "nuspace",
     "nu",

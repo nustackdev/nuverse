@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Rename nuverse-demos to nudemos
 - Add nuagent kv store: durable runs on one sqlite file, no lock held across model calls
 - Build nuagent's opening prompt from nuskills, the live catalogue and the caller's world
 - Add nuagent backends: Claude Code sessions and any OpenAI-compatible model
