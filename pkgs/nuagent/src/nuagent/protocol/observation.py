@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import nu
+from nu.domains.shape.interactions import Extract
 
 
 if TYPE_CHECKING:
@@ -111,7 +112,9 @@ def observation(outcome: Nu, state: Nu | None = None) -> Nu:
     Args:
         outcome: the outcome record of the turn that just ran.
         state: what the model should see of the world after the run. Any term;
-            its repr is shown whole. Omitted, there is no state line.
+            it is read out as plain data and its repr is shown whole, so a kv
+            ref shows what it holds, not its view. Omitted, there is no state
+            line.
 
     Returns:
         A ``Str`` term.
@@ -119,4 +122,4 @@ def observation(outcome: Nu, state: Nu | None = None) -> Nu:
     text = OUTCOME + render(outcome)
     if state is None:
         return text
-    return text + STATE + nu.Repr(state)
+    return text + STATE + nu.Repr(Extract(state))

@@ -16,9 +16,9 @@ import pytest
 from _support.scripted import Mem, program
 
 import nu
-import nustd.kv
 from nuagent.core import agent
-from nuagent.presets.store.mem import MemSession, bound
+from nuagent.presets.store.kv import KVStore
+from nuagent.presets.store.mem import MemSession, MemStore
 
 
 claude_agent_sdk = pytest.importorskip("claude_agent_sdk")
@@ -33,6 +33,7 @@ from nustd.llm import LLMFabric  # noqa: E402
 
 
 TASK = "Log two things, then finish."
+STORE = MemStore()
 REPLIES = [program("World.log.set(['a'])"), program("World.log.append('b') >> Run.done.set(True)")]
 
 
@@ -77,7 +78,7 @@ async def test_llm_sends_the_whole_conversation_every_call(endpoint):
     mem = Mem()
     backend = LLM("ollama", host="nowhere", model="m", request={"temperature": 0})
     ctx = nu.Context().bind(dict, mem.session, MemSession).bind(dict, mem.world)
-    await nu.arun(agent(MemSession, backend, TASK), ctx)
+    await nu.arun(agent(STORE, backend, TASK), ctx)
     assert mem.world["log"] == ["a", "b"]
     assert [len(sent) for sent in endpoint.sent] == [1, 3]
     assert endpoint.sent[1] == mem.session["messages"][:3]
@@ -86,35 +87,29 @@ async def test_llm_sends_the_whole_conversation_every_call(endpoint):
 
 
 async def test_llm_opens_the_endpoint_once_for_the_run(endpoint):
-    await nu.arun(bound(agent(MemSession, LLM("bind", base_url="http://x", model="m"), TASK)))
+    await nu.arun(STORE.bound(agent(STORE, LLM("bind", base_url="http://x", model="m"), TASK)))
     assert endpoint.opened == 1
     assert len(endpoint.sent) == 2
 
 
 async def test_llm_keeps_the_opening_a_user_message_and_puts_system_first(endpoint):
     backend = LLM("vllm", base_url="http://x", model="m", system="Be brief.")
-    await nu.arun(bound(agent(MemSession, backend, TASK)))
+    await nu.arun(STORE.bound(agent(STORE, backend, TASK)))
     assert endpoint.sent[0] == [
         {"role": "system", "content": "Be brief."},
         {"role": "user", "content": TASK},
     ]
 
 
-class _KvSession(nu.Shape):
-    """A conversation on kv, where a read gives views unless it is extracted."""
-
-    messages = nustd.kv.ListRef.slot(dict)
-
-
 async def test_llm_sends_plain_dicts_off_a_kv_conversation(endpoint):
-    backend = LLM("bind", base_url="http://x", model="m")
-    opening = [{"role": "user", "content": TASK}]
-    seeded = nustd.kv.Transaction(_KvSession.messages.set(opening), scope=_KvSession)
-    asked = nustd.kv.Snapshot(backend.ask(_KvSession.messages), scope=_KvSession)
-    store = nustd.kv.memory_navigator(tags=(_KvSession,))
-    await nu.arun(nu.With(store, body=backend.wrap(seeded >> nu.print(asked))))
-    assert endpoint.sent == [opening]
-    assert all(type(m) is dict for m in endpoint.sent[0])
+    endpoint.replies = [
+        program("World.log.set(['a'])", "nustd.kv"),
+        program("World.log.append('b') >> Run.done.set(True)", "nustd.kv"),
+    ]
+    store = KVStore()
+    await nu.arun(store.bound(agent(store, LLM("bind", base_url="http://x", model="m"), TASK)))
+    assert [len(sent) for sent in endpoint.sent] == [1, 3]
+    assert all(type(m) is dict for sent in endpoint.sent for m in sent)
 
 
 def test_llm_refuses_a_preset_nustd_lacks():
@@ -219,7 +214,7 @@ def _messages(n: int) -> list[dict]:
 async def test_cc_runs_the_whole_run_in_one_session_on_one_minted_id(claude):
     mem = Mem()
     ctx = nu.Context().bind(dict, mem.session, MemSession).bind(dict, mem.world)
-    await nu.arun(agent(MemSession, ClaudeCode(model="m"), TASK), ctx)
+    await nu.arun(agent(STORE, ClaudeCode(model="m"), TASK), ctx)
     assert mem.world["log"] == ["a", "b"]
     (client,) = claude.clients
     sid = client.options.session_id
@@ -232,14 +227,14 @@ async def test_cc_runs_the_whole_run_in_one_session_on_one_minted_id(claude):
 async def test_cc_sends_the_newest_message_only(claude):
     mem = Mem()
     ctx = nu.Context().bind(dict, mem.session, MemSession).bind(dict, mem.world)
-    await nu.arun(agent(MemSession, ClaudeCode(), TASK), ctx)
+    await nu.arun(agent(STORE, ClaudeCode(), TASK), ctx)
     messages = mem.session["messages"]
     assert claude.prompts == [TASK, messages[2]["content"]]
     assert claude.prompts[1] == "outcome: None"
 
 
 def test_cc_on_the_sync_runtime_keeps_one_id_across_processes(claude):
-    nu.run(bound(agent(MemSession, ClaudeCode(), TASK)))
+    nu.run(STORE.bound(agent(STORE, ClaudeCode(), TASK)))
     assert claude.clients == []
     (sid,) = claude.transcripts
     assert claude.transcripts[sid] == [TASK, "outcome: None"]
@@ -256,7 +251,7 @@ async def test_cc_mints_into_a_sid_ref_once_and_resumes_from_it(claude):
     for _ in range(2):
         mem = Mem()
         ctx = nu.Context().bind(dict, mem.session, MemSession).bind(dict, mem.world)
-        term = agent(MemSession, ClaudeCode(sid=_Keep.sid), TASK)
+        term = agent(STORE, ClaudeCode(sid=_Keep.sid), TASK)
         await nu.arun(term, ctx.bind(dict, keep, _Keep))
     sid = keep["sid"]
     opened, resumed = claude.clients
@@ -297,7 +292,7 @@ def test_flattened_is_the_replay_head_then_each_message():
 
 def test_both_runs_are_valid_terms():
     for backend in (ClaudeCode(), LLM("ollama", model="m")):
-        nu.validate(nu.compile(bound(agent(MemSession, backend, TASK))))
+        nu.validate(nu.compile(STORE.bound(agent(STORE, backend, TASK))))
 
 
 def test_cc_replays_once_then_sends_the_newest_again(claude):

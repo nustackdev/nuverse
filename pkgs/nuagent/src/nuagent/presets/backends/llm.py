@@ -72,8 +72,8 @@ class LLM:
             (``host``, ``model``, ``base_url``, ``api_key``, ``timeout``...).
 
     Example:
-        backend = LLM("ollama", host="red", model="qwen2.5:7b-instruct")
-        nu.arun(mem.bound(agent(MemSession, backend, task)))
+        store, backend = MemStore(), LLM("ollama", host="red", model="qwen2.5:7b-instruct")
+        nu.arun(store.bound(agent(store, backend, task)))
     """
 
     def __init__(
@@ -99,13 +99,13 @@ class LLM:
         """The reply to the whole conversation, ``system`` first when there is one.
 
         Args:
-            messages: the session's ``messages`` ref. Read with ``extract``,
-                so a kv store's views go out as the plain dicts the wire wants.
+            messages: the conversation as plain data, ``{role, content}``
+                dicts, as the wire wants them.
 
         Returns:
             A ``Str`` term, the reply's text.
         """
-        sent = nu.List(messages.extract())
+        sent = nu.List(messages)
         if self.system is not None:
             sent = nu.List.of(nu.Dict.of(role="system", content=self.system)) + sent
         return nu.Str(nu.dict(Model.chat(messages=sent, **self.request))["text"])

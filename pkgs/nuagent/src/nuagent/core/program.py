@@ -11,7 +11,9 @@ A reply with no complete block is used whole, which is right for bare source
 and wrong for prose. Extract cannot tell the two apart. Attempt can.
 
 **Attempt** builds the program with ``LoadNu`` and runs it with ``Eval``,
-once. Its yield is the outcome record, and the error type picks the branch
+once. The store's ``rewrite`` lands the built term on the world (on kv it
+brackets it), and the yield is read out as plain data and repr'd inside that
+landing, while the store is still open. Its own yield is the outcome record, and the error type picks the branch
 that writes it: a ``ConstructionError`` is ``construct`` (or ``no_code``,
 when the reply had no fence to begin with), anything else ``runtime``.
 Nothing downstream reads labels out of text. The repr sits inside the inner
@@ -28,14 +30,17 @@ from typing import TYPE_CHECKING
 
 import nu
 import nu.prog
+from nu.domains.shape.interactions import Extract
 from nuagent.protocol import CONSTRUCT, NO_CODE, OK, RUNTIME
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from nu.lang import Nu, StrArg
 
 
-__all__ = ["FENCE", "attempt", "extract", "fenced"]
+__all__ = ["FENCE", "Shown", "attempt", "extract", "fenced"]
 
 
 #: What opens and closes a block. Code sits at the odd indices of the split.
@@ -64,7 +69,34 @@ def extract(reply: StrArg) -> Nu:
     return nu.Str(nu.If(fenced(reply), block, text.strip()))
 
 
-def attempt(program: Nu, *, reply: StrArg | None = None) -> Nu:
+class Shown:
+    """A ``LoadNu`` rewrite: the program's yield as plain data, repr'd, then landed.
+
+    A class rather than a closure so a load carrying it pickles.
+
+    Args:
+        landing: the store's ``rewrite``. None leaves the term where it is.
+
+    Notes:
+        - The repr sits inside the landing, so a kv view the program yields
+          is read out while its bracket is open. Outside it, a view is a
+          lazy handle and its repr says nothing.
+    """
+
+    __slots__ = ("landing",)
+
+    def __init__(self, landing: Callable[[Nu], Nu] | None = None) -> None:
+        self.landing = landing
+
+    def __call__(self, term: Nu) -> Nu:
+        """The term's yield, materialised and repr'd, on the world."""
+        shown = nu.Repr(Extract(term))
+        return shown if self.landing is None else self.landing(shown)
+
+
+def attempt(
+    program: Nu, *, reply: StrArg | None = None, rewrite: Callable[[Nu], Nu] | None = None
+) -> Nu:
     """Build the program, run it once, and yield what happened as an outcome record.
 
     Args:
@@ -72,6 +104,8 @@ def attempt(program: Nu, *, reply: StrArg | None = None) -> Nu:
         reply: the raw reply the source came from. Given, a construction
             failure on a reply with no complete fence is ``no_code``, so a
             model is never handed a parser error about its own English.
+        rewrite: the store's ``rewrite``, applied to the built term before
+            it runs. Omitted, the term runs as it was built.
 
     Returns:
         A dict term, one of:
@@ -79,7 +113,7 @@ def attempt(program: Nu, *, reply: StrArg | None = None) -> Nu:
         ``{kind: construct, message, line}`` (``line`` is None when the
         failure has no source position), ``{kind: runtime, message}``.
     """
-    ran = nu.Dict.of(kind=OK, value=nu.Repr(nu.Eval(nu.LoadNu(program))))
+    ran = nu.Dict.of(kind=OK, value=nu.Eval(nu.LoadNu(program, rewrite=Shown(rewrite))))
 
     def built(err: Nu) -> Nu:
         """The construction failure, off the Diagnostic the error carries."""

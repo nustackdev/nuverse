@@ -148,8 +148,8 @@ class ClaudeCode:
           ``nu.run`` every turn starts one, on the same conversation.
 
     Example:
-        backend = ClaudeCode(model="claude-haiku-4-5", cwd="/tmp/work")
-        await nu.arun(mem.bound(agent(MemSession, backend, task)))
+        store, backend = MemStore(), ClaudeCode(model="claude-haiku-4-5", cwd="/tmp/work")
+        await nu.arun(store.bound(agent(store, backend, task)))
     """
 
     def __init__(
@@ -167,22 +167,17 @@ class ClaudeCode:
         """The reply to the newest message, or to the whole conversation on a fresh one.
 
         Args:
-            messages: the session's ``messages`` ref. Read with ``extract``,
-                so a kv store's views come out as plain dicts.
+            messages: the conversation as plain data, ``{role, content}`` dicts.
 
         Returns:
             A ``Str`` term, the reply's text.
         """
         cwd = self.options.get("cwd")
         fresh = nu.Bool(Held(Thread.sid, cwd=None if cwd is None else str(cwd))).not_()
-
-        def prompted(said: Nu) -> Nu:
-            said = nu.List(said)
-            newest = nu.Str(nu.Dict(said[-1])["content"])
-            prompt = nu.If(fresh.and_(said.len() > 1), flattened(said), newest)
-            return nu.Str(nu.dict(Agent.ask(nu.Str(prompt)))["text"])
-
-        return nu.let(messages.extract(), prompted)
+        said = nu.List(messages)
+        newest = nu.Str(nu.Dict(said[-1])["content"])
+        prompt = nu.If(fresh.and_(said.len() > 1), flattened(said), newest)
+        return nu.Str(nu.dict(Agent.ask(nu.Str(prompt)))["text"])
 
     def wrap(self, body: Nu) -> Nu:
         """The run inside the agent's bind and one Session, on an id held for the run."""

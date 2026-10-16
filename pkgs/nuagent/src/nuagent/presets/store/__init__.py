@@ -8,7 +8,8 @@ either unchanged:
 - ``program``: the source taken out of it.
 - ``outcome``: how it went, ``{kind, value, message, line}``.
 
-Each store is its own module with a ``bound(body)`` that binds it, imported
-by name (``nuagent.presets.store.mem``), so a run pays only for the store it
-uses.
+Each store is its own module with one class that satisfies
+:class:`nuagent.core.Store` (its Shapes, its two brackets, and ``bound``),
+imported by name (``nuagent.presets.store.mem``), so a run pays only for the
+store it uses.
 """
