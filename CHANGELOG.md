@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Rewrite the README for users: logo header, what it is, how to install
 - The Program snippet is gone: nuspace's Empty cell is the plain program now
 - Add nuverse-demos: the counter, sampled and movies demos as nuspace Planes
 - nuverse moves out of nuspace into its own monorepo of extensions
