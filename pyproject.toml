@@ -34,6 +34,7 @@ nuspace = { path = "../nuspace", editable = true }
 nuspace-ui = { path = "../nuspace/pkgs/ts/nuspace-ui", editable = true }
 nucore = { path = "../nu", editable = true }
 nustd = { path = "../nu/pkgs/nustd", editable = true }
+nuskills = { path = "../nuskills", editable = true }
 
 [dependency-groups]
 dev = [
@@ -142,6 +143,7 @@ known-first-party = [
     "nuspace",
     "nu",
     "nustd",
+    "nuskills",
 ]
 force-single-line = false
 lines-after-imports = 2

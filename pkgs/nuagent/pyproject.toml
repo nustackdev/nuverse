@@ -14,6 +14,8 @@ dependencies = [
     # The core needs only nu. nuspace hosting comes later as separate packages.
     "nucore",
     "nustd[kv]",
+    # The generic Nu prose the opening prompt is assembled from.
+    "nuskills",
 ]
 
 [project.optional-dependencies]

@@ -1,9 +1,9 @@
 """The agent half of the prompt: reply contract, ``out()``, how a run ends, observations.
 
 What a model is told about this loop and nothing else. What Nu is, what it
-can call and what the world holds come from the caller (the generic Nu prose
-is its own package), so :func:`prompt` is one piece the caller places in the
-opening message, beside its own.
+can call and what the world holds come from elsewhere (nuskills, and
+``nu.inspect``), and :mod:`nuagent.prompt` puts :func:`prompt` first among
+them in the opening message.
 
 Two halves that have to agree. ``protocol.md`` is the prose, and
 :mod:`.observation` renders what the model actually gets back. The labels

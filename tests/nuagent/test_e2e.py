@@ -1,4 +1,9 @@
-"""End to end through a real model: one tiny task on mem, over llm and over cc.
+"""End to end through a real model, on mem, over llm and over cc, with the full opening prompt.
+
+Two tasks: a one-line write, and a composition over a bound world (the sum of
+the even numbers in a list, into a slot). The opening is
+:func:`nuagent.prompt.opening`: protocol, the nu pieces, the catalogue, and
+for the second task the surface.
 
 Skipped unless ``NUAGENT_E2E=1``. They cost money (cc) or need the cluster
 (llm), and a model may take a few turns. Each prints its transcript, so run
@@ -13,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 
 import pytest
 from _support.scripted import Mem
@@ -20,7 +26,7 @@ from _support.scripted import Mem
 import nu
 from nuagent.core import agent
 from nuagent.presets.store.mem import MemSession
-from nuagent.protocol import prompt
+from nuagent.prompt import opening, sections
 
 
 pytestmark = pytest.mark.skipif(os.environ.get("NUAGENT_E2E") != "1", reason="NUAGENT_E2E=1 to run")
@@ -34,15 +40,35 @@ TASK = (
 )
 
 
-def _ran(mem: Mem, backend: object) -> object:
+class Data(nu.Shape):
+    """The numbers the task is about, and where its answer goes."""
+
+    nums = nu.ListRef.slot(int)
+    even_sum = nu.IntRef.slot()
+
+
+NUMS = [3, 8, 5, 14, 7, 21, 10, 2, 9]
+
+SUM_TASK = (
+    "Your task: write the sum of the even numbers in `Data.nums` to `Data.even_sum`, "
+    "then end the run. Compute it in the program, from the list as it is when the "
+    "program runs; do not read the numbers and write a constant."
+)
+
+
+def _ran(mem: Mem, backend: object, opened: str) -> None:
     ctx = nu.Context().bind(dict, mem.session, MemSession).bind(dict, mem.world)
-    term = agent(MemSession, backend, prompt() + "\n\n" + TASK)
-    print()
+    term = agent(MemSession, backend, opened)
+    print(f"\nprompt: {len(opened)} chars, ~{len(opened) // 4} tokens")
+    start = time.monotonic()
     try:
-        return asyncio.run(asyncio.wait_for(nu.arun(term, ctx), CEILING))
+        asyncio.run(asyncio.wait_for(nu.arun(term, ctx), CEILING))
     finally:
-        for message in mem.session.get("messages", [])[1:]:
+        messages = mem.session.get("messages", [])
+        for message in messages[1:]:
             print(f"--- {message['role']}\n{message['content']}")
+        took = time.monotonic() - start
+        print(f"turns: {(len(messages) - 1) // 2}, time: {took:.1f}s")
 
 
 def _done(mem: Mem) -> None:
@@ -50,17 +76,22 @@ def _done(mem: Mem) -> None:
     assert mem.world.get("done") is True
 
 
-def test_llm_does_the_task():
+def _summed(mem: Mem) -> None:
+    assert mem.world.get("even_sum") == sum(n for n in NUMS if n % 2 == 0)
+    assert mem.world.get("done") is True
+
+
+def _llm() -> object:
     from nuagent.presets.backends.llm import LLM
 
     url = os.environ.get("NUAGENT_LLM_URL", "http://red:11434")
     model = os.environ.get("NUAGENT_LLM_MODEL", "qwen2.5-coder:32b-instruct-q4_K_M")
-    mem = Mem()
-    _ran(mem, LLM("bind", base_url=url, model=model, timeout=300.0, request={"temperature": 0}))
-    _done(mem)
+    return LLM("bind", base_url=url, model=model, timeout=300.0, request={"temperature": 0})
 
 
-def test_cc_does_the_task(tmp_path, monkeypatch):
+@pytest.fixture
+def cc(tmp_path, monkeypatch):
+    """A Claude Code backend that prints what the run cost."""
     from nuagent.presets.backends.cc import ClaudeCode
     from nustd.cc import fabric
 
@@ -74,12 +105,32 @@ def test_cc_does_the_task(tmp_path, monkeypatch):
 
     monkeypatch.setattr(fabric, "collected", counted)
     model = os.environ.get("NUAGENT_CC_MODEL", "claude-haiku-4-5")
+    yield ClaudeCode(model=model, cwd=str(tmp_path))
+    print(f"cost: ${sum(costs):.4f} (per turn {costs})")
+
+
+def test_llm_does_the_task():
     mem = Mem()
-    try:
-        _ran(mem, ClaudeCode(model=model, cwd=str(tmp_path)))
-    finally:
-        print(f"turns: {len(costs)}, cost: ${sum(costs):.4f} (per turn {costs})")
+    _ran(mem, _llm(), opening(TASK))
     _done(mem)
+
+
+def test_cc_does_the_task(cc):
+    mem = Mem()
+    _ran(mem, cc, opening(TASK))
+    _done(mem)
+
+
+def test_llm_sums_the_evens():
+    mem = Mem(world={"nums": list(NUMS)})
+    _ran(mem, _llm(), opening(SUM_TASK, sections(app=[Data])))
+    _summed(mem)
+
+
+def test_cc_sums_the_evens(cc):
+    mem = Mem(world={"nums": list(NUMS)})
+    _ran(mem, cc, opening(SUM_TASK, sections(app=[Data])))
+    _summed(mem)
 
 
 def test_cc_holds_the_conversation_across_turns(tmp_path, monkeypatch):
@@ -103,7 +154,7 @@ def test_cc_holds_the_conversation_across_turns(tmp_path, monkeypatch):
     model = os.environ.get("NUAGENT_CC_MODEL", "claude-haiku-4-5")
     mem = Mem()
     ctx = nu.Context().bind(dict, mem.session, MemSession).bind(dict, mem.world)
-    term = agent(MemSession, ClaudeCode(model=model, cwd=str(tmp_path)), prompt() + "\n\n" + task)
+    term = agent(MemSession, ClaudeCode(model=model, cwd=str(tmp_path)), opening(task))
     asyncio.run(asyncio.wait_for(nu.arun(term, ctx), CEILING))
     print(*(f"--- sent\n{text[:200]}" for text in sent), sep="\n")
     assert mem.world.get("title") == "42"

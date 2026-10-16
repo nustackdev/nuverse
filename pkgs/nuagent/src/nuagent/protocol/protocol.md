@@ -22,14 +22,13 @@ def out():
     return Notes.entries.set([]) >> Notes.entries.append("first")
 ```
 
-- Import what you name: `import nu`, and `import nustd` for a fabric outside `nu`.
-- Declare Shapes at module level.
 - `out()` takes **no arguments** and returns one Nu term. That term is the program.
+- Bind nothing. The host provides every fabric around your program, so return the bare term: a `nu.Provide` or `nu.With` of your own puts your writes in a store the host never reads.
 - Do not write `try`/`except` in `out()`. Every failure is caught for you and comes back as text you need to read.
 
 ## What happens to it
 
-The host loads the module, calls `out()` to build the term, then runs the term. It runs **exactly once**. Python in `out()` runs while the term is built, not while it runs.
+The host loads the module, calls `out()` to build the term, then runs the term. It runs **exactly once**.
 
 ## What you get back
 
@@ -40,7 +39,7 @@ The next message is exactly this:
 
 `state` is there only when the host shows you one. It is never cut short.
 
-When the program ran, `outcome` is the repr of what the term yielded. A Command yields nothing, so `outcome: None` after a chain of writes means they all landed. Read `state` for the evidence before you write again. `nu.print` goes to the host's stdout, which you never see: to read a value, return it from `out()`.
+When the program ran, `outcome` is the repr of what the term yielded. `outcome: None` after a chain of writes means they all landed; read `state` for the evidence before you write again. To read a value, make it the yield of `out()`: `nu.print` output never reaches you.
 
 ## When it fails
 
@@ -72,5 +71,5 @@ def out():
 
 - Set it only once the work is done. Saying "done" in prose ends nothing.
 - Leave it alone to keep going. Every turn you do not set it, you get another.
-- A turn that reads a value to find something out is a turn where you do not set it, because a write in front of a read makes the program yield nothing and you lose the answer. Read in one turn, finish in the next.
-- Declare `Run` with the fabric your surface lists for it.
+- Read in one turn, finish in the next. The program that ends the run is a chain of writes, and a chain of writes yields nothing for you to read.
+- When your world lists `Run`, declare it with the fabric shown there.
