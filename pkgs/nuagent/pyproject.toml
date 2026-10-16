@@ -12,8 +12,8 @@ authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
     # The core needs only nu. nuspace hosting comes later as separate packages.
-    "nucore",
-    "nustd[kv]",
+    "nucore>=0.6.4",
+    "nustd[kv]>=0.6.4",
     # The generic Nu prose the opening prompt is assembled from.
     "nuskills>=0.1.0",
 ]

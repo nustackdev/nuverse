@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nuagent 0.2.0, the Nu agent loop, on nu 0.6.4
 - Rename nuverse-demos to nudemos
 - Add nuagent kv store: durable runs on one sqlite file, no lock held across model calls
 - Build nuagent's opening prompt from nuskills, the live catalogue and the caller's world
