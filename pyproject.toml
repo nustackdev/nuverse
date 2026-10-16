@@ -1,6 +1,7 @@
 # The nuverse workspace: a collection of nuspace extensions, one distribution
 # per directory under pkgs/. `nuverse` is the std set every space ships with,
-# every other package is `nuverse-<name>` and installed on demand.
+# every other package is `nuverse-<name>` and installed on demand, except
+# `nuagent`, the agent loop, which needs nu but not nuspace.
 #
 # Not a package itself. It holds the uv workspace, the shared dev deps, and
 # the ruff and pytest config every package uses.
@@ -28,6 +29,7 @@ members = ["pkgs/*"]
 [tool.uv.sources]
 nuverse = { workspace = true }
 nuverse-demos = { workspace = true }
+nuagent = { workspace = true }
 nuspace = { path = "../nuspace", editable = true }
 nuspace-ui = { path = "../nuspace/pkgs/ts/nuspace-ui", editable = true }
 nucore = { path = "../nu", editable = true }
@@ -37,6 +39,7 @@ nustd = { path = "../nu/pkgs/nustd", editable = true }
 dev = [
     "nuverse",
     "nuverse-demos[mnist,memes,agents]",
+    "nuagent[cc,llm]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
     "pytest>=7.0.0",
@@ -135,6 +138,7 @@ convention = "google"
 known-first-party = [
     "nuverse",
     "nuverse_demos",
+    "nuagent",
     "nuspace",
     "nu",
     "nustd",

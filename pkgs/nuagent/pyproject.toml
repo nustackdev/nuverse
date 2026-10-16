@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nuagent"
+version = "0.0.1"
+description = "nuagent: the model answers in Nu, Nu runs the answer."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    # The core needs only nu. nuspace hosting comes later as separate packages.
+    "nucore",
+    "nustd[kv]",
+]
+
+[project.optional-dependencies]
+# The cc backend drives Claude Code through nustd.cc, on the local claude login.
+cc = [
+    "nustd[cc]",
+]
+# The llm backend talks to a stateless endpoint through nustd.llm.
+llm = [
+    "nustd[llm]",
+]
+
+[project.urls]
+Repository = "https://github.com/nustackdev/nuverse"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nuagent"]
