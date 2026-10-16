@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Add the nuagent loop: the model answers in Nu, the space runs it
 - Add nuagent, an empty package for the Nu agent loop
 - Rewrite the README for users: logo header, what it is, how to install
 - The Program snippet is gone: nuspace's Empty cell is the plain program now
