@@ -41,8 +41,9 @@ Install a package and it shows up in your space, nothing to wire up. Build your 
 
 | Package | What |
 | --- | --- |
-| [nuverse](pkgs/nuverse) | The everyday planes and cells: tables, charts, forms, jobs, workers |
-| [nudemos](pkgs/nudemos) | Ready made spaces: a film base, MNIST trained live, a live meme market, Claude Code agents |
+| [nuverse](pkgs/nuverse) | The everyday planes and cells: runs, jobs and workers planes; tables, lenses, tickers, inputs |
+| [nudemos](pkgs/nudemos) | Ready made spaces: a tour, a counter, a film base, MNIST trained live, a live meme market, Claude Code agents |
+| [nuagent](pkgs/nuagent) | Agents that answer in Nu: the loop, Claude Code and LLM backends, a Chat plane |
 | [nulog](pkgs/nulog) | Serverless logger and metrics store, with Log planes to watch it live |
 
 ## Install
@@ -52,6 +53,7 @@ Each package installs on its own and brings nuspace with it.
 ```bash
 pip install nuverse          # everyday planes and cells
 pip install nudemos          # ready made spaces
+pip install "nuagent[space,cc]"  # a Chat plane, on Claude Code
 pip install "nulog[space]"   # a logger, and planes to watch it
 ```
 
