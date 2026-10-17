@@ -27,6 +27,7 @@ members = ["pkgs/*"]
 nuverse = { workspace = true }
 nudemos = { workspace = true }
 nuagent = { workspace = true }
+nulog = { workspace = true }
 nuspace = { path = "../nuspace", editable = true }
 nuspace-ui = { path = "../nuspace/pkgs/ts/nuspace-ui", editable = true }
 nucore = { path = "../nu", editable = true }
@@ -38,6 +39,7 @@ dev = [
     "nuverse",
     "nudemos[mnist,memes,agents]",
     "nuagent[cc,llm]",
+    "nulog[space]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
     "pytest>=7.0.0",
@@ -137,6 +139,7 @@ known-first-party = [
     "nuverse",
     "nudemos",
     "nuagent",
+    "nulog",
     "nuspace",
     "nu",
     "nustd",

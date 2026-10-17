@@ -43,6 +43,7 @@ Install a package and it shows up in your space, nothing to wire up. Build your 
 | --- | --- |
 | [nuverse](pkgs/nuverse) | The everyday planes and cells: tables, charts, forms, jobs, workers |
 | [nudemos](pkgs/nudemos) | Ready made spaces: a film base, MNIST trained live, a live meme market, Claude Code agents |
+| [nulog](pkgs/nulog) | Serverless logger and metrics store, with Log planes to watch it live |
 
 ## Install
 
@@ -51,6 +52,7 @@ Each package installs on its own and brings nuspace with it.
 ```bash
 pip install nuverse          # everyday planes and cells
 pip install nudemos          # ready made spaces
+pip install "nulog[space]"   # a logger, and planes to watch it
 ```
 
 Then open one:

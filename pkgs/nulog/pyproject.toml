@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nulog"
+version = "0.2.0"
+description = "Fast, serverless logger built on Nu, for infinite-scale streams."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
+requires-python = ">=3.10"
+keywords = ["nustack", "nu", "logging", "metrics", "observability", "serverless", "rocksdb"]
+dependencies = [
+    # The logger needs only nu and a store. The viewer is a nuspace extension,
+    # pulled by the `space` extra.
+    "nucore>=0.6.4",
+    "nustd[kv]>=0.6.4",
+    "rdbpython>=0.2.6",
+    # Only a type-checking import (`Self`, 3.11+ in the stdlib).
+    "typing-extensions>=4.0",
+]
+
+[project.optional-dependencies]
+# The Log planes, in any space: `pip install "nulog[space]"`.
+space = [
+    "nuspace",
+]
+
+[project.urls]
+Repository = "https://github.com/nustackdev/nuverse"
+
+[project.entry-points."nuspace.extensions"]
+nulog = "nulog:extension"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nulog"]

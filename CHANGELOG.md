@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Move nulog into nuverse, its viewer rewritten as Log planes, one per store
 - Release nuagent 0.2.1 on nuskills 0.2.0, chaining-first prompts
 - Tell the agent its world is already provided, no wrapping needed
 - Release nuagent 0.2.0, the Nu agent loop, on nu 0.6.4
