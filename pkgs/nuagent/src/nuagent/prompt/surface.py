@@ -23,9 +23,11 @@ fabric listed here.
 
 from __future__ import annotations
 
+import importlib
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+from nu import Shape
 from nu.inspect import (
     ShapeRecord,
     catalogue_services,
@@ -129,13 +131,28 @@ def _block(record: Record, *, prose: str | None = None) -> str:
 def _declaration(record: Record) -> list[str]:
     """The Shape as a class in annotation form, slot config as a trailing comment."""
     owner = record.target
-    lines = [f"class {owner.__name__}(nu.Shape):"]
+    lines = [f"class {owner.__name__}({_base(owner)}):"]
     for entry in record.entries:
         ref = _spelled(owner._slots[entry.name].ref_cls)
         typed = f"{ref}[{entry.type}]" if entry.kind == "shape" else _qualified(ref, entry.type)
         line = f"    {entry.name}: {typed}"
         lines.append(f"{line}  # {entry.config}" if entry.config else line)
     return lines
+
+
+def _base(owner: type) -> str:
+    """The Shape class ``owner`` derives from, spelled from its package: ``nuspace.PlaneState``.
+
+    The base is part of what the model copies: a nuspace ``PlaneState`` lands
+    in the space's store, a bare ``nu.Shape`` of kv Refs lands nowhere.
+    """
+    base = owner.__bases__[0]
+    if base is Shape:
+        return "nu.Shape"
+    top = base.__module__.partition(".")[0]
+    if getattr(importlib.import_module(top), base.__name__, None) is base:
+        return f"{top}.{base.__name__}"
+    return f"{base.__module__}.{base.__name__}"
 
 
 def _qualified(ref: str, shown: str) -> str:

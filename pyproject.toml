@@ -38,7 +38,7 @@ nuskills = { path = "../nuskills", editable = true }
 dev = [
     "nuverse",
     "nudemos[mnist,memes,agents]",
-    "nuagent[cc,llm]",
+    "nuagent[cc,llm,space]",
     "nulog[space]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",

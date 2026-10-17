@@ -19,6 +19,11 @@ no predicate over the world: a predicate tests what a program did, not
 whether the task is done. Limits like those are layers around the loop,
 never inside it.
 
+**A run can be carried on.** Once the model ended it, :func:`follow` appends
+one more message and sets ``done`` back, and the same turns run again over
+the whole conversation. What decides that a run is carried on (a chat, a
+person) is the caller's.
+
 **The core knows no storage and no backend.** A :class:`Store` brings the
 session Shape (``messages``, ``reply``, ``program``, ``outcome``), the run
 Shape, and two brackets: ``bracket`` around the loop's own short session
@@ -47,7 +52,7 @@ if TYPE_CHECKING:
     from nu.lang import Nu, StrArg
 
 
-__all__ = ["Backend", "Run", "Store", "agent", "seed", "turn"]
+__all__ = ["Backend", "Run", "Store", "agent", "follow", "seed", "turn"]
 
 
 class Run(nu.Shape):
@@ -131,6 +136,27 @@ def seed(store: Store, prompt: StrArg) -> Nu:
     """
     opening = nu.Dict.of(role="user", content=prompt)
     return store.bracket(store.session.messages.set(nu.List.of(opening))) >> store.rewrite(
+        store.run.done.set(False)
+    )
+
+
+def follow(store: Store, message: StrArg) -> Nu:
+    """Carry an ended run on: the message appended to the conversation, and the run not done.
+
+    Args:
+        store: the store the ended run kept its session and world in.
+        message: what comes next, as the caller composed it. Sent as one more
+            ``user`` message, after everything the conversation already holds.
+
+    Returns:
+        A Command. Put where :func:`seed` would go, ahead of the turns.
+
+    Notes:
+        - The conversation is kept as it is and grows by the one message, so a
+          stateful backend sends it alone and a stateless one sends it all.
+    """
+    said = nu.Dict.of(role="user", content=message)
+    return store.bracket(store.session.messages.append(said)) >> store.rewrite(
         store.run.done.set(False)
     )
 

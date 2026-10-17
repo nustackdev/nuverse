@@ -11,7 +11,7 @@ license = "Apache-2.0"
 authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
-    # The core needs only nu. nuspace hosting comes later as separate packages.
+    # The core needs only nu. The Chat plane for nuspace is the ``space`` extra.
     "nucore>=0.6.4",
     "nustd[kv]>=0.6.4",
     # The generic Nu prose the opening prompt is assembled from.
@@ -27,9 +27,16 @@ cc = [
 llm = [
     "nustd[llm]",
 ]
+# The Chat plane, a nuspace extension: a conversation with an agent in a space.
+space = [
+    "nuspace>=0.5.4",
+]
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"
+
+[project.entry-points."nuspace.extensions"]
+nuagent = "nuagent:extension"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nuagent"]

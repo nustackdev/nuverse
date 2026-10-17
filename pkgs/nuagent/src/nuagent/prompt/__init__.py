@@ -30,8 +30,9 @@ The prompt is built in Python before the run, then handed to
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
+import nu
 import nuskills
 from nuagent import protocol
 from nuagent.core import Run
@@ -45,6 +46,8 @@ from .surface import surface
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from types import ModuleType
+
+    from nu.lang import Nu
 
 
 __all__ = [
@@ -127,6 +130,8 @@ def sections(
         app: the caller's Shapes and Services, or modules holding them. Empty
             leaves the surface out.
         run: the Shape the model ends the run through, shown on the surface.
+            One other than the mem :class:`~nuagent.core.Run` is shown even
+            with no ``app``: the model cannot guess its fabric or its base.
 
     Returns:
         A tuple of sections for :func:`opening`.
@@ -138,20 +143,35 @@ def sections(
     if modules:
         found.append(catalogue(*modules))
     app = tuple(app)
-    if app:
+    # A run Shape of the caller's own is shown even with no app: the model has to copy it.
+    if app or run not in (Run, None):
         found.append(surface(*app, run=run))
     return tuple(found)
 
 
-def opening(task: str, parts: Iterable[Section] | None = None) -> str:
+@overload
+def opening(task: str, parts: Iterable[Section] | None = None) -> str: ...
+
+
+@overload
+def opening(task: Nu, parts: Iterable[Section] | None = None) -> Nu: ...
+
+
+def opening(task: str | Nu, parts: Iterable[Section] | None = None) -> str | Nu:
     """The opening prompt: every section in order, then the task.
 
     Args:
-        task: what the run is for. Last, under ``# Task``.
+        task: what the run is for. Last, under ``# Task``. A str, or a Str
+            term for a task known only when the run is under way (a message
+            read off state): the sections are rendered here either way.
         parts: the sections. Defaults to :func:`sections` with no arguments.
 
     Returns:
-        The text for :func:`nuagent.core.seed`.
+        The text for :func:`nuagent.core.seed`: a str for a str task, else a
+        ``Str`` term.
     """
     rendered = [s.render() for s in (sections() if parts is None else parts)]
-    return "\n\n".join([*rendered, TASK + task.strip()]) + "\n"
+    head = "\n\n".join([*rendered, TASK])
+    if isinstance(task, str):
+        return head + task.strip() + "\n"
+    return head + nu.Str(task).strip() + "\n"

@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Add a Chat plane: the agent answers by drawing cells, woken by a reaction
 - Say a Log plane's Config applies to that plane only
 - Move nulog into nuverse, its viewer rewritten as Log planes, one per store
 - Release nuagent 0.2.1 on nuskills 0.2.0, chaining-first prompts
