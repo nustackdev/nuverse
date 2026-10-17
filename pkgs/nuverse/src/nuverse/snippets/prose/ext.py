@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from importlib import resources
 
-from nuspace import TEXT, Snippet
+from nuspace import Snippet
 
 from .ops import search, set_text, text_of
 
@@ -13,7 +13,7 @@ __all__ = ["SNIPPET"]
 
 
 SNIPPET = Snippet(
-    TEXT,
+    "text",
     "Text",
     resources.files(__package__).joinpath("shim.py").read_text("utf-8"),
     search=search,

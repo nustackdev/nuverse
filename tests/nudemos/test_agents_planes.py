@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 import nu
@@ -36,7 +38,7 @@ def test_discovery_finds_the_agents_plane():
     from nuspace.ext import discover
 
     (ext,) = [e for e in discover() if e.name == "nudemos"]
-    assert PLANE in ext.planes
+    assert replace(PLANE, name=f"nudemos.{PLANE.name}") in ext.planes
 
 
 def test_the_agents_plane_nests_its_flows():

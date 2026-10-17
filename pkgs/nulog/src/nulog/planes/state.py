@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "MADE_BY",
     "RELOOK",
     "ROOT",
     "Config",
@@ -51,8 +52,11 @@ __all__ = [
 ]
 
 
-#: ``made_by`` of the root.
-ROOT = "nulog"
+#: The root Plane's name.
+ROOT = "log"
+
+#: What a root records as ``made_by``, the name the space registers it under.
+MADE_BY = f"nulog.{ROOT}"
 
 #: Seconds between looks at a path with no store behind it yet.
 RELOOK = 2.0
@@ -75,7 +79,7 @@ class Config(nuspace.PlaneState):
 def root_of(plane: nu.StrArg) -> nu.Str:
     """The Log root ``plane`` belongs to: itself, or its parent. Bare read."""
     made_by = Space.planes[plane].props.made_by.fallback("")
-    return nu.Str(nu.If(made_by == ROOT, plane, ops.parent(plane)))
+    return nu.Str(nu.If(made_by == MADE_BY, plane, ops.parent(plane)))
 
 
 def at_root(root: nu.StrArg, term: nu.Nu) -> nu.Nu:

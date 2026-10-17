@@ -4,17 +4,17 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nuverse"
-version = "0.3.2"
+version = "0.3.3"
 description = "nuverse std: the Planes and snippets every nuspace space ships with."
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
 requires-python = ">=3.10"
-dependencies = [
-    # nuverse imports nuspace, nuspace never imports nuverse: it finds this
-    # package through the entry point below, the same one a third party uses.
-    "nuspace",
-]
+# No nuspace here: nuspace depends on nuverse, not the other way round.
+# nuverse is a plugin the host installs. It imports nuspace, which is always
+# there when it loads, and nuspace finds it only through the entry point
+# below, the same one a third party uses.
+dependencies = []
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"

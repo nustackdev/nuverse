@@ -5,11 +5,12 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from tests.nuverse.test_text_search import SNIPPETS
 
 import nu
 from nuspace import ops
 from nuspace.system import search
-from nuverse.snippets import SNIPPETS, date, number, select, slider, switch, text_input
+from nuverse.snippets import date, number, select, slider, switch, text_input
 
 
 @pytest.mark.parametrize(
@@ -56,7 +57,8 @@ async def test_an_input_never_set_is_nothing_to_find(store, kind):
 
 def test_every_input_is_searchable():
     names = set(search.searchable(SNIPPETS))
-    assert {"text_input", "number", "slider", "switch", "select", "date"} <= names
+    kinds = {"text_input", "number", "slider", "switch", "select", "date"}
+    assert {f"nuverse.{k}" for k in kinds} <= names
 
 
 async def test_a_search_finds_an_input_by_its_value(store):
@@ -70,8 +72,12 @@ async def test_a_search_finds_an_input_by_its_value(store):
         >> ops.insert_snippet("p", number.SNIPPET, cell_id="m")
         >> number.set_value("m", 25)
     )
-    pid = await _searched(store, "250", ["number"], False, searchers=search.searchable(SNIPPETS))
+    pid = await _searched(
+        store, "250", ["nuverse.number"], False, searchers=search.searchable(SNIPPETS)
+    )
     (cell,) = await store.read(ops.cells(pid))
     await store.run(await store.run(_loaded(pid, cell)))
     hits = await store.read(ops.plane_state(pid, search.Search.hits.extract()))
-    assert [(h["cell"], h["excerpt"], h["by"]) for h in hits] == [("n", "limit: 250", "number")]
+    assert [(h["cell"], h["excerpt"], h["by"]) for h in hits] == [
+        ("n", "limit: 250", "nuverse.number")
+    ]

@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import nu
 import nustd.kv
+import nuverse
 from nuspace import ops
+from nuspace.ext import qualified
 from nuspace.shapes import Reroot, Space
 from nuspace.system import search
 from nuspace.system.kernel.body import Rewrites
-from nuverse.snippets import SNIPPETS, prose
+from nuverse.snippets import prose
+
+
+#: The snippets as a space registers them, ``nuverse.text`` and the rest.
+SNIPPETS = qualified(nuverse.extension(), "nuverse").snippets
 
 
 def _text(plane: str, cell: str, body: str) -> nu.Nu:
@@ -23,7 +29,7 @@ async def _searched(store, *args: object, **kwargs: object) -> str:
 
 
 def test_text_is_searchable_by_a_module_function():
-    assert search.searchable(SNIPPETS)["text"] == "nuverse.snippets.prose.ops:search"
+    assert search.searchable(SNIPPETS)["nuverse.text"] == "nuverse.snippets.prose.ops:search"
 
 
 async def test_text_search_hits_a_cell_holding_the_query(store):
@@ -45,11 +51,13 @@ async def test_a_search_over_text_cells(store):
         >> _text("p", "b", "Mint spreads")
     )
     searchers = search.searchable(SNIPPETS)
-    pid = await _searched(store, "BASIL", ["text"], True, searchers=searchers)
+    pid = await _searched(store, "BASIL", ["nuverse.text"], True, searchers=searchers)
     (cell,) = await store.read(ops.cells(pid))
     await store.run(await store.run(_loaded(pid, cell)))
     hits = await store.read(ops.plane_state(pid, search.Search.hits.extract()))
-    assert [(h["cell"], h["excerpt"], h["by"]) for h in hits] == [("a", "Basil likes sun", "text")]
+    assert [(h["cell"], h["excerpt"], h["by"]) for h in hits] == [
+        ("a", "Basil likes sun", "nuverse.text")
+    ]
 
 
 def _loaded(plane: str, cell: str) -> nu.Nu:

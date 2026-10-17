@@ -50,7 +50,7 @@ def out(plane):
         return redraws([runs], views.leader(views.board(nu.Str(root))), draw, every=2.0)
 
     made_by = Space.planes[plane].props.made_by.fallback("")
-    root = snap(nu.If(made_by == "mnist", plane, ops.parent(plane)))
+    root = snap(nu.If(made_by == "nudemos.mnist", plane, ops.parent(plane)))
     return nu.let(root, follow)
 """)
 

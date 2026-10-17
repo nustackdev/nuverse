@@ -4,7 +4,7 @@ The extensions a [nuspace](https://github.com/nustackdev/nuspace) space offers o
 
 Apps in nuspace are Planes: data, seeded when created, with all their behavior in their cells.
 
-nuspace finds it on install through the `nuspace.extensions` entry point. You don't import it yourself.
+It comes with nuspace, and nuspace finds it through the `nuspace.extensions` entry point. You don't import it yourself.
 
 ```
 pip install nuspace

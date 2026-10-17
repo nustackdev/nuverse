@@ -269,7 +269,8 @@ async def test_insert_snippet_hands_the_new_cell_to_its_ops(ctx):
     )
     await nu.arun(ops.add_plane("p", backend="async") >> made >> made, ctx)
     rows = await _read(ctx, ops.cell_rows("p"))
-    assert [row["props"]["made_by"] for row in rows] == ["text", "text"]
+    assert [row["props"]["made_by"] for row in rows] == ["nuverse.text", "nuverse.text"]
+    assert [row["name"] for row in rows] == ["text", "text"]
     first, second = (row["id"] for row in rows)
     assert first != second
     assert await _read(ctx, prose.text_of(first)) == "Basil likes sun"

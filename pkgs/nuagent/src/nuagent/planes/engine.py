@@ -65,7 +65,7 @@ __all__ = [
 
 
 #: What an engine plane records as ``made_by``.
-MADE_BY = "nuagent_engine"
+MADE_BY = "nuagent.engine"
 
 #: The engine cell's prog: the engine on the backend the settings name.
 SOURCE = """\
@@ -109,7 +109,7 @@ same conversation.
   build fails your program and adds nothing, so fix it and try again. Add it
   in a turn before the one that sets `Run.done`, or in the same program
   before setting it. A message that only asks something still gets one.
-- Your earlier answers are cells on the page, `made_by` `"nuagent_answer"`.
+- Your earlier answers are cells on the page, `made_by` `"nuagent.answer"`.
   Change or remove them through `nuspace.ops` when a later message asks:
   the page is `ops.parent(ops.Here.plane)`.
 - Your program runs as a cell on this conversation's own plane: a `PlaneState`

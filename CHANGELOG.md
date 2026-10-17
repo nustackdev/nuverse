@@ -2,6 +2,9 @@
 
 The full commit stream, every package. Newest first.
 
+- Shorten plane names now that each carries its package: chat, log, tour
+- Record what nuagent and the Jobs plane make under their package-qualified names
+- Ship nuverse with nuspace: the host installs it, nuverse no longer pulls nuspace in
 - Add a Chat plane: the agent answers by drawing cells, woken by a reaction
 - Say a Log plane's Config applies to that plane only
 - Move nulog into nuverse, its viewer rewritten as Log planes, one per store

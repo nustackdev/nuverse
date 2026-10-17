@@ -64,10 +64,10 @@ __all__ = [
 
 
 #: What a cell the agent adds records as ``made_by``.
-ANSWER_BY = "nuagent_answer"
+ANSWER_BY = "nuagent.answer"
 
 #: What a cell a message adds records as ``made_by``.
-SAID_BY = "nuagent_said"
+SAID_BY = "nuagent.said"
 
 #: The composer cell's name: messages and answers go on the page above it.
 BOX = "composer"

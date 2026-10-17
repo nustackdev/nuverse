@@ -1,6 +1,6 @@
 """The ``text`` snippet: a text editor cell, its text kept in the cell's state.
 
-Registered under :data:`~nuspace.TEXT`, it is the space's text snippet:
+Registered as ``nuverse.text``, the snippet nuspace's document editing works on:
 typing into an empty line starts one, and its cells are the plane's text
 cells.
 """

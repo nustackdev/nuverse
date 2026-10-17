@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import replace
 
 import pytest
 import pytest_asyncio
@@ -147,7 +148,8 @@ def test_discovery_finds_the_chat_plane():
     from nuspace.ext import discover
 
     (ext,) = [e for e in discover() if e.name == "nuagent"]
-    assert ext.planes == (PLANE,)
+    assert [p.name for p in ext.planes] == ["nuagent.chat"]
+    assert ext.planes == (replace(PLANE, name="nuagent.chat"),)
     assert nuagent.extension().planes == (PLANE,)
 
 

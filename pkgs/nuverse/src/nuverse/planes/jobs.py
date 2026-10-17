@@ -3,7 +3,7 @@
 A job is a plane with ``props.ui`` and ``props.system`` both false: nothing
 draws it, and its one cell ``main`` holds its code, its id the job's with
 ``_main`` after it, so it is unique across the space and never looked up. The jobs this Plane makes
-hang under it, ``made_by`` ``jobs``. A headless plane another Plane made is
+hang under it, ``made_by`` ``nuverse.jobs``. A headless plane another Plane made is
 that Plane's, eg the one a chat talks through, and not a job.
 
 Three cells, meeting in the plane's shared state (``Jobs.selected``):
@@ -65,7 +65,7 @@ def jobs():
     def headless(p):
         props = nuspace.Space.planes[nu.Str(p)].props
         maker = props.made_by.fallback("")
-        mine = (maker == "").or_(maker == "jobs")
+        mine = (maker == "").or_(maker == "nuverse.jobs")
         return props.ui.fallback(False).not_().and_(props.system.fallback(False).not_()).and_(mine)
 
     return ops.planes().iter().filter(headless).to_list()
@@ -177,7 +177,7 @@ def create(name):
         job = nu.Str(made)
         return (
             ops.add_plane(
-                backend="mp", name=name, parent=here, ui=False, made_by="jobs", into=made
+                backend="mp", name=name, parent=here, ui=False, made_by="nuverse.jobs", into=made
             )
             >> ops.add_cell(job, STARTER, cell_id=main(job), name="main")
             >> nustd.kv.Transaction(Jobs.selected.set(job), scope=nuspace.States)

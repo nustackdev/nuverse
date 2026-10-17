@@ -48,20 +48,22 @@ Install a package and it shows up in your space, nothing to wire up. Build your 
 
 ## Install
 
-Each package installs on its own and brings nuspace with it.
+nuverse comes with nuspace. Every other package installs on its own and brings nuspace with it.
 
 ```bash
-pip install nuverse          # everyday planes and cells
-pip install nudemos          # ready made spaces
-pip install "nuagent[space,cc]"  # a Chat plane, on Claude Code
+pip install nuspace          # a space, with nuverse's everyday planes and cells
+pip install nudemos          # demos
+pip install "nuagent[space,cc]"  # a Chat plane with LLMs and Claude Code support
 pip install "nulog[space]"   # a logger, and planes to watch it
 ```
 
 Then open one:
 
 ```bash
-nuspace demo movies
+nuspace run --with nudemos.movies
 ```
+
+`nuspace verse` lists every package installed and the planes it adds, each opened as `pkg.plane`.
 
 ## Community
 

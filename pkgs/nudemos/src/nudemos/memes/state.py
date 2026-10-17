@@ -30,6 +30,7 @@ from nuspace.shapes import Space
 
 __all__ = [
     "JOB",
+    "MADE_BY",
     "OVERVIEW",
     "ROOT",
     "TOKEN",
@@ -46,6 +47,9 @@ __all__ = [
 
 #: ``made_by`` of the root, of the job, of a token page, of the Overview.
 ROOT, JOB, TOKEN, OVERVIEW = "memes", "memes_job", "memes_token", "memes_overview"
+
+#: What a root records as ``made_by``, the name the space registers it under.
+MADE_BY = f"nudemos.{ROOT}"
 
 
 class Memes(nuspace.PlaneState):
@@ -99,7 +103,7 @@ def _made_by(plane: nu.StrArg) -> nu.Str:
 def root_of(plane: nu.StrArg) -> nu.Str:
     """The Memes root a plane belongs to: itself, its meta's ``base``, or its parent. Bare read."""
     base = nu.str(Space.planes[plane].meta["base"]).fallback(ops.parent(plane))
-    return nu.Str(nu.If(_made_by(plane) == ROOT, plane, base))
+    return nu.Str(nu.If(_made_by(plane) == MADE_BY, plane, base))
 
 
 def at_root(root: nu.StrArg, term: nu.Nu) -> nu.Nu:

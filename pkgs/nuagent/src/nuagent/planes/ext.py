@@ -32,7 +32,7 @@ def said_prog(at: nu.IntArg) -> nu.Str:
 
 
 PLANE = Plane(
-    "nuagent_chat",
+    "chat",
     "Chat",
     icon="messages-square",
     description="A conversation with an agent that answers in Nu and acts on the space.",

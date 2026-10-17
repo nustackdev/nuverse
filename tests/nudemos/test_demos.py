@@ -101,13 +101,13 @@ def test_discovery_finds_the_tour_and_the_demos():
 
     (ext,) = [e for e in discover() if e.name == "nudemos"]
     assert [p.name for p in ext.planes] == [
-        "demos",
-        "counter",
-        "sampled",
-        "movies",
-        "mnist",
-        "memes",
-        "agents",
+        "nudemos.tour",
+        "nudemos.counter",
+        "nudemos.sampled",
+        "nudemos.movies",
+        "nudemos.mnist",
+        "nudemos.memes",
+        "nudemos.agents",
     ]
 
 
@@ -140,7 +140,12 @@ async def test_each_demo_is_created_with_its_cells(store, module):
     await store.run(ops.create_plane(spec, plane_id="p1"))
     (row,) = [r for r in await store.read(ops.plane_rows()) if r["id"] == "p1"]
     assert row["name"] == spec.label
-    assert row["props"] == {"system": False, "ui": True, "made_by": spec.name, "backend": "async"}
+    assert row["props"] == {
+        "system": False,
+        "ui": True,
+        "made_by": f"nudemos.{spec.name}",
+        "backend": "async",
+    }
     assert row["meta"] == {**spec.meta, "icon": f"lucide:{spec.icon}"}
     cells = await store.read(ops.cell_rows("p1"))
     assert [(c["name"], c["prog"]) for c in cells] == list(spec.cells)
@@ -152,7 +157,7 @@ async def test_the_tour_is_created_with_the_demos_under_it(store):
     assert [c["name"] for c in await store.read(ops.cell_rows("t"))] == ["intro"]
     kids = await store.read(ops.children("t"))
     rows = {r["id"]: r for r in await store.read(ops.plane_rows())}
-    assert [rows[k]["props"]["made_by"] for k in kids] == ["counter", "sampled"]
+    assert [rows[k]["props"]["made_by"] for k in kids] == ["nudemos.counter", "nudemos.sampled"]
     assert all(rows[k]["parent"] == "t" for k in kids)
     for kid, module in zip(kids, DEMOS, strict=True):
         cells = await store.read(ops.cell_rows(kid))

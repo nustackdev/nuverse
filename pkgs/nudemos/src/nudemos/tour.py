@@ -34,7 +34,7 @@ out = nustd.ui.MarkdownRef("intro").set(TEXT) >> nu.ForeverDo(nu.Delay(3600.0))
 
 
 PLANE = Plane(
-    "demos",
+    "tour",
     "Nu demos",
     icon="compass",
     description="A counter and a sampled series, nested under one plane.",

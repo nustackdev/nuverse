@@ -95,7 +95,7 @@ async def _seed(store, path: str = "", root: str = ROOT) -> dict:
         await store.run(state.point(root, path))
     kids = await store.read(ops.children(root))
     names = [c.name for c in planes.PLANE.children]
-    return {"nulog": root, **dict(zip(names, kids, strict=True))}
+    return {planes.PLANE.name: root, **dict(zip(names, kids, strict=True))}
 
 
 async def _cells(store, plane: str) -> dict:
@@ -146,14 +146,14 @@ async def _stop(task: asyncio.Task) -> None:
 
 def test_the_extension_registers_the_log_plane():
     reg = space_registry(extensions=[nulog.extension()], discover=False)
-    assert "nulog" in reg.planes
-    spec = reg.planes["nulog"]
+    assert "log" in reg.planes
+    spec = reg.planes["log"]
     assert [c.name for c in spec.children] == ["nulog_messages", "nulog_metrics", "nulog_config"]
     assert spec.backend == "async" and all(c.backend == "async" for c in spec.children)
 
 
 def test_the_entry_point_finds_it():
-    assert "nulog" in space_registry().planes
+    assert "nulog.log" in space_registry().planes
 
 
 def test_every_plane_opens_with_the_bar():
@@ -176,11 +176,11 @@ async def test_every_cell_runs_and_draws(store, tmp_path):
             tasks.append(_run(store, ids[spec.name], cells[name], browser))
     try:
         await _until(
-            drawn["nulog.bar"], lambda b: any(p.get("label") == "reading" for p in b.drawn("pill"))
+            drawn["log.bar"], lambda b: any(p.get("label") == "reading" for p in b.drawn("pill"))
         )
         await _until(drawn["nulog_messages.messages"], lambda b: len(b.rows()) == 6)
         await _until(drawn["nulog_metrics.metrics"], lambda b: b.drawn("chart"))
-        await _until(drawn["nulog.overview"], lambda b: b.drawn("table"))
+        await _until(drawn["log.overview"], lambda b: b.drawn("table"))
         await _until(drawn["nulog_config.config"], lambda b: b.drawn("check"))
     finally:
         for t in tasks:
@@ -189,9 +189,9 @@ async def test_every_cell_runs_and_draws(store, tmp_path):
         assert browser.frames, f"{name} drew nothing"
 
     # The bar says where it reads from, and links Config from every plane but Config.
-    line = drawn["nulog.bar"].drawn("line")[-1]
+    line = drawn["log.bar"].drawn("line")[-1]
     assert "2 streams, 1 series" in line and "logs.db" in line
-    assert drawn["nulog.bar"].drawn("config")
+    assert drawn["log.bar"].drawn("config")
     assert not drawn["nulog_config.bar"].drawn("config")
 
     # Messages: the first stream picked, its newest entry first, the tiles over it.
@@ -214,7 +214,7 @@ async def test_every_cell_runs_and_draws(store, tmp_path):
     assert c.drawn("drawn")[-1]["value"] == "3"
 
     # The overview lists both streams and the series.
-    o = drawn["nulog.overview"]
+    o = drawn["log.overview"]
     tables = {f.ref[-2]: f.payload["rows"] for f in o.frames if f.ref[-1] == "table"}
     assert [r["stream"] for r in tables["streams"]] == ["app", "db"]
     assert tables["streams"][1]["level"] == "error"
