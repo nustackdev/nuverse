@@ -43,7 +43,7 @@ class View(nustd.ui.Column):
 
 K = View.knobs
 
-HINT = "A save applies to every Log plane at once, with no restart."
+HINT = "A save applies to this Log plane at once, with no restart."
 
 
 def check(path):
@@ -71,7 +71,7 @@ def save(root):
     every = fmt.bounded(K.every, consts.DEFAULT_EVERY, consts.MIN_EVERY, consts.MAX_EVERY)
     count = nu.int(fmt.bounded(K.count, consts.DEFAULT_COUNT, consts.MIN_COUNT, consts.MAX_COUNT))
     kept = saved(root, path=nu.Str(View.path).strip(), every=every, count=count, window=nu.Str(K.window.choice))
-    return kept >> show(root) >> View.go.hint.set("Saved: every Log plane reads with these now.")
+    return kept >> show(root) >> View.go.hint.set("Saved: this Log plane reads with these now.")
 
 
 def placed():
@@ -114,7 +114,7 @@ PLANE = Plane(
     "nulog_config",
     "Config",
     icon="cog",
-    description="Which nulog store the Log planes read, and how often.",
+    description="Which nulog store this Log plane reads, and how often.",
     meta={"editable": True, "full_width": True},
     cells=(("bar", BAR), ("config", CONFIG), ("about", ABOUT)),
     backend="async",
