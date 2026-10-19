@@ -1,8 +1,8 @@
 """The Monitor plane: the sync watched as a system, not the market it reads.
 
 - ``bar``: the sync's state, as everywhere.
-- ``health``: blocks and trades a second, lag behind the tip, RPC latency,
-  errors.
+- ``health``: blocks and trades a second, transactions read, lag behind the
+  tip, RPC latency, errors.
 - ``charts``: the same over time, each a kh57 series sampled at a fixed
   cost however long the sync has run: the whole run, or the last half hour.
 - ``errors``: the newest errors the sync met, and what it did about them.
@@ -22,6 +22,7 @@ HEALTH = cell("""\
 class Tiles(nustd.ui.Grid):
     blocks = nustd.ui.StatRef.slot(label="Blocks a second")
     trades = nustd.ui.StatRef.slot(label="Trades a second")
+    txs = nustd.ui.StatRef.slot(label="Transactions read")
     lag = nustd.ui.StatRef.slot(label="Behind the tip")
     latency = nustd.ui.StatRef.slot(label="RPC latency")
     errors = nustd.ui.StatRef.slot(label="Errors")
@@ -30,7 +31,7 @@ class Tiles(nustd.ui.Grid):
 
 
 class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=7, min_width=128, gap=3)
+    tiles = Tiles.slot(columns=8, min_width=120, gap=3)
 
 
 @nu.host
@@ -40,6 +41,7 @@ def shaped(stats, now):
     return {
         "blocks": [f"{r.get('blocks', 0):.2f}", f"{t.get('blocks', 0):,.0f} in all"],
         "trades": [f"{r.get('trades', 0):.1f}", f"{t.get('trades', 0):,.0f} in all"],
+        "txs": [f"{t.get('txs', 0):,.0f}", "every one, in every block"],
         "lag": [f"{s.get('lag', 0):,} slots", "every block, in order"],
         "latency": [f"{r.get('latency', 0):.0f} ms", "a call, on average"],
         "errors": [f"{t.get('errors', 0):,.0f}", f"{r.get('errors', 0):.0f} in the last few seconds"],
@@ -50,7 +52,7 @@ def shaped(stats, now):
 
 def draw(v):
     t = View.tiles
-    keys = ("blocks", "trades", "lag", "latency", "errors", "calls", "uptime")
+    keys = ("blocks", "trades", "txs", "lag", "latency", "errors", "calls", "uptime")
     return nu.Sequential(*(getattr(t, k).set(v[k][0], delta=v[k][1]) for k in keys))
 
 

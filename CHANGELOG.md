@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Show transactions read in the memes Monitor, every one in every block
 - Drop the Plain plane: nuspace now has its own empty plane built in
 - Shorten plane names now that each carries its package: chat, log, tour
 - Record what nuagent and the Jobs plane make under their package-qualified names
