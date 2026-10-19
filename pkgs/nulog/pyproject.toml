@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nulog"
-version = "0.2.0"
+version = "0.2.1"
 description = "Fast, serverless logger built on Nu, for infinite-scale streams."
 readme = "README.md"
 license = "Apache-2.0"
@@ -14,8 +14,8 @@ keywords = ["nustack", "nu", "logging", "metrics", "observability", "serverless"
 dependencies = [
     # The logger needs only nu and a store. The viewer is a nuspace extension,
     # pulled by the `space` extra.
-    "nucore>=0.6.4",
-    "nustd[kv]>=0.6.4",
+    "nucore>=0.6.5",
+    "nustd[kv]>=0.6.5",
     "rdbpython>=0.2.6",
     # Only a type-checking import (`Self`, 3.11+ in the stdlib).
     "typing-extensions>=4.0",

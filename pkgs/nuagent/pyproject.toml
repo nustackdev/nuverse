@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nuagent"
-version = "0.2.1"
+version = "0.2.2"
 description = "nuagent: the model answers in Nu, Nu runs the answer."
 readme = "README.md"
 license = "Apache-2.0"
@@ -12,8 +12,8 @@ authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
     # The core needs only nu. The Chat plane for nuspace is the ``space`` extra.
-    "nucore>=0.6.4",
-    "nustd[kv]>=0.6.4",
+    "nucore>=0.6.5",
+    "nustd[kv]>=0.6.5",
     # The generic Nu prose the opening prompt is assembled from.
     "nuskills>=0.2.0",
 ]
