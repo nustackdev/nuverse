@@ -240,10 +240,10 @@ async def _job(store, name: str = "Nightly") -> str:
     return await store.read(SELECTED)
 
 
-async def test_the_jobs_plane_registers_after_plain():
+async def test_the_jobs_plane_registers_first():
     from nuverse.planes import PLANES
 
-    assert [p.name for p in PLANES[:2]] == ["plain", "jobs"]
+    assert PLANES[0].name == "jobs"
     assert (jobs.PLANE.label, jobs.PLANE.icon) == ("Jobs", "briefcase")
 
 
@@ -331,5 +331,5 @@ def test_every_plane_names_a_registered_backend():
 
     assert all(spec.backend in BACKENDS for spec in PLANES)
     assert {spec.name: spec.backend for spec in PLANES} == dict.fromkeys(
-        ("plain", "jobs", "runs", "workers", "planes"), "async"
+        ("jobs", "runs", "workers", "planes"), "async"
     )

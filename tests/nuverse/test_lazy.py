@@ -38,4 +38,4 @@ def test_the_registries_load_every_member_in_order():
     from nuverse.snippets import SNIPPETS
 
     assert [s.name for s in SNIPPETS][:3] == ["text", "table", "text_input"]
-    assert PLANES[0].name == "plain"
+    assert PLANES[0].name == "jobs"

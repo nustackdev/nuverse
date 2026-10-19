@@ -18,8 +18,8 @@ from typing import Any
 __all__ = ["PLANES"]
 
 
-#: The plane modules, in picker order. Plain first.
-_ORDER = ("plain", "jobs", "runs", "workers", "planes")
+#: The plane modules, in picker order. The empty plane is nuspace's own, above them all.
+_ORDER = ("jobs", "runs", "workers", "planes")
 
 
 def __getattr__(name: str) -> Any:  # noqa: ANN401
