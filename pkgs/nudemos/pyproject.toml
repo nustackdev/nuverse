@@ -32,6 +32,21 @@ design = [
     "pillow",
     "numpy",
 ]
+# The ops demo writes and reads its logs and metrics through nulog.
+ops = [
+    "nulog",
+]
+# The data demo computes over its tables with numpy.
+data = [
+    "numpy",
+]
+# The research and knowledge demos ask Claude through nustd.cc, on the local claude login.
+research = [
+    "nustd[cc]",
+]
+knowledge = [
+    "nustd[cc]",
+]
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"

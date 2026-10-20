@@ -9,6 +9,10 @@ The Nu demos as [nuspace](https://github.com/nustackdev/nuspace) Planes `+` crea
 - **Memes**: a live terminal over the meme market on Solana: launches, trades and every coin's page, synced from public mainnet. Needs the `memes` extra.
 - **Agents**: Claude Code sessions run, watched, steered and orchestrated from a space. One agent is one Claude Code session in a page, driven by a short Nu loop; fan-out with a judge, chains and task boards are a few lines of Nu each. Needs the `agents` extra and a logged-in `claude` CLI, no API key.
 - **Design**: the nustack design system as one live spec: tokens, the mark, a component gallery, mocks and contrast checks all drawn from it, teammates proposing changes, and releases cut by a job that draws the assets. Needs the `design` extra.
+- **Ops**: a storefront run from a space: a real HTTP server and shoppers, scheduled jobs, logs, deploys, incidents, runbooks and alert rules written in a few lines. Needs the `ops` extra.
+- **Data**: a coffee roaster's books as live dashboards: orders streaming in, a million web events queried in milliseconds, exports loaded by a job, a forecast that follows every price. Needs the `data` extra.
+- **Research**: an LLM research desk: real papers weighed against claims, our own small evals on Claude, and a probe that keeps asking. Needs the `research` extra and a logged-in `claude` CLI.
+- **Knowledge**: a team wiki and handbook where pages query the base, facts are cited everywhere, meeting notes write themselves and Claude answers from the whole base. Needs the `knowledge` extra and a logged-in `claude` CLI.
 - **Nu demos**: all three at once, nested under one plane.
 
 ```

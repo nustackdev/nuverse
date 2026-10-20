@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Add the Ops, Data, Research and Knowledge demos
 - Add the Design demo: the nustack design system as one live spec
 - Release nuverse 0.3.3, nulog 0.2.1, nuagent 0.2.2, nudemos 0.1.1 on nu 0.6.5
 - Show transactions read in the memes Monitor, every one in every block

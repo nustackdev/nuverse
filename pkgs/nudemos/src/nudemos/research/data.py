@@ -1,0 +1,888 @@
+"""The desk's opening content: sources, claims, the evidence linking them, models, the eval suite.
+
+Every source is a real, public paper; titles, years, venues and arXiv ids
+are as published. The one-line summaries and the evidence notes are the
+desk's own reading of them. Model facts are the ones their reports state;
+a training set size a report does not give is 0, shown as not disclosed.
+
+The eval suite is written for this desk: twenty problems, each with an
+irrelevant sentence to add. The first twelve are word problems; the last
+eight are hard to do in one go (big products, digit sums, counting), in the style of GSM-IC (Shi et al.,
+2023). Answers are checked by :func:`grade` in :mod:`.kit`.
+
+Times are days before the desk was opened (``ago``), so a fresh desk reads
+as one that has been worked in for a few weeks.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+__all__ = ["CLAIMS", "EVIDENCE", "MODELS", "NOTEBOOK", "SOURCES", "SUITE", "TEAM"]
+
+
+#: Who works the desk. Fictional.
+TEAM = ("Mara Lind", "Theo Abara", "Ines Varga")
+
+
+def _src(
+    key: str,
+    title: str,
+    authors: str,
+    year: int,
+    venue: str,
+    arxiv: str,
+    tldr: str,
+    status: str,
+    ago: float,
+    by: str,
+    notes: str = "",
+) -> dict[str, Any]:
+    return {
+        "key": key,
+        "title": title,
+        "authors": authors,
+        "year": year,
+        "venue": venue,
+        "url": f"https://arxiv.org/abs/{arxiv}" if arxiv else "",
+        "arxiv": arxiv,
+        "tldr": tldr,
+        "status": status,
+        "ago": ago,
+        "by": by,
+        "notes": notes,
+    }
+
+
+M, T, I = TEAM  # noqa: E741 - the team by initial
+
+
+SOURCES: list[dict[str, Any]] = [
+    _src(
+        "vaswani2017",
+        "Attention Is All You Need",
+        "Vaswani et al.",
+        2017,
+        "NeurIPS",
+        "1706.03762",
+        "The Transformer: attention alone, no recurrence. Trains faster and set new translation scores.",
+        "read",
+        41,
+        M,
+    ),
+    _src(
+        "kaplan2020",
+        "Scaling Laws for Neural Language Models",
+        "Kaplan et al.",
+        2020,
+        "arXiv",
+        "2001.08361",
+        "Loss falls as a power law in parameters, data and compute. On a fixed budget it says grow the model faster than the data.",
+        "read",
+        40,
+        M,
+    ),
+    _src(
+        "brown2020",
+        "Language Models are Few-Shot Learners",
+        "Brown et al.",
+        2020,
+        "NeurIPS",
+        "2005.14165",
+        "GPT-3, 175B parameters on 300B tokens. Picks up tasks from a few examples in the prompt, no fine-tuning.",
+        "read",
+        40,
+        T,
+    ),
+    _src(
+        "cobbe2021",
+        "Training Verifiers to Solve Math Word Problems",
+        "Cobbe et al.",
+        2021,
+        "arXiv",
+        "2110.14168",
+        "Introduces GSM8K, 8.5K grade school word problems. Ranking samples with a trained verifier beats fine-tuning alone.",
+        "read",
+        33,
+        I,
+    ),
+    _src(
+        "rae2021",
+        "Scaling Language Models: Methods, Analysis & Insights from Training Gopher",
+        "Rae et al.",
+        2021,
+        "arXiv",
+        "2112.11446",
+        "Gopher, 280B on 300B tokens, across 152 tasks. Scale helps most on knowledge, least on logic and maths.",
+        "queued",
+        12,
+        M,
+    ),
+    _src(
+        "wei2022cot",
+        "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models",
+        "Wei et al.",
+        2022,
+        "NeurIPS",
+        "2201.11903",
+        "Worked examples with intermediate steps lift arithmetic, commonsense and symbolic reasoning, in large models only.",
+        "read",
+        36,
+        I,
+        "The gain shows up around 100B parameters and is near zero below. Worth asking whether it still separates anything on current models, where answers come out right without the steps.",
+    ),
+    _src(
+        "kojima2022",
+        "Large Language Models are Zero-Shot Reasoners",
+        "Kojima et al.",
+        2022,
+        "NeurIPS",
+        "2205.11916",
+        'One line, "Let\'s think step by step", and no examples raises zero-shot arithmetic accuracy by a wide margin.',
+        "read",
+        35,
+        I,
+    ),
+    _src(
+        "hoffmann2022",
+        "Training Compute-Optimal Large Language Models",
+        "Hoffmann et al.",
+        2022,
+        "NeurIPS",
+        "2203.15556",
+        "On a fixed budget, grow parameters and tokens together. Chinchilla, 70B on 1.4T tokens, beats the 280B Gopher.",
+        "read",
+        39,
+        M,
+        "The rule of thumb everyone quotes, about 20 tokens per parameter, is a reading of their fits, not a constant. It is optimal for training compute only: it says nothing about what is cheapest to serve.",
+    ),
+    _src(
+        "chowdhery2022",
+        "PaLM: Scaling Language Modeling with Pathways",
+        "Chowdhery et al.",
+        2022,
+        "arXiv",
+        "2204.02311",
+        "A dense 540B model on 780B tokens. With chain of thought it set the best multi-step arithmetic scores of its time.",
+        "read",
+        30,
+        T,
+    ),
+    _src(
+        "ouyang2022",
+        "Training language models to follow instructions with human feedback",
+        "Ouyang et al.",
+        2022,
+        "NeurIPS",
+        "2203.02155",
+        "InstructGPT. People preferred answers from the 1.3B model tuned on their feedback over the 175B GPT-3.",
+        "read",
+        28,
+        T,
+    ),
+    _src(
+        "wei2022emergent",
+        "Emergent Abilities of Large Language Models",
+        "Wei et al.",
+        2022,
+        "TMLR",
+        "2206.07682",
+        "Abilities near chance in small models that jump sharply past some scale.",
+        "read",
+        26,
+        M,
+    ),
+    _src(
+        "wang2023sc",
+        "Self-Consistency Improves Chain of Thought Reasoning in Language Models",
+        "Wang et al.",
+        2023,
+        "ICLR",
+        "2203.11171",
+        "Sample several reasoning paths and take the majority answer: a steady gain over one chain of thought.",
+        "read",
+        34,
+        I,
+    ),
+    _src(
+        "shi2023",
+        "Large Language Models Can Be Easily Distracted by Irrelevant Context",
+        "Shi et al.",
+        2023,
+        "ICML",
+        "2302.00093",
+        "GSM-IC: one irrelevant sentence added to grade school problems drops accuracy sharply. Telling the model to ignore it helps partly.",
+        "read",
+        9,
+        I,
+        "Our suite copies their recipe: a sentence that shares the problem's topic and numbers but changes nothing. Their models were 2022 vintage. The open question for us is whether a current model still bites.",
+    ),
+    _src(
+        "touvron2023",
+        "LLaMA: Open and Efficient Foundation Language Models",
+        "Touvron et al.",
+        2023,
+        "arXiv",
+        "2302.13971",
+        "Open models from 7B to 65B on public data, up to 1.4T tokens. The 13B beats GPT-3 on most benchmarks.",
+        "read",
+        25,
+        T,
+    ),
+    _src(
+        "schaeffer2023",
+        "Are Emergent Abilities of Large Language Models a Mirage?",
+        "Schaeffer, Miranda, Koyejo",
+        2023,
+        "NeurIPS",
+        "2304.15004",
+        "Many emergent jumps come from harsh, all-or-nothing metrics. Scored continuously, the same models improve smoothly.",
+        "read",
+        24,
+        M,
+    ),
+    _src(
+        "rafailov2023",
+        "Direct Preference Optimization: Your Language Model is Secretly a Reward Model",
+        "Rafailov et al.",
+        2023,
+        "NeurIPS",
+        "2305.18290",
+        "Preference tuning with no reward model and no RL loop: a simple loss on preferred and rejected answers.",
+        "reading",
+        6,
+        T,
+    ),
+    _src(
+        "touvron2023b",
+        "Llama 2: Open Foundation and Fine-Tuned Chat Models",
+        "Touvron et al.",
+        2023,
+        "arXiv",
+        "2307.09288",
+        "Open 7B to 70B models on 2T tokens, with chat versions tuned from human feedback.",
+        "read",
+        22,
+        T,
+    ),
+    _src(
+        "liu2024",
+        "Lost in the Middle: How Language Models Use Long Contexts",
+        "Liu et al.",
+        2024,
+        "TACL",
+        "2307.03172",
+        "Accuracy is best when the needed passage sits at the start or end of a long context, worst in the middle.",
+        "read",
+        18,
+        I,
+    ),
+    _src(
+        "lightman2023",
+        "Let's Verify Step by Step",
+        "Lightman et al.",
+        2024,
+        "ICLR",
+        "2305.20050",
+        "Rewarding each reasoning step beats rewarding only the final answer on MATH. Releases PRM800K.",
+        "reading",
+        5,
+        I,
+    ),
+    _src(
+        "berglund2023",
+        'The Reversal Curse: LLMs trained on "A is B" fail to learn "B is A"',
+        "Berglund et al.",
+        2024,
+        "ICLR",
+        "2309.12288",
+        "Fine-tuned on 'A is B', models do not answer 'B is?'. What is learned one way round does not carry to the other.",
+        "read",
+        16,
+        M,
+    ),
+    _src(
+        "jiang2024mixtral",
+        "Mixtral of Experts",
+        "Jiang et al.",
+        2024,
+        "arXiv",
+        "2401.04088",
+        "A sparse mixture of experts: 47B parameters, 13B active per token, matching or beating Llama 2 70B.",
+        "read",
+        20,
+        T,
+    ),
+    _src(
+        "zhang2024gsm1k",
+        "A Careful Examination of Large Language Model Performance on Grade School Arithmetic",
+        "Zhang et al.",
+        2024,
+        "arXiv",
+        "2405.00332",
+        "GSM1k, a fresh set built like GSM8K. Some model families score up to 13% lower on it: overfit to the public set.",
+        "read",
+        8,
+        I,
+    ),
+    _src(
+        "llama3",
+        "The Llama 3 Herd of Models",
+        "Llama Team, AI @ Meta",
+        2024,
+        "arXiv",
+        "2407.21783",
+        "A dense 405B model on 15.6T tokens, and 8B and 70B models trained far past the compute-optimal point.",
+        "read",
+        19,
+        M,
+    ),
+    _src(
+        "snell2024",
+        "Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters",
+        "Snell et al.",
+        2024,
+        "arXiv",
+        "2408.03314",
+        "Spending inference compute per prompt, adaptively, can beat a 14x larger model where the small one already has some success.",
+        "read",
+        7,
+        I,
+    ),
+    _src(
+        "deepseekv3",
+        "DeepSeek-V3 Technical Report",
+        "DeepSeek-AI",
+        2024,
+        "arXiv",
+        "2412.19437",
+        "A mixture of experts, 671B parameters with 37B active per token, trained on 14.8T tokens.",
+        "read",
+        14,
+        T,
+    ),
+    _src(
+        "deepseekr1",
+        "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+        "DeepSeek-AI",
+        2025,
+        "arXiv",
+        "2501.12948",
+        "RL on verifiable rewards grows long chains of thought and strong maths and code results.",
+        "reading",
+        4,
+        T,
+    ),
+]
+
+
+CLAIMS: list[dict[str, Any]] = [
+    {
+        "key": "cot",
+        "take": "True for the models it was found on. On ours the gain is down to the one question that needs counting letters: answers come out right without the steps. Would change our mind: a harder suite where direct answers fall well below.",
+        "text": "Asking for step-by-step reasoning improves accuracy on multi-step problems.",
+        "topic": "Reasoning",
+        "ago": 36,
+    },
+    {
+        "key": "distract",
+        "take": "The papers' drop came from 2022 models. Our runs see none on the word problems, but the probe's only misses so far came with the distractor, both on the hard questions. Keep the probe going before we call it.",
+        "text": "Irrelevant details in a problem lower a model's accuracy.",
+        "topic": "Robustness",
+        "ago": 9,
+    },
+    {
+        "key": "testtime",
+        "take": "Haiku asked to work it through keeps up with Sonnet answering at once, on every arm so far. Our suite is too easy to say by how much.",
+        "text": "Extra compute at inference can stand in for a larger model.",
+        "topic": "Reasoning",
+        "ago": 7,
+    },
+    {
+        "key": "chinchilla",
+        "text": "On a fixed training budget, parameters and tokens should grow together, about 20 tokens per parameter.",
+        "topic": "Scaling",
+        "ago": 39,
+    },
+    {
+        "key": "overtrain",
+        "text": "Open models now train far past the compute-optimal point.",
+        "topic": "Scaling",
+        "ago": 19,
+    },
+    {
+        "key": "emergence",
+        "text": "Emergent abilities are an artefact of the metric, not of scale.",
+        "topic": "Scaling",
+        "ago": 24,
+    },
+    {
+        "key": "feedback",
+        "text": "Tuning on human preferences matters more than size for following instructions.",
+        "topic": "Alignment",
+        "ago": 28,
+    },
+    {
+        "key": "middle",
+        "text": "Models use information in the middle of a long context poorly.",
+        "topic": "Long context",
+        "ago": 18,
+    },
+    {
+        "key": "reversal",
+        "text": "Facts learned as 'A is B' are not recalled as 'B is A'.",
+        "topic": "Knowledge",
+        "ago": 16,
+    },
+    {
+        "key": "contamination",
+        "text": "Public benchmark scores are inflated by training on test data.",
+        "topic": "Evaluation",
+        "ago": 8,
+    },
+]
+
+
+def _ev(source: str, claim: str, stance: str, weight: int, note: str, ago: float) -> dict[str, Any]:
+    return {
+        "source": source,
+        "claim": claim,
+        "stance": stance,
+        "weight": weight,
+        "note": note,
+        "ago": ago,
+    }
+
+
+EVIDENCE: list[dict[str, Any]] = [
+    _ev(
+        "wei2022cot",
+        "cot",
+        "for",
+        3,
+        "Big gains on GSM8K from 8 worked examples, past ~100B parameters.",
+        36,
+    ),
+    _ev("kojima2022", "cot", "for", 2, "The zero-shot trigger alone lifts arithmetic sets.", 35),
+    _ev("wang2023sc", "cot", "for", 2, "Gains grow when several chains vote.", 34),
+    _ev(
+        "chowdhery2022",
+        "cot",
+        "for",
+        1,
+        "PaLM 540B with chain of thought set the GSM8K mark of its time.",
+        30,
+    ),
+    _ev("shi2023", "distract", "for", 3, "GSM-IC: large drops from one irrelevant sentence.", 9),
+    _ev(
+        "snell2024",
+        "testtime",
+        "for",
+        3,
+        "Compute-matched, adaptive search beats a 14x larger model on easier problems.",
+        7,
+    ),
+    _ev(
+        "deepseekr1",
+        "testtime",
+        "for",
+        2,
+        "Longer thinking, learned through RL, lifts maths scores.",
+        4,
+    ),
+    _ev(
+        "lightman2023",
+        "testtime",
+        "for",
+        1,
+        "A step-level verifier picks better answers among many samples.",
+        5,
+    ),
+    _ev(
+        "wang2023sc",
+        "testtime",
+        "for",
+        1,
+        "Majority vote over samples is test-time compute too.",
+        7,
+    ),
+    _ev(
+        "hoffmann2022",
+        "chinchilla",
+        "for",
+        3,
+        "Three fitting methods agree: scale parameters and tokens equally.",
+        39,
+    ),
+    _ev(
+        "kaplan2020",
+        "chinchilla",
+        "against",
+        2,
+        "Earlier fits put most extra compute into parameters.",
+        40,
+    ),
+    _ev("llama3", "overtrain", "for", 2, "8B on 15T tokens, about 1,900 tokens per parameter.", 19),
+    _ev("touvron2023b", "overtrain", "for", 1, "Every size, 7B up, on the same 2T tokens.", 22),
+    _ev(
+        "wei2022emergent",
+        "emergence",
+        "against",
+        3,
+        "Sharp jumps past a scale threshold, on many tasks.",
+        26,
+    ),
+    _ev("schaeffer2023", "emergence", "for", 3, "The jumps go away under continuous metrics.", 24),
+    _ev(
+        "ouyang2022",
+        "feedback",
+        "for",
+        3,
+        "Labelers preferred 1.3B InstructGPT over 175B GPT-3.",
+        28,
+    ),
+    _ev("rafailov2023", "feedback", "for", 1, "Same preference signal, simpler training.", 6),
+    _ev(
+        "liu2024", "middle", "for", 3, "U-shaped accuracy over where the relevant passage sits.", 18
+    ),
+    _ev(
+        "berglund2023",
+        "reversal",
+        "for",
+        3,
+        "Near zero on reversed questions after fine-tuning.",
+        16,
+    ),
+    _ev(
+        "zhang2024gsm1k",
+        "contamination",
+        "for",
+        2,
+        "Drops of up to 13% on a fresh, matched test set.",
+        8,
+    ),
+]
+
+
+#: Models as their reports give them. Parameters and active parameters in billions, tokens in trillions (0: not disclosed).
+MODELS: list[dict[str, Any]] = [
+    {
+        "key": "gpt3",
+        "name": "GPT-3",
+        "org": "OpenAI",
+        "year": 2020,
+        "params": 175.0,
+        "active": 175.0,
+        "tokens": 0.3,
+        "open": False,
+    },
+    {
+        "key": "gopher",
+        "name": "Gopher",
+        "org": "DeepMind",
+        "year": 2021,
+        "params": 280.0,
+        "active": 280.0,
+        "tokens": 0.3,
+        "open": False,
+    },
+    {
+        "key": "chinchilla",
+        "name": "Chinchilla",
+        "org": "DeepMind",
+        "year": 2022,
+        "params": 70.0,
+        "active": 70.0,
+        "tokens": 1.4,
+        "open": False,
+    },
+    {
+        "key": "palm",
+        "name": "PaLM",
+        "org": "Google",
+        "year": 2022,
+        "params": 540.0,
+        "active": 540.0,
+        "tokens": 0.78,
+        "open": False,
+    },
+    {
+        "key": "llama-7b",
+        "name": "LLaMA 7B",
+        "org": "Meta",
+        "year": 2023,
+        "params": 7.0,
+        "active": 7.0,
+        "tokens": 1.0,
+        "open": True,
+    },
+    {
+        "key": "llama-65b",
+        "name": "LLaMA 65B",
+        "org": "Meta",
+        "year": 2023,
+        "params": 65.0,
+        "active": 65.0,
+        "tokens": 1.4,
+        "open": True,
+    },
+    {
+        "key": "llama2-70b",
+        "name": "Llama 2 70B",
+        "org": "Meta",
+        "year": 2023,
+        "params": 70.0,
+        "active": 70.0,
+        "tokens": 2.0,
+        "open": True,
+    },
+    {
+        "key": "mixtral",
+        "name": "Mixtral 8x7B",
+        "org": "Mistral AI",
+        "year": 2023,
+        "params": 46.7,
+        "active": 12.9,
+        "tokens": 0.0,
+        "open": True,
+    },
+    {
+        "key": "llama3-8b",
+        "name": "Llama 3 8B",
+        "org": "Meta",
+        "year": 2024,
+        "params": 8.0,
+        "active": 8.0,
+        "tokens": 15.0,
+        "open": True,
+    },
+    {
+        "key": "llama31-405b",
+        "name": "Llama 3.1 405B",
+        "org": "Meta",
+        "year": 2024,
+        "params": 405.0,
+        "active": 405.0,
+        "tokens": 15.6,
+        "open": True,
+    },
+    {
+        "key": "deepseek-v3",
+        "name": "DeepSeek-V3",
+        "org": "DeepSeek",
+        "year": 2024,
+        "params": 671.0,
+        "active": 37.0,
+        "tokens": 14.8,
+        "open": True,
+    },
+]
+
+
+#: The eval suite: a problem, the sentence that changes nothing, the answer, and a short label.
+SUITE: list[dict[str, Any]] = [
+    {
+        "id": "q01",
+        "label": "Library books",
+        "text": "A library had 1,248 books. It bought 17 boxes of 36 books each, then gave 389 books to a school. How many books does the library have now?",
+        "noise": "The school is 14 km away and has 27 classrooms.",
+        "answer": 1471,
+    },
+    {
+        "id": "q02",
+        "label": "Train trip",
+        "text": "A train travels 287 km at a steady 82 km/h. How many minutes does the trip take?",
+        "noise": "The train has 11 carriages, each seating 64 people.",
+        "answer": 210,
+    },
+    {
+        "id": "q03",
+        "label": "Egg crates",
+        "text": "A farm packs 3,750 eggs into cartons of 12, and full cartons into crates of 24 cartons. How many full crates does it fill?",
+        "noise": "The farm keeps 418 hens and 9 roosters.",
+        "answer": 13,
+    },
+    {
+        "id": "q04",
+        "label": "Water tank",
+        "text": "A tank holds 2,400 litres and is 3/8 full. A pump adds 125 litres an hour. How many hours until the tank is full?",
+        "noise": "The tank was painted green in 2019 and weighs 310 kg empty.",
+        "answer": 12,
+    },
+    {
+        "id": "q05",
+        "label": "Jacket price",
+        "text": "A store marks a $240 jacket up by 25%, then sells it at 30% off the new price. What is the sale price in dollars?",
+        "noise": "Last year the store sold 1,150 jackets.",
+        "answer": 210,
+    },
+    {
+        "id": "q06",
+        "label": "Split bill",
+        "text": "Three friends split a bill: food $186, drinks $57, plus a 20% tip on the total. How many dollars does each pay?",
+        "noise": "One of them had walked 6 km to get there.",
+        "answer": 97.2,
+    },
+    {
+        "id": "q07",
+        "label": "Print job",
+        "text": "A printer does 42 pages a minute. Three documents of 504, 798 and 378 pages print back to back, with a 2-minute warm-up before each. How many minutes does the whole job take?",
+        "noise": "The printer cost $1,299 and has 4 paper trays.",
+        "answer": 46,
+    },
+    {
+        "id": "q08",
+        "label": "Ages",
+        "text": "Ravi is 4 times as old as his daughter. In 6 years he will be 3 times as old as her. How old is Ravi now?",
+        "noise": "Ravi's father is 79.",
+        "answer": 48,
+    },
+    {
+        "id": "q09",
+        "label": "Flour bags",
+        "text": "A recipe for 6 people uses 450 g of flour. Lena cooks it for 22 people, and flour comes in 1 kg bags. How many bags must she buy?",
+        "noise": "She also buys 3 kg of sugar for $4.",
+        "answer": 2,
+    },
+    {
+        "id": "q10",
+        "label": "Average speed",
+        "text": "A cyclist rides 30 km at 15 km/h, then another 30 km at 30 km/h. What is her average speed over the whole ride, in km/h?",
+        "noise": "Her bike weighs 9 kg and has 22 gears.",
+        "answer": 20,
+    },
+    {
+        "id": "q11",
+        "label": "Counting sevens",
+        "text": "How many times does the digit 7 appear when you write out every whole number from 1 to 300?",
+        "noise": "Writing them all out takes about 9 minutes.",
+        "answer": 60,
+    },
+    {
+        "id": "q12",
+        "label": "Clock angle",
+        "text": "A clock shows 3:15. What is the smaller angle between the hour and minute hands, in degrees?",
+        "noise": "The clock was bought for $35 and hangs 2 metres up.",
+        "answer": 7.5,
+    },
+    {
+        "id": "q13",
+        "tier": "hard",
+        "label": "Big product",
+        "text": "A warehouse has 7,384 shelves, each holding 9,256 screws. How many screws are there in all?",
+        "noise": "The warehouse opened in 1998 and has 12 loading bays.",
+        "answer": 68346304,
+    },
+    {
+        "id": "q14",
+        "tier": "hard",
+        "label": "Three factors",
+        "text": "A printer runs 347 jobs a day, each of 829 sheets, for 13 days. How many sheets does it print?",
+        "noise": "Each sheet weighs about 5 grams.",
+        "answer": 3739619,
+    },
+    {
+        "id": "q15",
+        "tier": "hard",
+        "label": "Days between",
+        "text": "How many days lie strictly between 3 February 2025 and 19 November 2026, counting neither end?",
+        "noise": "Both dates fall on a weekday and 2025 is not a leap year.",
+        "answer": 653,
+    },
+    {
+        "id": "q16",
+        "tier": "hard",
+        "label": "Letter count",
+        "text": "How many times does the letter e appear in the phrase 'nevertheless the seventeen elephants'?",
+        "noise": "The phrase has 4 words and 36 characters with spaces.",
+        "answer": 11,
+    },
+    {
+        "id": "q17",
+        "tier": "hard",
+        "label": "Digit sum",
+        "text": "What is the sum of the decimal digits of 2 to the power 50?",
+        "noise": "2 to the power 10 is 1,024.",
+        "answer": 76,
+    },
+    {
+        "id": "q18",
+        "tier": "hard",
+        "label": "40th prime",
+        "text": "Counting 2 as the first prime, what is the 40th prime number?",
+        "noise": "There are 25 primes below 100.",
+        "answer": 173,
+    },
+    {
+        "id": "q19",
+        "tier": "hard",
+        "label": "Power mod",
+        "text": "What is the remainder when 7 to the power 123 is divided by 11?",
+        "noise": "11 is the fifth prime.",
+        "answer": 2,
+    },
+    {
+        "id": "q20",
+        "tier": "hard",
+        "label": "Divisible",
+        "text": "How many whole numbers from 1 to 1,000 are divisible by 3 or by 5, but not by 7?",
+        "noise": "Exactly 142 of them are divisible by 7.",
+        "answer": 401,
+    },
+]
+
+
+#: The lab notebook's dated entries, oldest first. ``{...}`` fields are filled live from the desk.
+NOTEBOOK: list[dict[str, Any]] = [
+    {
+        "ago": 9,
+        "by": I,
+        "title": "Do distractors still bite?",
+        "text": (
+            "Read Shi et al. (GSM-IC). One irrelevant sentence dropped their models' accuracy by a lot. "
+            "Their models are four years old. Wrote twelve word problems of our own, each with a sentence "
+            "that shares the topic and the numbers but changes nothing, so we can ask the same question of "
+            "current models. Graded on the final number only."
+        ),
+    },
+    {
+        "ago": 5,
+        "by": I,
+        "title": "Twelve was too easy",
+        "text": (
+            "Tried the twelve word problems on Sonnet by hand: all right, with or without the noise. "
+            "A suite at the ceiling cannot tell arms apart, so added eight questions that are hard to do in one go: "
+            "big products, a digit sum, a letter count, a prime, a power mod, a date gap. "
+            "If thinking out loud still buys anything, it should buy it there."
+        ),
+    },
+    {
+        "ago": 2,
+        "by": T,
+        "title": "First full runs",
+        "text": (
+            "Eight arms: Sonnet and Haiku, direct and step by step, clean and distracted, twenty questions each. "
+            "158 of 160 right. Both misses are the letter count, both answering directly: Sonnet with the noise "
+            "said 10, Haiku without it said 12. The answer is 11. Step by step got it every time.\n\n"
+            "So the GSM-IC drop does not show on current models at this size of suite, and the step-by-step gain "
+            "shrinks to the one kind of question that needs counting."
+        ),
+    },
+    {
+        "ago": 0,
+        "by": M,
+        "title": "Where we stand",
+        "live": True,
+        "text": (
+            "As of **{now}**: across {runs} runs, the best arm is **{best}** at **{best_acc}**. "
+            "Step by step against direct, on clean problems: **{cot_gap}**. "
+            "Clean against distracted: **{noise_gap}**.\n\n"
+            "The probe has asked Sonnet {probes} since we set it going, "
+            "{probe_acc} right, a median {probe_lat} a reply. Clean against distracted: {probe_split}.\n\n"
+            "So on the board: *step by step helps* is at **{cot_score}** ({cot_status}), "
+            "*irrelevant details hurt* is at **{distract_score}** ({distract_status}). "
+            "The papers say yes to both. Our own numbers are what move them."
+        ),
+    },
+]
