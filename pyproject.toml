@@ -37,7 +37,7 @@ nuskills = { path = "../nuskills", editable = true }
 [dependency-groups]
 dev = [
     "nuverse",
-    "nudemos[mnist,memes,agents]",
+    "nudemos[mnist,memes,agents,design]",
     "nuagent[cc,llm,space]",
     "nulog[space]",
     "ruff>=0.8.0",

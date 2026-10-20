@@ -27,6 +27,11 @@ memes = [
 agents = [
     "nustd[cc]",
 ]
+# The design demo draws its release PNGs with Pillow and numpy.
+design = [
+    "pillow",
+    "numpy",
+]
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"
