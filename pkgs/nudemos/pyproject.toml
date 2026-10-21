@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nudemos"
-version = "0.1.1"
+version = "0.1.2"
 description = "The Nu demos as nuspace Planes: a counter, a sampled series, a film base and MNIST trained live."
 readme = "README.md"
 license = "Apache-2.0"

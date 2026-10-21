@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nudemos 0.1.2 with the Design, Ops, Data, Research and Knowledge demos
 - Fix demo tests for the new planes and the gateway memory check
 - Catch demo request timeouts on Python 3.10 instead of crashing
 - Add the Ops, Data, Research and Knowledge demos
