@@ -108,6 +108,11 @@ def test_discovery_finds_the_tour_and_the_demos():
         "nudemos.mnist",
         "nudemos.memes",
         "nudemos.agents",
+        "nudemos.knowledge",
+        "nudemos.research",
+        "nudemos.design",
+        "nudemos.data",
+        "nudemos.ops",
     ]
 
 

@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Fix demo tests for the new planes and the gateway memory check
 - Catch demo request timeouts on Python 3.10 instead of crashing
 - Add the Ops, Data, Research and Knowledge demos
 - Add the Design demo: the nustack design system as one live spec

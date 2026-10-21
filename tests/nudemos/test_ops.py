@@ -122,8 +122,12 @@ def test_status_components_follow_the_routes() -> None:
 
 @pytest.mark.parametrize("release", ["1.8.3", "1.9.0"])
 def test_gateway_serves_its_release_and_jobs_do_real_work(
-    release: str, tmp_path, unused_port: int
+    release: str, tmp_path, unused_port: int, monkeypatch
 ) -> None:
+    # The gateway reads its own process's memory, here the whole test run's; keep it
+    # out of the out-of-memory check, as it is on a machine with no /proc.
+    monkeypatch.setattr("nudemos.ops.gateway._rss_mb", lambda: 0.0)
+
     async def run() -> tuple[dict, dict, dict]:
         gw = Gateway()
         await gw.open(unused_port, release, str(tmp_path))
