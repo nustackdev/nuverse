@@ -1,36 +1,20 @@
 <div align="center">
   <img width="128" alt="nuverse" src="https://nustack.dev/brand/logo-square-512@2x.png" />
-  <h3>
-    nuverse - the nuspace ecosystem
-  </h3>
-  Ready made spaces and extensions, one install away.
-</div>
+  <h1>
+    nuverse - the nu ecosystem
+  </h1>
+  <p>Ready made spaces and extensions, one install away.</p>
 
-<br/>
-
-<div align="center">
-
-  [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/tCa8YE7XVr)
-  [![Twitter Follow](https://img.shields.io/twitter/follow/nustackdev?style=social)](https://twitter.com/nustackdev)
-
-  [![Platform Support](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-blue)]()
   [![PyPI - Python Version](https://img.shields.io/badge/python-%3E%3D%203.10-blue)](https://pypi.org/project/nuverse/)
   [![PyPI Package](https://img.shields.io/pypi/v/nuverse?color=yellow)](https://pypi.org/project/nuverse/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
 
+  [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/tCa8YE7XVr)
+  [![Twitter Follow](https://img.shields.io/twitter/follow/nustackdev?style=social)](https://twitter.com/nustackdev)
+
 </div>
 
----
-
-<h3 align="center">
-  <a href="#ℹ️-about"><b>About</b></a> &bull;
-  <a href="#install"><b>Install</b></a> &bull;
-  <a href="#community"><b>Community</b></a>
-</h3>
-
----
-
-# ℹ️ About
+## About
 
 nuverse is everything you can add to your [nuspace](https://github.com/nustackdev/nuspace): whole spaces to open and use, and the pieces your own spaces are built from.
 
@@ -67,9 +51,9 @@ nuspace run --with nudemos.movies
 
 ## Community
 
-1. [Visit the website](https://nustack.dev)
-2. [Open a feature request or report a bug](https://github.com/nustackdev/nuverse/issues)
-3. [Join the Discord](https://discord.gg/tCa8YE7XVr)
+- [Discord](https://discord.gg/tCa8YE7XVr) for questions and what you build
+- [X @nustackdev](https://x.com/nustackdev) for releases and demos
+- [Issues](https://github.com/nustackdev/nuverse/issues) for bugs and feature requests
 
 ## License
 
