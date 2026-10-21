@@ -56,7 +56,7 @@ async def get(port: int, path: str, timeout: float = 3.0) -> tuple[int, dict[str
     """One GET to the gateway on the loopback: ``(status, body)``, ``(0, {error})`` when it is down."""
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection("127.0.0.1", port), timeout)
-    except (OSError, TimeoutError) as e:
+    except (OSError, TimeoutError, asyncio.TimeoutError) as e:
         return 0, {"error": f"connection refused: {type(e).__name__}"}
     try:
         writer.write(
@@ -75,7 +75,13 @@ async def get(port: int, path: str, timeout: float = 3.0) -> tuple[int, dict[str
         )
         body = await asyncio.wait_for(reader.readexactly(size), timeout) if size else b"{}"
         return status, json.loads(body or b"{}")
-    except (OSError, TimeoutError, asyncio.IncompleteReadError, ValueError) as e:
+    except (
+        OSError,
+        TimeoutError,
+        asyncio.TimeoutError,
+        asyncio.IncompleteReadError,
+        ValueError,
+    ) as e:
         return 0, {"error": f"{type(e).__name__}"}
     finally:
         with contextlib.suppress(Exception):
@@ -166,7 +172,14 @@ class Shoppers:
             tally["sent"] += 1
             try:
                 status = await conn.call(port, method, path, body)
-            except (OSError, TimeoutError, asyncio.IncompleteReadError, ValueError, IndexError):
+            except (
+                OSError,
+                TimeoutError,
+                asyncio.TimeoutError,
+                asyncio.IncompleteReadError,
+                ValueError,
+                IndexError,
+            ):
                 conn.drop()
                 tally["refused"] += 1
                 return
