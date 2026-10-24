@@ -1,9 +1,9 @@
-"""The ``switch`` snippet: a switch cell, its value kept in the cell's state."""
+"""The ``switch`` snippet: a switch cell, its value an item of the cell."""
 
 from __future__ import annotations
 
 from .ext import SNIPPET
-from .ops import search, set_value, value_of
+from .ops import set_value, value_of
 
 
-__all__ = ["SNIPPET", "search", "set_value", "value_of"]
+__all__ = ["SNIPPET", "set_value", "value_of"]

@@ -1,4 +1,4 @@
-"""The ``table`` snippet: an editable data table, its rows kept in the cell's state."""
+"""The ``table`` snippet: an editable data table, each row an item of the cell."""
 
 from __future__ import annotations
 

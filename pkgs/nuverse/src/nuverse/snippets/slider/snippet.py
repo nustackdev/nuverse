@@ -1,7 +1,9 @@
-"""A slider cell: one number in its own state, dragged in place, synced both ways.
+"""A slider cell: one number, its own number item, dragged in place, synced both ways.
 
-Its label is the cell's name, and its range and step are kept next to the
-value. Both are edited under Config, and every one of them is live: a change
+The number is the cell's :data:`ITEM`, a
+:class:`~nuverse.contents.number.NumberContent` item. Its label is the
+cell's name, and its range and step configure the cell, so they are its own
+state. Both are edited under Config, and every one of them is live: a change
 from any tab, or an op, shows everywhere.
 """
 
@@ -13,14 +15,19 @@ import nustd.kv
 import nustd.ui
 from nuspace import ops
 
+from ...contents.number import NumberContent
 
-__all__ = ["Level", "out"]
+
+__all__ = ["ITEM", "Range", "out"]
 
 
-class Level(nuspace.CellState):
-    """A slider cell's state: the number, and the range and step it moves within."""
+#: The id of the cell's number item.
+ITEM = "value"
 
-    value = nustd.kv.FloatRef.slot()
+
+class Range(nuspace.CellState):
+    """A slider cell's state: the range and step its number moves within."""
+
     min = nustd.kv.FloatRef.slot()
     max = nustd.kv.FloatRef.slot()
     step = nustd.kv.FloatRef.slot()
@@ -49,8 +56,9 @@ class Box(nustd.ui.Column):
 def out() -> nu.Nu:
     """The slider and its Config, both ways, for as long as the cell runs."""
     entry, settings = Box.entry, Box.config.settings
+    value = NumberContent.cell(ITEM).value
     name = nuspace.Space.cells[ops.Here.cell].name.fallback("")
-    low, high, step = Level.min.fallback(0.0), Level.max.fallback(100.0), Level.step.fallback(1.0)
+    low, high, step = Range.min.fallback(0.0), Range.max.fallback(100.0), Range.step.fallback(1.0)
 
     def show_name() -> nu.Nu:
         return entry.set_label(name) >> settings.name.set(name)
@@ -68,20 +76,20 @@ def out() -> nu.Nu:
         show_min()
         >> show_max()
         >> show_step()
-        >> entry.input.set_value(Level.value.fallback(0.0))
+        >> entry.input.set_value(value.fallback(0.0))
         >> show_name()
         >> nu.ParallelAsync(
-            nu.ReactForever(entry.input.on_change(), Level.value.set(nu.ToFloat(entry.input))),
-            nu.ReactForever(settings.min.on_change(), Level.min.set(nu.ToFloat(settings.min))),
-            nu.ReactForever(settings.max.on_change(), Level.max.set(nu.ToFloat(settings.max))),
-            nu.ReactForever(settings.step.on_change(), Level.step.set(nu.ToFloat(settings.step))),
+            nu.ReactForever(entry.input.on_change(), value.set(nu.ToFloat(entry.input))),
+            nu.ReactForever(settings.min.on_change(), Range.min.set(nu.ToFloat(settings.min))),
+            nu.ReactForever(settings.max.on_change(), Range.max.set(nu.ToFloat(settings.max))),
+            nu.ReactForever(settings.step.on_change(), Range.step.set(nu.ToFloat(settings.step))),
             nu.ReactForever(
                 settings.name.on_change(), ops.rename_cell(ops.Here.cell, nu.Str(settings.name))
             ),
-            nu.ReactForever(Level.value.on_change(), entry.input.set_value(Level.value)),
-            nu.ReactForever(Level.min.on_change(), show_min()),
-            nu.ReactForever(Level.max.on_change(), show_max()),
-            nu.ReactForever(Level.step.on_change(), show_step()),
+            nu.ReactForever(value.on_change(), entry.input.set_value(value)),
+            nu.ReactForever(Range.min.on_change(), show_min()),
+            nu.ReactForever(Range.max.on_change(), show_max()),
+            nu.ReactForever(Range.step.on_change(), show_step()),
             nu.ReactForever(nuspace.Space.cells[ops.Here.cell].name.on_change(), show_name()),
         )
     )

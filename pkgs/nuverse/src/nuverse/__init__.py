@@ -4,6 +4,8 @@
   ``runs``, ``workers``, ``planes``.
 - :mod:`.snippets`: what ``/`` inserts, one package each, and the ops on
   the cells made from them.
+- :mod:`.contents`: the content kinds the snippets keep their findable data
+  in, Text, Number, Flag, Date and Row.
 
 nuspace finds this package through the ``nuspace.extensions`` entry point,
 which names :func:`extension`. Nothing is imported here at module scope:
@@ -23,10 +25,11 @@ __all__ = ["extension"]
 
 
 def extension() -> Extension:
-    """Every nuverse Plane and snippet, as one extension."""
+    """Every nuverse Plane, snippet and content kind, as one extension."""
     from nuspace import Extension
 
+    from .contents import CONTENTS
     from .planes import PLANES
     from .snippets import SNIPPETS
 
-    return Extension(planes=PLANES, snippets=SNIPPETS, envs={})
+    return Extension(planes=PLANES, snippets=SNIPPETS, contents=CONTENTS, envs={})

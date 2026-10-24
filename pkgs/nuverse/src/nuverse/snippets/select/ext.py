@@ -6,7 +6,7 @@ from importlib import resources
 
 from nuspace import Snippet
 
-from .ops import search, set_value, value_of
+from .ops import set_value, value_of
 
 
 __all__ = ["SNIPPET"]
@@ -16,8 +16,7 @@ SNIPPET = Snippet(
     "select",
     "Select",
     resources.files(__package__).joinpath("shim.py").read_text("utf-8"),
-    description="One option of a list kept in the cell's state, its options under Config.",
-    search=search,
+    description="One option of a list kept as the cell's text content, its options under Config.",
     ops=(set_value, value_of),
     group="Inputs",
     icon="list",

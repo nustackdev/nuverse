@@ -1,8 +1,10 @@
-"""A select cell: one option in its own state, picked in place, synced both ways.
+"""A select cell: one option, its own text item, picked in place, synced both ways.
 
-Its label is the cell's name and its options a list kept next to the
-choice. Both are edited under Config, and both are live: a change from any
-tab, or an op, shows everywhere.
+The option picked is the cell's :data:`ITEM`, a
+:class:`~nuverse.contents.text.TextContent` item. Its label is the cell's
+name and its options a list that configures the cell, so its own state.
+Both are edited under Config, and both are live: a change from any tab, or
+an op, shows everywhere.
 """
 
 from __future__ import annotations
@@ -13,8 +15,14 @@ import nustd.kv
 import nustd.ui
 from nuspace import ops
 
+from ...contents.text import TextContent
 
-__all__ = ["Choice", "out"]
+
+__all__ = ["ITEM", "Choice", "out"]
+
+
+#: The id of the cell's text item: the option picked.
+ITEM = "value"
 
 
 #: The options a new select starts with.
@@ -22,9 +30,8 @@ OPTIONS = ["One", "Two", "Three"]
 
 
 class Choice(nuspace.CellState):
-    """A select cell's state: the option picked, and the options to pick from."""
+    """A select cell's state: the options to pick from."""
 
-    value = nustd.kv.StrRef.slot()
     options = nustd.kv.ListRef.slot(str)
     seeded = nustd.kv.BoolRef.slot()
 
@@ -50,6 +57,7 @@ class Box(nustd.ui.Column):
 def out() -> nu.Nu:
     """The choice and its Config, both ways, for as long as the cell runs."""
     entry, settings = Box.entry, Box.config.settings
+    value = TextContent.cell(ITEM).value
     name = nuspace.Space.cells[ops.Here.cell].name.fallback("")
     # Seeded once: emptied by hand, the options stay empty.
     seed = nu.IfDo(Choice.seeded.missing(), Choice.options.set(OPTIONS) >> Choice.seeded.set(True))
@@ -64,17 +72,17 @@ def out() -> nu.Nu:
     return ops.bracketed(
         seed
         >> show_options()
-        >> entry.input.set(Choice.value.fallback(""))
+        >> entry.input.set(value.fallback(""))
         >> show_name()
         >> nu.ParallelAsync(
-            nu.ReactForever(entry.input.on_change(), Choice.value.set(nu.ToStr(entry.input))),
+            nu.ReactForever(entry.input.on_change(), value.set(nu.ToStr(entry.input))),
             nu.ReactForever(
                 settings.options.on_change(), Choice.options.set(nu.List(settings.options))
             ),
             nu.ReactForever(
                 settings.name.on_change(), ops.rename_cell(ops.Here.cell, nu.Str(settings.name))
             ),
-            nu.ReactForever(Choice.value.on_change(), entry.input.set(nu.str(Choice.value))),
+            nu.ReactForever(value.on_change(), entry.input.set(nu.str(value))),
             nu.ReactForever(Choice.options.on_change(), show_options()),
             nu.ReactForever(nuspace.Space.cells[ops.Here.cell].name.on_change(), show_name()),
         )

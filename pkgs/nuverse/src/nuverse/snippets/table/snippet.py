@@ -1,8 +1,11 @@
-"""A table cell: one editable grid over rows in its own state, every tab kept live.
+"""A table cell: one editable grid over its rows, every tab kept live.
 
 The grid is the data: ``nustd.ui.table.sync`` stores what the browser asks
-for, cells, rows and columns, and repaints every tab from the store. The
-cell only seeds a few blank rows the first time it runs.
+for, cells, rows and columns, and repaints every tab from the store. Each
+row is an item of the cell, a :class:`~nuverse.contents.row.RowContent` by
+row key, so a search by kind finds it. The order, columns and sort only
+configure the grid, so they are the cell's own state. The cell only seeds a
+few blank rows the first time it runs.
 """
 
 from __future__ import annotations
@@ -12,10 +15,15 @@ import nuspace
 import nustd.kv
 import nustd.ui
 import nustd.ui.table
+from nu.lang.typeinfo import TypeInfo
 from nuspace import ops
+from nuspace.content import kind_name
+from nuspace.shapes import States
+
+from ...contents.row import Row, RowContent
 
 
-__all__ = ["Grid", "Sheet", "out"]
+__all__ = ["Grid", "Sheet", "out", "rows"]
 
 
 #: The columns a new table starts with. Stored on first run, edited from then on.
@@ -30,9 +38,11 @@ SEED = {f"r{i}": {"name": "", "notes": "", "done": False} for i in (1, 2, 3)}
 
 
 class Sheet(nuspace.CellState):
-    """A table cell's state: the layout ``nustd.ui.table.sync`` keeps, and whether it was seeded."""
+    """A table cell's state: the layout ``nustd.ui.table.sync`` keeps, and whether it was seeded.
 
-    rows = nustd.kv.DictRef.slot(nustd.ui.table.Row)
+    The rows themselves are the cell's items (:func:`rows`).
+    """
+
     order = nustd.kv.ListRef.slot(str)
     columns = nustd.kv.ListRef.slot(object)
     sort = nustd.kv.ObjectRef.slot()
@@ -54,6 +64,18 @@ class Grid(nustd.ui.Column):
     )
 
 
+def rows(cell_id: nu.StrArg) -> nustd.kv.DictRef[str, Row]:
+    """A table cell's rows, its :class:`~nuverse.contents.row.RowContent` items, as one mapping.
+
+    Where ``RowContent.at((CELL, cell_id), key)`` is one row, this is all of
+    them by row key, the ``DictRef`` ``sync`` takes.
+    """
+    scope = States.contents[kind_name(RowContent)].cells
+    held = nustd.kv.DictRef(cell_id, parent_ref=scope, owner_shape=States)
+    held._payload["type_info"] = TypeInfo.from_annotation(dict[str, Row])
+    return held
+
+
 def _here(ref: nu.Nu) -> nu.Nu:
     """``ref`` landed under the running cell, so ``sync`` brackets it on the States store."""
     return ops.cell_state(ops.Here.cell, ref)
@@ -61,9 +83,10 @@ def _here(ref: nu.Nu) -> nu.Nu:
 
 def out() -> nu.Nu:
     """Seed once, then the grid as the store holds it, for as long as the cell runs."""
+    mine = rows(ops.Here.cell)
     seed = nu.IfDo(
         Sheet.seeded.missing(),
-        nu.Sequential(*(Sheet.rows[k].cells.set(cells) for k, cells in SEED.items()))
+        nu.Sequential(*(mine[k].cells.set(cells) for k, cells in SEED.items()))
         >> Sheet.order.set(list(SEED))
         >> Sheet.seeded.set(True),
     )
@@ -71,7 +94,7 @@ def out() -> nu.Nu:
     # here first, they root at States, not at Sheet.
     grid = nustd.ui.table.sync(
         Grid.table,
-        _here(Sheet.rows),
+        mine,
         _here(Sheet.order),
         _here(Sheet.columns),
         sort=_here(Sheet.sort),

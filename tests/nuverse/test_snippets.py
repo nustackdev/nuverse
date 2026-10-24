@@ -13,11 +13,13 @@ import nu
 import nustd.kv
 from nu.lang import ScalarQuery
 from nuspace import ops
+from nuspace.content import CELL
 from nuspace.shapes import Reroot, Space
 from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel.body import Rewrites
 from nustd.ui.core import OP_NOTIFY, Frame, WsSession
 from nustd.ui.core.session import Session
+from nuverse.contents import DateContent, RowContent
 from nuverse.snippets import (
     SNIPPETS,
     cell_lens,
@@ -293,7 +295,7 @@ async def test_table_seeds_once_and_stores_what_the_browser_asks(ctx):
     )
     sheet = table.snippet.Sheet
     order = ops.cell_state("c", nu.ToList(sheet.order))
-    name = ops.cell_state("c", sheet.rows["r2"].cells["name"])
+    name = RowContent.at((CELL, "c"), "r2").cells["name"]
     browser = _Browser()
     task = await _running(ctx, "p", "c", browser)
     try:
@@ -434,7 +436,8 @@ async def test_a_cleared_date_is_gone(ctx):
         browser.type("entry", "input", value="2026-10-06")
         await _settles(ctx, date.value_of("c"), lambda v: v == datetime.date(2026, 10, 6))
         browser.type("entry", "input", value="")
-        await _settles(ctx, ops.cell_state("c", date.snippet.Day.value.exists()), lambda v: not v)
+        held = DateContent.at((CELL, "c"), date.snippet.ITEM).value.exists()
+        await _settles(ctx, held, lambda v: not v)
     finally:
         task.cancel()
 

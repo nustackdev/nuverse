@@ -16,7 +16,7 @@ def _loaded(code: str) -> list[str]:
         "import sys\n"
         f"{code}\n"
         "print(sorted(m for m in sys.modules"
-        " if m.startswith(('nuverse.snippets.', 'nuverse.planes.'))))\n"
+        " if m.startswith(('nuverse.snippets.', 'nuverse.planes.', 'nuverse.contents.'))))\n"
     )
     done = subprocess.run(  # noqa: S603
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=60, check=True
@@ -25,12 +25,15 @@ def _loaded(code: str) -> list[str]:
 
 
 def test_importing_the_packages_loads_no_member():
-    assert _loaded("import nuverse.snippets, nuverse.planes") == []
+    assert _loaded("import nuverse.snippets, nuverse.planes, nuverse.contents") == []
 
 
 def test_a_cell_prog_loads_only_its_own_snippet():
     loaded = _loaded("from nuverse.snippets.table import snippet")
     assert not [m for m in loaded if m.startswith("nuverse.snippets.prose")]
+    # Its rows' kind, and the text kind whose word matching a row shares.
+    kinds = [m for m in loaded if m.startswith("nuverse.contents.")]
+    assert kinds == ["nuverse.contents.row", "nuverse.contents.text"]
 
 
 def test_the_registries_load_every_member_in_order():
