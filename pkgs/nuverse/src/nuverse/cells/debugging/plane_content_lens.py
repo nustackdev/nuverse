@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nuspace import Snippet, Space, ops
+from nuspace import Cell, Space, ops
 from nuspace.content import PLANE
 
 from .. import source
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import nu
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 def out() -> nu.Nu:
@@ -28,7 +28,7 @@ def out() -> nu.Nu:
     return picked(PLANE, options, ops.Here.plane, Space.planes.on_children_change())
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "plane_content_lens",
     "Plane content lens",
     source(__name__),

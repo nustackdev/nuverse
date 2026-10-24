@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nuspace import Snippet, Space, ops
-from nuspace.content import CELL
+from nuspace import Cell, Space, ops
+from nuspace.content import CELL as CELL_LEVEL
 
 from .. import source
 from ._content_lens import option, picked
@@ -19,17 +19,19 @@ if TYPE_CHECKING:
     import nu
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 def out() -> nu.Nu:
     """The dropdown and the picked cell's items as columns, for as long as the cell runs."""
     plane = ops.Here.plane
     options = ops.cell_rows(plane).iter().map(option).to_list()
-    return picked(CELL, options, ops.Here.cell, Space.planes[plane].cells.on_children_change())
+    return picked(
+        CELL_LEVEL, options, ops.Here.cell, Space.planes[plane].cells.on_children_change()
+    )
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "cell_content_lens",
     "Cell content lens",
     source(__name__),

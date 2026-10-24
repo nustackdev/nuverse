@@ -11,7 +11,7 @@ from __future__ import annotations
 import nu
 import nuspace
 import nustd.ui
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 from nuspace.content import Drawing
 
 from .. import source
@@ -28,7 +28,7 @@ from ._editing import (
 )
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 #: What the Config asks: the kind, then where the item is.
@@ -80,7 +80,7 @@ def out() -> nu.Nu:
     return ops.bracketed(kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "item",
     "Item",
     source(__name__),

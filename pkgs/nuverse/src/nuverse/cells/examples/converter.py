@@ -12,12 +12,12 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 
 from .. import source
 
 
-__all__ = ["KINDS", "SNIPPET", "Convert", "out"]
+__all__ = ["CELL", "KINDS", "Convert", "out"]
 
 
 #: Each kind's units as ``unit: [scale, offset]``: ``base = amount * scale + offset``.
@@ -140,7 +140,7 @@ def out() -> nu.Nu:
     )
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "converter",
     "Unit converter",
     source(__name__),

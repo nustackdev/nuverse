@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import Snippet
+from nuspace import Cell
 
 from ...contents.text import Text, TextContent
 from .. import source
 from ._editing import SECTIONS, Where, editor
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 class Entry(nustd.ui.Field):
@@ -52,7 +52,7 @@ def out() -> nu.Nu:
     return editor(TextContent, Box, _edit)
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "text_input",
     "Text input",
     source(__name__),

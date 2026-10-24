@@ -14,12 +14,12 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 
 from .. import source
 
 
-__all__ = ["SNIPPET", "Pass", "out"]
+__all__ = ["CELL", "Pass", "out"]
 
 
 def _draw(alphabet: str, length: int) -> str:
@@ -95,7 +95,7 @@ def out() -> nu.Nu:
     )
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "password",
     "Password generator",
     source(__name__),

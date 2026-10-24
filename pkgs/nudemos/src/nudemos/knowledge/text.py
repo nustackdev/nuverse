@@ -475,11 +475,11 @@ def search(docs: dict, facts: dict, q: str, base: str, limit: int = 8) -> list[d
         if not all(w in title + " " + body.lower() for w in words):
             continue
         line = next((ln for ln in body.split("\n") if any(w in ln.lower() for w in words)), "")
-        snippet = re.sub(
+        excerpt = re.sub(
             r"[#>*`\-\[\]]+", " ", LINK.sub(lambda m: m.group(2) or _name(docs, m.group(1)), line)
         )
-        snippet = FACT.sub(
-            lambda m: (facts.get(m.group(1)) or {}).get("value", m.group(1)), snippet
+        excerpt = FACT.sub(
+            lambda m: (facts.get(m.group(1)) or {}).get("value", m.group(1)), excerpt
         )
         score = (0 if all(w in title for w in words) else 1, -(d.get("updated") or 0))
         hits.append(
@@ -489,7 +489,7 @@ def search(docs: dict, facts: dict, q: str, base: str, limit: int = 8) -> list[d
                     "title": d["title"],
                     "href": _href(base, k),
                     "kind": KINDS.get(d.get("kind", ""), {}).get("one", ""),
-                    "snippet": " ".join(snippet.split())[:140],
+                    "excerpt": " ".join(excerpt.split())[:140],
                 },
             )
         )
@@ -502,7 +502,7 @@ def search(docs: dict, facts: dict, q: str, base: str, limit: int = 8) -> list[d
                         "title": f["label"],
                         "href": f"/{base}.facts",
                         "kind": "Fact",
-                        "snippet": f["value"],
+                        "excerpt": f["value"],
                     },
                 )
             )

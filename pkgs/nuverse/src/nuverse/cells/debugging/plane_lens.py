@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from nuspace import Snippet
+from nuspace import Cell
 
 
-__all__ = ["SNIPPET"]
+__all__ = ["CELL"]
 
 
 _SOURCE = '''\
@@ -13,7 +13,7 @@ _SOURCE = '''\
 
 import nuspace
 from nuspace import ops
-from nuverse.snippets.debugging.lens import out as lens
+from nuverse.cells.debugging.lens import out as lens
 
 
 # The shape: what the lens expects to find. The prefix: where in the store
@@ -22,7 +22,7 @@ out = lens(nuspace.shapes.Plane, nuspace.Space.planes[ops.Here.plane])
 '''
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "plane_lens",
     "Plane lens",
     _SOURCE,

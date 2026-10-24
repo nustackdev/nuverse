@@ -10,8 +10,8 @@ One module each, a schema Shape and its :class:`nuspace.Content`:
 
 A kind's name is its importable name, eg ``nuverse.contents.text.TextContent``.
 
-Nothing here imports a kind up front, as with the snippets: a cell's prog
-imports only the kinds its snippet keeps. :data:`CONTENTS` and the names
+Nothing here imports a kind up front, as with the Cells: a cell's prog
+imports only the kinds its Cell keeps. :data:`CONTENTS` and the names
 below import on first read.
 """
 

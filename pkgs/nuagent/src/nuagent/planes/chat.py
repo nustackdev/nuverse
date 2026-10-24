@@ -192,7 +192,7 @@ def _paged(plane: object) -> str:
 class Builds(ScalarQuery):
     """True when ``prog`` builds as cell ``cell_id`` of ``plane_id`` would, and validates. Raises when not.
 
-    Construction runs the snippet's module code in this process, offered the
+    Construction runs the prog's module code in this process, offered the
     ``plane`` and ``cell`` a run offers, as the kernel would on the page.
     What fails raises ``ValueError``, with the construction's diagnostic or
     the validation's message.

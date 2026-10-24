@@ -1,20 +1,20 @@
-"""The snippets ``/`` inserts, one module each, by category.
+"""The Cells ``/`` inserts, one module each, by category.
 
 - :mod:`.content`: views and editors over content items
   (:mod:`nuverse.contents`): text, inputs, items and the table.
 - :mod:`.debugging`: lenses on the store and on content items.
 - :mod:`.examples`: small programs showing what a cell can do.
 
-A snippet is a view over content items: it reads and writes them by
-address and exposes no data ops of its own. A snippet module is the cell's
+A Cell is a view over content items: it reads and writes them by
+address and exposes no data ops of its own. A Cell module is the cell's
 real code, ``out()`` and the shapes it keeps its own state in, and its
-``SNIPPET``, registered with :func:`source` of the module as the cell's
+``CELL``, registered with :func:`source` of the module as the cell's
 prog: one import line, so a change to the code reaches every cell already
 made from it.
 
-Nothing here imports a snippet up front. A cell's prog imports only its own
-snippet, and importing this package pulled in every other one with it, on
-whichever thread loaded first. :data:`SNIPPETS` imports them all on first
+Nothing here imports a Cell up front. A cell's prog imports only its own
+Cell, and importing this package pulled in every other one with it, on
+whichever thread loaded first. :data:`CELLS` imports them all on first
 read instead.
 """
 
@@ -24,10 +24,10 @@ import importlib
 from typing import Any
 
 
-__all__ = ["SNIPPETS", "source"]
+__all__ = ["CELLS", "source"]
 
 
-#: The snippet modules, by category, in menu order.
+#: The Cell modules, by category, in menu order.
 _ORDER = (
     "content.text_editor",
     "content.table",
@@ -54,16 +54,16 @@ _ORDER = (
 
 
 def source(module: str) -> str:
-    """A cell's prog for the snippet in ``module``: one line, importing its ``out``."""
+    """A cell's prog for the Cell in ``module``: one line, importing its ``out``."""
     return f"from {module} import out\n"
 
 
 def __getattr__(name: str) -> Any:  # noqa: ANN401
-    """:data:`SNIPPETS`, every snippet ready to register, built on first read."""
-    if name != "SNIPPETS":
+    """:data:`CELLS`, every Cell ready to register, built on first read."""
+    if name != "CELLS":
         msg = f"module {__name__!r} has no attribute {name!r}"
         raise AttributeError(msg)
     modules = (importlib.import_module(f"{__name__}.{mod}") for mod in _ORDER)
-    snippets = tuple(module.SNIPPET for module in modules)
-    globals()["SNIPPETS"] = snippets
-    return snippets
+    cells = tuple(module.CELL for module in modules)
+    globals()["CELLS"] = cells
+    return cells

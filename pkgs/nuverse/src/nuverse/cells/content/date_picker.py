@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import Snippet
+from nuspace import Cell
 
 from ...contents.date import Date, DateContent, iso
 from .. import source
 from ._editing import SECTIONS, Where, editor
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 class Entry(nustd.ui.Field):
@@ -53,7 +53,7 @@ def out() -> nu.Nu:
     return editor(DateContent, Box, _edit)
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "date_picker",
     "Date picker",
     source(__name__),

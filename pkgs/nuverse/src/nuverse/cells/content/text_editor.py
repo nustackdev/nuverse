@@ -1,6 +1,6 @@
 """A text editor cell: one editable markdown surface over a Text item, kept live both ways.
 
-Registered as ``nuverse.text``, the snippet nuspace's document editing works
+Registered as ``nuverse.text``, the Cell nuspace's document editing works
 on: typing into an empty line starts one, and its cells are the plane's text
 cells, written like a document. So it draws the surface alone, no Config:
 it edits the cell's own ``value``, a
@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 
 from ...contents.text import Text, TextContent
 from .. import source
 from ._editing import editing
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 def _edit(item: Text) -> nu.Nu:
@@ -46,7 +46,7 @@ def out() -> nu.Nu:
     return ops.bracketed(editing(TextContent, _edit))
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "text",
     "Text",
     source(__name__),

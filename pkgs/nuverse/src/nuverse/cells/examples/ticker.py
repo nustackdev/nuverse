@@ -6,12 +6,12 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 
 from .. import source
 
 
-__all__ = ["SNIPPET", "Tick", "out"]
+__all__ = ["CELL", "Tick", "out"]
 
 
 class Tick(nuspace.CellState):
@@ -28,7 +28,7 @@ def out() -> nu.Nu:
     return tile.set_label("Seconds this plane was open") >> nu.ForeverDo(nu.DelayedDo(1.0, step))
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "ticker",
     "Ticker",
     source(__name__),

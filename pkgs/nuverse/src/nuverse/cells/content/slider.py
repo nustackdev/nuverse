@@ -12,14 +12,14 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Snippet
+from nuspace import Cell
 
 from ...contents.number import Number, NumberContent
 from .. import source
 from ._editing import SECTIONS, Where, bounded, editor
 
 
-__all__ = ["SNIPPET", "Range", "out"]
+__all__ = ["CELL", "Range", "out"]
 
 
 class Range(nuspace.CellState):
@@ -66,7 +66,7 @@ def out() -> nu.Nu:
     return editor(NumberContent, Box, _edit, first=show, also=reactions)
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "slider",
     "Slider",
     source(__name__),

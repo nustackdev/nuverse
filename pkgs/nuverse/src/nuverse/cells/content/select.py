@@ -13,14 +13,14 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Snippet
+from nuspace import Cell
 
 from ...contents.text import Text, TextContent
 from .. import source
 from ._editing import SECTIONS, Where, editor
 
 
-__all__ = ["OPTIONS", "SNIPPET", "Choice", "out"]
+__all__ = ["CELL", "OPTIONS", "Choice", "out"]
 
 
 #: The options a new select starts with.
@@ -86,7 +86,7 @@ def out() -> nu.Nu:
     )
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "select",
     "Select",
     source(__name__),

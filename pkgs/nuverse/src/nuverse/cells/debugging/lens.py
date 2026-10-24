@@ -9,14 +9,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import nustd.ui.lens
-from nuspace import Snippet
+from nuspace import Cell
 
 
 if TYPE_CHECKING:
     import nu
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 def out(shape: type, prefix: nu.Ref | None = None) -> nu.Nu:
@@ -51,7 +51,7 @@ out = lens(SHAPE, PREFIX)
 '''
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "lens",
     "Lens",
     _SOURCE,

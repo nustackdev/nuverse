@@ -2,9 +2,9 @@
 
 - :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``jobs``,
   ``runs``, ``workers``, ``planes``.
-- :mod:`.snippets`: what ``/`` inserts, one module each, by category:
+- :mod:`.cells`: what ``/`` inserts, one module each, by category:
   views and editors over content items, lenses, examples.
-- :mod:`.contents`: the content kinds the snippets keep their findable data
+- :mod:`.contents`: the content kinds the Cells keep their findable data
   in, Text, Number, Flag, Date and Row.
 
 nuspace finds this package through the ``nuspace.extensions`` entry point,
@@ -25,11 +25,11 @@ __all__ = ["extension"]
 
 
 def extension() -> Extension:
-    """Every nuverse Plane, snippet and content kind, as one extension."""
+    """Every nuverse Plane, Cell and content kind, as one extension."""
     from nuspace import Extension
 
+    from .cells import CELLS
     from .contents import CONTENTS
     from .planes import PLANES
-    from .snippets import SNIPPETS
 
-    return Extension(planes=PLANES, snippets=SNIPPETS, contents=CONTENTS, envs={})
+    return Extension(planes=PLANES, cells=CELLS, contents=CONTENTS, envs={})

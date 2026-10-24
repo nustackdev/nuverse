@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nuspace import Snippet
+from nuspace import Cell
 from nuspace.content import SPACE
 
 from .. import source
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     import nu
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 def out() -> nu.Nu:
@@ -23,7 +23,7 @@ def out() -> nu.Nu:
     return browse(SPACE, "")
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "space_content_lens",
     "Space content lens",
     source(__name__),

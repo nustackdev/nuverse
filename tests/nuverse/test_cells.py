@@ -1,4 +1,4 @@
-"""nuverse's snippets, loaded the way the kernel loads them and run on a real store."""
+"""nuverse's Cells, loaded the way the kernel loads them and run on a real store."""
 
 from __future__ import annotations
 
@@ -19,9 +19,8 @@ from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel.body import Rewrites
 from nustd.ui.core import OP_NOTIFY, Frame, WsSession
 from nustd.ui.core.session import Session
-from nuverse.contents import DateContent, FlagContent, NumberContent, RowContent, TextContent
-from nuverse.snippets import SNIPPETS
-from nuverse.snippets.content import (
+from nuverse.cells import CELLS
+from nuverse.cells.content import (
     checkbox,
     date_picker,
     item,
@@ -35,15 +34,16 @@ from nuverse.snippets.content import (
     text_editor,
     text_input,
 )
-from nuverse.snippets.content._editing import ITEM, Target
-from nuverse.snippets.debugging import (
+from nuverse.cells.content._editing import ITEM, Target
+from nuverse.cells.debugging import (
     cell_content_lens,
     cell_lens,
     plane_content_lens,
     plane_lens,
     space_content_lens,
 )
-from nuverse.snippets.examples import converter, password
+from nuverse.cells.examples import converter, password
+from nuverse.contents import DateContent, FlagContent, NumberContent, RowContent, TextContent
 
 
 if TYPE_CHECKING:
@@ -154,7 +154,7 @@ async def _running(ctx: nu.Context, plane: str, cell: str, browser: _Browser) ->
 async def test_plane_lens_browses_its_own_plane(ctx):
     await nu.arun(
         ops.add_plane("p", name="Home", backend="async")
-        >> ops.add_cell("p", plane_lens.SNIPPET.source, cell_id="me"),
+        >> ops.add_cell("p", plane_lens.CELL.source, cell_id="me"),
         ctx,
     )
     browser = _Browser()
@@ -173,7 +173,7 @@ async def test_plane_lens_browses_its_own_plane(ctx):
 async def test_cell_lens_follows_the_select(ctx):
     await nu.arun(
         ops.add_plane("p", backend="async")
-        >> ops.add_cell("p", cell_lens.SNIPPET.source, cell_id="me", name="lens")
+        >> ops.add_cell("p", cell_lens.CELL.source, cell_id="me", name="lens")
         >> ops.add_cell("p", "one", cell_id="c1")
         >> ops.add_cell("p", "two", cell_id="c2", name="second")
         >> ops.set_cell_meta("c2", {"marker": 1}),
@@ -215,7 +215,7 @@ async def test_cell_lens_follows_the_select(ctx):
 async def test_cell_lens_alone_on_its_plane_browses_itself(ctx):
     await nu.arun(
         ops.add_plane("p", backend="async")
-        >> ops.add_cell("p", cell_lens.SNIPPET.source, cell_id="me"),
+        >> ops.add_cell("p", cell_lens.CELL.source, cell_id="me"),
         ctx,
     )
     browser = _Browser()
@@ -223,7 +223,7 @@ async def test_cell_lens_alone_on_its_plane_browses_itself(ctx):
     try:
         await _until(lambda: any(f.ref[-1] == "lens" for f in browser.frames))
         assert browser.selected == "me"
-        assert cell_lens.SNIPPET.source.startswith(_keys(browser.last("lens"))["prog"][:20])
+        assert cell_lens.CELL.source.startswith(_keys(browser.last("lens"))["prog"][:20])
     finally:
         task.cancel()
 
@@ -272,14 +272,14 @@ TEXT, NUMBER, FLAG = kind_name(TextContent), kind_name(NumberContent), kind_name
 
 @pytest.mark.parametrize("module", [space_content_lens, plane_content_lens, cell_content_lens])
 def test_a_content_lens_is_one_import_line(module):
-    assert module.SNIPPET.source == f"from {module.__name__} import out\n"
-    assert module.SNIPPET.group == "Debugging"
+    assert module.CELL.source == f"from {module.__name__} import out\n"
+    assert module.CELL.group == "Debugging"
 
 
 async def test_cell_content_lens_browses_a_cells_items_by_kind(ctx):
     await nu.arun(
         ops.add_plane("p", backend="async")
-        >> ops.add_cell("p", cell_content_lens.SNIPPET.source, cell_id="me", name="lens")
+        >> ops.add_cell("p", cell_content_lens.CELL.source, cell_id="me", name="lens")
         >> ops.add_cell("p", "one", cell_id="c1"),
         ctx,
     )
@@ -329,7 +329,7 @@ async def test_plane_content_lens_browses_a_planes_own_items(ctx):
     await nu.arun(
         ops.add_plane("p", name="Home", backend="async")
         >> ops.add_plane("q", backend="async")
-        >> ops.add_cell("p", plane_content_lens.SNIPPET.source, cell_id="me"),
+        >> ops.add_cell("p", plane_content_lens.CELL.source, cell_id="me"),
         ctx,
     )
     await _write(
@@ -362,7 +362,7 @@ async def test_plane_content_lens_browses_a_planes_own_items(ctx):
 async def test_space_content_lens_browses_the_spaces_own_items(ctx):
     await nu.arun(
         ops.add_plane("p", backend="async")
-        >> ops.add_cell("p", space_content_lens.SNIPPET.source, cell_id="me"),
+        >> ops.add_cell("p", space_content_lens.CELL.source, cell_id="me"),
         ctx,
     )
     await _write(
@@ -393,18 +393,18 @@ async def test_space_content_lens_browses_the_spaces_own_items(ctx):
         task.cancel()
 
 
-# --- every snippet: a shim in the cell, the code in the package ---------------------
+# --- every Cell: a shim in the cell, the code in the package ------------------------
 
 
-@pytest.mark.parametrize("snippet", SNIPPETS, ids=lambda s: s.name)
-async def test_every_snippet_runs_from_its_shim(ctx, snippet):
-    """The cell stores the shim and nothing else; loaded, it is the snippet's whole program."""
+@pytest.mark.parametrize("spec", CELLS, ids=lambda s: s.name)
+async def test_every_cell_runs_from_its_shim(ctx, spec):
+    """The cell stores the shim and nothing else; loaded, it is the Cell's whole program."""
     await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", snippet, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", spec, cell_id="c"),
         ctx,
     )
     stored, _ = await nu.arun(ops.snapshot(ops.prog("c")), ctx)
-    assert stored == snippet.source
+    assert stored == spec.source
     nu.validate(nu.compile(await _load(ctx, "p", "c")))
 
 
@@ -423,16 +423,16 @@ def _value(kind: type, cell: str = "c", item_id: str = ITEM) -> nu.Nu:
     return kind.at((CELL, cell), item_id).value
 
 
-def test_every_snippet_is_one_import_line_or_an_editable_lens():
-    for snippet in SNIPPETS:
-        lines = snippet.source.strip().splitlines()
-        if snippet.group != "Debugging":
-            assert lines == [f"from nuverse.snippets.{_module(snippet)} import out"], snippet.name
+def test_every_cell_is_one_import_line_or_an_editable_lens():
+    for spec in CELLS:
+        lines = spec.source.strip().splitlines()
+        if spec.group != "Debugging":
+            assert lines == [f"from nuverse.cells.{_module(spec)} import out"], spec.name
 
 
-def _module(snippet: object) -> str:
-    category = {"Examples": "examples"}.get(snippet.group, "content")
-    name = {"text": "text_editor"}.get(snippet.name, snippet.name)
+def _module(spec: object) -> str:
+    category = {"Examples": "examples"}.get(spec.group, "content")
+    name = {"text": "text_editor"}.get(spec.name, spec.name)
     return f"{category}.{name}"
 
 
@@ -443,8 +443,7 @@ def _shown(browser: _Browser, text: str) -> Callable[[], bool]:
 
 async def test_text_editor_shows_what_a_program_writes_and_keeps_what_is_typed(ctx):
     await nu.arun(
-        ops.add_plane("p", backend="async")
-        >> ops.insert_snippet("p", text_editor.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", text_editor.CELL, cell_id="c"),
         ctx,
     )
     browser = _Inputs()
@@ -459,12 +458,12 @@ async def test_text_editor_shows_what_a_program_writes_and_keeps_what_is_typed(c
         task.cancel()
 
 
-async def test_insert_snippet_hands_the_new_cell_to_what_follows(ctx):
+async def test_create_cell_hands_the_new_cell_to_what_follows(ctx):
     """The id is minted when the term runs; ``into`` holds it for the writes after."""
     made = nu.let(
         "",
         lambda cell: (
-            ops.insert_snippet("p", text_editor.SNIPPET, into=cell)
+            ops.create_cell("p", text_editor.CELL, into=cell)
             >> ops.atomic_state(TextContent.at((CELL, cell), ITEM).value.set("Basil likes sun"))
         ),
     )
@@ -488,7 +487,7 @@ async def _settles(ctx: nu.Context, term: nu.Nu, check: Callable[[object], bool]
 
 async def test_table_seeds_once_and_stores_what_the_browser_asks(ctx):
     await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", table.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", table.CELL, cell_id="c"),
         ctx,
     )
     order = ops.cell_state("c", nu.ToList(table.Sheet.order))
@@ -531,7 +530,7 @@ async def test_table_seeds_once_and_stores_what_the_browser_asks(ctx):
 
 async def test_a_row_a_program_adds_shows_last_and_leaves_the_order_alone(ctx):
     await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", table.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", table.CELL, cell_id="c"),
         ctx,
     )
     order = ops.cell_state("c", nu.ToList(table.Sheet.order))
@@ -597,7 +596,7 @@ class _Inputs(_Browser):
 
 async def _input(ctx: nu.Context, module: object, cell: str = "c") -> tuple[_Inputs, asyncio.Task]:
     """A cell of ``module`` made as ``cell`` on ``p``, running, its first paint done."""
-    made = ops.insert_snippet("p", module.SNIPPET, cell_id=cell)
+    made = ops.create_cell("p", module.CELL, cell_id=cell)
     there = await _read(ctx, ops.plane_exists("p"))
     await nu.arun(made if there else ops.add_plane("p", backend="async") >> made, ctx)
     browser = _Inputs()
@@ -748,8 +747,7 @@ async def test_config_points_an_editor_at_another_cells_item(ctx):
 )
 async def test_a_program_points_an_editor_at_any_scope(ctx, level, scope, item_id):
     await nu.arun(
-        ops.add_plane("p", backend="async")
-        >> ops.insert_snippet("p", number_input.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", number_input.CELL, cell_id="c"),
         ctx,
     )
     pointed = {"level": level, "scope": scope, "id": item_id}
@@ -772,7 +770,7 @@ async def test_a_program_points_an_editor_at_any_scope(ctx, level, scope, item_i
 
 async def test_item_draws_any_item_in_full_and_again_when_it_changes(ctx):
     await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", item.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", item.CELL, cell_id="c"),
         ctx,
     )
     await _write(ctx, _value(TextContent).set("# Basil"))
@@ -797,7 +795,7 @@ async def test_item_draws_any_item_in_full_and_again_when_it_changes(ctx):
 
 async def test_items_lists_adds_opens_and_removes(ctx):
     await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", items.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", items.CELL, cell_id="c"),
         ctx,
     )
     held = TextContent.items((CELL, "c"))
@@ -828,8 +826,7 @@ async def test_items_lists_adds_opens_and_removes(ctx):
 
 async def test_item_picker_keeps_the_picked_items_address(ctx):
     await nu.arun(
-        ops.add_plane("p", backend="async")
-        >> ops.insert_snippet("p", item_picker.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", item_picker.CELL, cell_id="c"),
         ctx,
     )
     await _write(
@@ -864,7 +861,7 @@ async def _example(
     ctx: nu.Context, kind: object, first: tuple[str, ...]
 ) -> tuple[_Inputs, asyncio.Task]:
     await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", kind.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async") >> ops.create_cell("p", kind.CELL, cell_id="c"),
         ctx,
     )
     browser = _Inputs()

@@ -1,4 +1,4 @@
-"""Content snippets: views and editors over content items (:mod:`nuverse.contents`).
+"""Content Cells: views and editors over content items (:mod:`nuverse.contents`).
 
 A single item editor (text, inputs) edits its own cell's ``value`` item by
 default, and its Config can point it at another item of its kind, so two

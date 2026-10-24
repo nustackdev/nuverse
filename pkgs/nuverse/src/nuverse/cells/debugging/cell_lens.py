@@ -13,14 +13,14 @@ import nuspace
 import nustd.kv
 import nustd.ui
 import nustd.ui.lens
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-__all__ = ["SNIPPET", "out"]
+__all__ = ["CELL", "out"]
 
 
 def out(plane: nu.StrArg, cell: nu.StrArg, shape: type, at: Callable[[nu.Nu], nu.Ref]) -> nu.Nu:
@@ -67,7 +67,7 @@ _SOURCE = f'''\
 """A lens on one cell of this plane, picked from a dropdown. Point the shape and the prefix elsewhere to browse something else of it."""
 
 import nuspace
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 from {__name__} import out as lens
 
 
@@ -82,7 +82,7 @@ out = lens(
 '''
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "cell_lens",
     "Cell lens",
     _SOURCE,

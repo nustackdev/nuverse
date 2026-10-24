@@ -1,4 +1,4 @@
-"""What content snippets share: where their item is, their name as their label, kinds by name.
+"""What content Cells share: where their item is, their name as their label, kinds by name.
 
 An editor of one item (a text input, a number input, ...) edits its own
 cell's :data:`ITEM` by default. Its Config's Item section can point it at

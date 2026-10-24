@@ -1,11 +1,11 @@
-"""nuverse's content kinds: what each matches, how a hit draws, and the snippets' data found by kind."""
+"""nuverse's content kinds: what each matches, how a hit draws, and the Cells' data found by kind."""
 
 from __future__ import annotations
 
 import datetime
 
 import pytest
-from tests.nuverse.test_snippets import _Browser
+from tests.nuverse.test_cells import _Browser
 
 import nu
 import nustd.kv
@@ -16,15 +16,7 @@ from nuspace.shapes import Reroot, Space, States
 from nuspace.system import search
 from nuspace.system.kernel.body import Rewrites
 from nustd.ui.core.session import Session
-from nuverse.contents import (
-    CONTENTS,
-    DateContent,
-    FlagContent,
-    NumberContent,
-    RowContent,
-    TextContent,
-)
-from nuverse.snippets.content import (
+from nuverse.cells.content import (
     checkbox,
     date_picker,
     number_input,
@@ -34,7 +26,15 @@ from nuverse.snippets.content import (
     text_editor,
     text_input,
 )
-from nuverse.snippets.content._editing import DEFAULT_KIND, ITEM
+from nuverse.cells.content._editing import DEFAULT_KIND, ITEM
+from nuverse.contents import (
+    CONTENTS,
+    DateContent,
+    FlagContent,
+    NumberContent,
+    RowContent,
+    TextContent,
+)
 
 
 def _at(kind: type, item_id: str = "x") -> nu.Shape:
@@ -235,11 +235,11 @@ async def test_a_hit_on_an_item_never_written_draws_blank(store):
         assert (await _drawn(store, kind.render_hit(_at(kind, "never")))).last("text") == shown
 
 
-# --- snippets keep their data in items --------------------------------------------------
+# --- Cells keep their data in items -----------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("snippet", "kind", "value"),
+    ("module", "kind", "value"),
     [
         (text_editor, TextContent, "Basil likes sun"),
         (text_input, TextContent, "Basil"),
@@ -252,10 +252,10 @@ async def test_a_hit_on_an_item_never_written_draws_blank(store):
     ],
     ids=lambda v: getattr(v, "__name__", "").rpartition(".")[2] or None,
 )
-async def test_an_editor_keeps_its_value_in_its_cells_value_item(store, snippet, kind, value):
+async def test_an_editor_keeps_its_value_in_its_cells_value_item(store, module, kind, value):
     await store.run(
         ops.add_plane("p", ui=True, backend="async")
-        >> ops.insert_snippet("p", snippet.SNIPPET, cell_id="c")
+        >> ops.create_cell("p", module.CELL, cell_id="c")
     )
     item = kind.at((CELL, "c"), ITEM)
     await _put(store, item.value.set(value))
@@ -269,7 +269,7 @@ async def test_an_item_goes_with_its_cell(store):
     item = NumberContent.at((CELL, "c"), ITEM)
     await store.run(
         ops.add_plane("p", ui=True, backend="async")
-        >> ops.insert_snippet("p", number_input.SNIPPET, cell_id="c")
+        >> ops.create_cell("p", number_input.CELL, cell_id="c")
     )
     await _put(store, item.value.set(3.0))
     await store.run(ops.remove_cell("c"))
@@ -327,16 +327,16 @@ async def _hits(store, request: dict) -> list[tuple[str, list, str]]:
     return [(h["kind"], list(h["scope"]), h["id"]) for h in hits]
 
 
-async def test_a_search_by_kind_finds_what_snippets_keep(store):
+async def test_a_search_by_kind_finds_what_cells_keep(store):
     def kept(kind: type, cell: str, value: object) -> nu.Nu:
         return kind.at((CELL, cell), ITEM).value.set(value)
 
     await store.run(
         ops.add_plane("p", name="Budget", ui=True, backend="async")
-        >> ops.insert_snippet("p", number_input.SNIPPET, cell_id="n")
-        >> ops.insert_snippet("p", slider.SNIPPET, cell_id="s")
-        >> ops.insert_snippet("p", text_editor.SNIPPET, cell_id="t")
-        >> ops.insert_snippet("p", text_input.SNIPPET, cell_id="i")
+        >> ops.create_cell("p", number_input.CELL, cell_id="n")
+        >> ops.create_cell("p", slider.CELL, cell_id="s")
+        >> ops.create_cell("p", text_editor.CELL, cell_id="t")
+        >> ops.create_cell("p", text_input.CELL, cell_id="i")
     )
     await _put(
         store,

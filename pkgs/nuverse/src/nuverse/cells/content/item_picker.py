@@ -18,7 +18,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 from nuspace.content import Drawing, kind_name
 from nustd.ui.core import SectionRef
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from nuspace.content import Content
 
 
-__all__ = ["SNIPPET", "Link", "out"]
+__all__ = ["CELL", "Link", "out"]
 
 
 class Link(nuspace.CellState):
@@ -167,7 +167,7 @@ def out() -> nu.Nu:
     )
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "item_picker",
     "Item picker",
     source(__name__),

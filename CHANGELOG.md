@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Rename snippets to cells, matching the planes, cells and content extension points
 - Add cell, plane and space content lenses, and leave editing to editors in Items
 - Regroup snippets by category as Content views, adding Item, Items and Item picker
 - Keep snippet data in Content kinds and drop per-snippet search

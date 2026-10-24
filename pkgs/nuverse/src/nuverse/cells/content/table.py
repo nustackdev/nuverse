@@ -1,7 +1,7 @@
 """A table cell: one editable grid over the cell's rows, every tab kept live.
 
 The rows are the data: each one a :class:`~nuverse.contents.row.RowContent`
-item of the cell, by row key, all of them ``RowContent.items((CELL, cell))``,
+item of the cell, by row key, all of them ``RowContent.items((CELL_LEVEL, cell))``,
 so a search by kind finds them and any program reads and writes them by
 address. The order, the columns and the sort are how this grid shows them,
 view preferences, so they are the cell's own state: a row no order names
@@ -17,14 +17,14 @@ import nuspace
 import nustd.kv
 import nustd.ui
 import nustd.ui.table
-from nuspace import Snippet, ops
-from nuspace.content import CELL
+from nuspace import Cell, ops
+from nuspace.content import CELL as CELL_LEVEL
 
 from ...contents.row import RowContent
 from .. import source
 
 
-__all__ = ["COLUMNS", "SEED", "SNIPPET", "Grid", "Sheet", "out"]
+__all__ = ["CELL", "COLUMNS", "SEED", "Grid", "Sheet", "out"]
 
 
 #: The columns a new table starts with. Stored on first run, edited from then on.
@@ -69,7 +69,7 @@ def _here(ref: nu.Nu) -> nu.Nu:
 
 def out() -> nu.Nu:
     """Seed once, then the grid as the store holds it, for as long as the cell runs."""
-    rows = RowContent.items((CELL, ops.Here.cell))
+    rows = RowContent.items((CELL_LEVEL, ops.Here.cell))
     seed = nu.IfDo(
         Sheet.seeded.missing(),
         nu.Sequential(*(rows[k].cells.set(cells) for k, cells in SEED.items()))
@@ -84,7 +84,7 @@ def out() -> nu.Nu:
     return ops.atomic_state(_here(seed)) >> grid
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "table",
     "Table",
     source(__name__),

@@ -20,7 +20,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Snippet, ops
+from nuspace import Cell, ops
 from nustd.ui.core import SectionRef
 
 from .. import source
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from nuspace.content import Content
 
 
-__all__ = ["SNIPPET", "Open", "out"]
+__all__ = ["CELL", "Open", "out"]
 
 
 #: What the Config asks: the kind, then the scope.
@@ -184,7 +184,7 @@ def out() -> nu.Nu:
     return ops.bracketed(kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 
-SNIPPET = Snippet(
+CELL = Cell(
     "items",
     "Items",
     source(__name__),

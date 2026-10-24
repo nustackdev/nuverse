@@ -128,7 +128,7 @@ def doc_links(docs: dict, facts: dict, slug: str, base: str) -> str:
     back = text.backlinks(docs, slug)
     out = text.links_of((docs.get(slug) or {}).get("body", ""))
 
-    def snippet(line: str) -> str:
+    def excerpt(line: str) -> str:
         s = text.LINK.sub(lambda m: m.group(2) or _name(docs, m.group(1)), line)
         s = text.FACT.sub(lambda m: (facts or {}).get(m.group(1), {}).get("value", m.group(1)), s)
         s = text.MENTION.sub(lambda m: _name(docs, m.group(1)), s)
@@ -138,7 +138,7 @@ def doc_links(docs: dict, facts: dict, slug: str, base: str) -> str:
 
     lines = [f"### Linked from {len(back)} {'page' if len(back) == 1 else 'pages'}", ""]
     lines += [
-        f"- [{_name(docs, k)}]({_href(base, k)}): {snippet(line)}" for k, line in back[:12]
+        f"- [{_name(docs, k)}]({_href(base, k)}): {excerpt(line)}" for k, line in back[:12]
     ] or ["_Nothing links here yet._"]
     known = [s for s in out if s in docs]
     missing = [s for s in out if s not in docs]
@@ -255,7 +255,7 @@ def search(docs: dict, facts: dict, q: str, base: str) -> str:
     if not hits:
         return f"_Nothing matches **{q}**._"
     return "\n".join(
-        f"- [{h['title']}]({h['href']})  · _{h['kind']}_  \n  {h['snippet']}" for h in hits
+        f"- [{h['title']}]({h['href']})  · _{h['kind']}_  \n  {h['excerpt']}" for h in hits
     )
 
 
