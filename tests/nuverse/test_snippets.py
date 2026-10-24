@@ -13,28 +13,31 @@ import nu
 import nustd.kv
 from nu.lang import ScalarQuery
 from nuspace import ops
-from nuspace.content import CELL
+from nuspace.content import CELL, PLANE, SPACE, kind_name
 from nuspace.shapes import Reroot, Space
 from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel.body import Rewrites
 from nustd.ui.core import OP_NOTIFY, Frame, WsSession
 from nustd.ui.core.session import Session
-from nuverse.contents import DateContent, RowContent
-from nuverse.snippets import (
-    SNIPPETS,
-    cell_lens,
-    converter,
-    date,
-    number,
-    password,
-    plane_lens,
-    prose,
+from nuverse.contents import DateContent, FlagContent, NumberContent, RowContent, TextContent
+from nuverse.snippets import SNIPPETS
+from nuverse.snippets.content import (
+    checkbox,
+    date_picker,
+    item,
+    item_picker,
+    items,
+    number_input,
     select,
     slider,
     switch,
     table,
+    text_editor,
     text_input,
 )
+from nuverse.snippets.content._editing import ITEM, Target
+from nuverse.snippets.debugging import cell_lens, plane_lens
+from nuverse.snippets.examples import converter, password
 
 
 if TYPE_CHECKING:
@@ -233,50 +236,68 @@ async def _read(ctx: nu.Context, term: nu.Nu) -> object:
     return value
 
 
+async def _write(ctx: nu.Context, term: nu.Nu) -> None:
+    """``term`` as a program would write it: one commit to the States store."""
+    await nu.arun(ops.atomic_state(term), ctx)
+
+
+def _value(kind: type, cell: str = "c", item_id: str = ITEM) -> nu.Nu:
+    """The ``value`` of an item of ``kind`` on ``cell``, by its address."""
+    return kind.at((CELL, cell), item_id).value
+
+
+def test_every_snippet_is_one_import_line_or_an_editable_lens():
+    for snippet in SNIPPETS:
+        lines = snippet.source.strip().splitlines()
+        if snippet.group != "Debugging":
+            assert lines == [f"from nuverse.snippets.{_module(snippet)} import out"], snippet.name
+
+
+def _module(snippet: object) -> str:
+    category = {"Examples": "examples"}.get(snippet.group, "content")
+    name = {"text": "text_editor"}.get(snippet.name, snippet.name)
+    return f"{category}.{name}"
+
+
 def _shown(browser: _Browser, text: str) -> Callable[[], bool]:
     """Whether the editor was handed ``text``."""
     return lambda: any(f.ref[-1] == "text" and f.payload == text for f in browser.frames)
 
 
-async def test_set_text_reaches_a_running_editor(ctx):
+async def test_text_editor_shows_what_a_program_writes_and_keeps_what_is_typed(ctx):
     await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", prose.SNIPPET, cell_id="c"),
+        ops.add_plane("p", backend="async")
+        >> ops.insert_snippet("p", text_editor.SNIPPET, cell_id="c"),
         ctx,
     )
-    browser = _Browser()
+    browser = _Inputs()
     task = await _running(ctx, "p", "c", browser)
     try:
         await _until(_shown(browser, ""))
-        await nu.arun(prose.set_text("c", "Water the basil"), ctx)
+        await _write(ctx, _value(TextContent).set("Water the basil"))
         await _until(_shown(browser, "Water the basil"))
-        assert await _read(ctx, prose.text_of("c")) == "Water the basil"
+        browser.type("text", value="Basil likes sun")
+        await _settles(ctx, _value(TextContent), lambda v: v == "Basil likes sun")
     finally:
         task.cancel()
 
 
-async def test_set_text_on_a_missing_cell_writes_nothing(ctx):
-    await nu.arun(ops.add_plane("p", backend="async") >> prose.set_text("gone", "x"), ctx)
-    assert await _read(ctx, prose.text_of("gone")) == ""
-    assert await _read(ctx, ops.cell_exists("gone")) is False
-
-
-async def test_insert_snippet_hands_the_new_cell_to_its_ops(ctx):
-    """The id is minted when the term runs; ``into`` holds it for the ops after."""
+async def test_insert_snippet_hands_the_new_cell_to_what_follows(ctx):
+    """The id is minted when the term runs; ``into`` holds it for the writes after."""
     made = nu.let(
         "",
         lambda cell: (
-            ops.insert_snippet("p", prose.SNIPPET, into=cell)
-            >> prose.set_text(cell, "Basil likes sun")
+            ops.insert_snippet("p", text_editor.SNIPPET, into=cell)
+            >> ops.atomic_state(TextContent.at((CELL, cell), ITEM).value.set("Basil likes sun"))
         ),
     )
     await nu.arun(ops.add_plane("p", backend="async") >> made >> made, ctx)
     rows = await _read(ctx, ops.cell_rows("p"))
     assert [row["props"]["made_by"] for row in rows] == ["nuverse.text", "nuverse.text"]
-    assert [row["name"] for row in rows] == ["text", "text"]
     first, second = (row["id"] for row in rows)
     assert first != second
-    assert await _read(ctx, prose.text_of(first)) == "Basil likes sun"
-    assert await _read(ctx, prose.text_of(second)) == "Basil likes sun"
+    for cell in (first, second):
+        assert await _read(ctx, _value(TextContent, cell)) == "Basil likes sun"
 
 
 async def _settles(ctx: nu.Context, term: nu.Nu, check: Callable[[object], bool]) -> object:
@@ -293,8 +314,7 @@ async def test_table_seeds_once_and_stores_what_the_browser_asks(ctx):
         ops.add_plane("p", backend="async") >> ops.insert_snippet("p", table.SNIPPET, cell_id="c"),
         ctx,
     )
-    sheet = table.snippet.Sheet
-    order = ops.cell_state("c", nu.ToList(sheet.order))
+    order = ops.cell_state("c", nu.ToList(table.Sheet.order))
     name = RowContent.at((CELL, "c"), "r2").cells["name"]
     browser = _Browser()
     task = await _running(ctx, "p", "c", browser)
@@ -332,22 +352,65 @@ async def test_table_seeds_once_and_stores_what_the_browser_asks(ctx):
         task.cancel()
 
 
+async def test_a_row_a_program_adds_shows_last_and_leaves_the_order_alone(ctx):
+    await nu.arun(
+        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", table.SNIPPET, cell_id="c"),
+        ctx,
+    )
+    order = ops.cell_state("c", nu.ToList(table.Sheet.order))
+    browser = _Browser()
+    task = await _running(ctx, "p", "c", browser)
+    try:
+        await _until(lambda: await_order_seeded(browser))
+        rows = RowContent.items((CELL, "c"))
+        await _write(ctx, rows["a0"].cells["name"].set("Mint"))
+        await _until(lambda: "Mint" in str(browser.last("table")))
+        assert await _read(ctx, order) == ["r1", "r2", "r3"]
+    finally:
+        task.cancel()
+
+    # Painted whole, it comes after every row the order names.
+    browser = _Browser()
+    task = await _running(ctx, "p", "c", browser)
+    try:
+        await _until(lambda: await_order_seeded(browser))
+        whole = next(f.payload for f in browser.frames if f.ref[-1] == "table")
+        keys = [row["_key"] for row in whole["rows"]]
+        assert keys == ["r1", "r2", "r3", "a0"]
+    finally:
+        task.cancel()
+
+
+def await_order_seeded(browser: _Browser) -> bool:
+    """Whether the table was painted whole once."""
+    return any(f.ref[-1] == "table" and isinstance(f.payload, dict) for f in browser.frames)
+
+
 # --- inputs: user input, stored, shown back -----------------------------------------
 
 
 class _Inputs(_Browser):
-    """A session whose inputs hold what was typed, by ref name, and answer reads with it."""
+    """A session whose inputs hold what was typed, by ref path, and answer reads with it.
+
+    A read of an input nothing was typed into answers what was last written to it.
+    """
 
     def __init__(self) -> None:
         super().__init__()
-        self.values: dict[str, object] = {}
+        self.values: dict[tuple[str, ...], object] = {}
 
     async def aread(self, path: tuple[str, ...]) -> object:
-        return self.values[path[-1]]
+        typed = [k for k in self.values if path[-len(k) :] == k]
+        if typed:
+            return self.values[max(typed, key=len)]
+        written = [
+            f.payload for f in self.frames if f.ref == path and not isinstance(f.payload, dict)
+        ]
+        return written[-1] if written else ""
 
     def type(self, *names: str, value: object) -> None:
         """What an input does: hold the value locally, notify with no payload."""
-        self.values[names[-1]] = value
+        self.values[names] = value
         self.notify(next(f.ref for f in self.frames if f.ref[-len(names) :] == names), None)
 
     def shown(self, *names: str) -> list:
@@ -355,26 +418,41 @@ class _Inputs(_Browser):
         return [f.payload for f in self.frames if f.ref[-len(names) :] == names]
 
 
-async def test_number_stores_what_is_typed_and_shows_what_is_set(ctx):
-    await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", number.SNIPPET, cell_id="c"),
-        ctx,
-    )
+async def _input(ctx: nu.Context, module: object, cell: str = "c") -> tuple[_Inputs, asyncio.Task]:
+    """A cell of ``module`` made as ``cell`` on ``p``, running, its first paint done."""
+    made = ops.insert_snippet("p", module.SNIPPET, cell_id=cell)
+    there = await _read(ctx, ops.plane_exists("p"))
+    await nu.arun(made if there else ops.add_plane("p", backend="async") >> made, ctx)
     browser = _Inputs()
-    task = await _running(ctx, "p", "c", browser)
+    task = await _running(ctx, "p", cell, browser)
+    await _until(lambda: browser.shown("entry") and browser.shown("entry", "input"))
+    await _listening()
+    return browser, task
+
+
+async def _listening() -> None:
+    """A beat for a running cell's reactions to subscribe after its first paint.
+
+    An editor paints, then subscribes: a notify landing in between is lost,
+    as it would be in a browser that typed within the same milliseconds.
+    """
+    await asyncio.sleep(0.1)
+
+
+async def test_number_input_stores_what_is_typed_and_shows_what_is_set(ctx):
+    browser, task = await _input(ctx, number_input)
     try:
-        await _until(lambda: browser.shown("entry", "input"))
         # Labelled with the cell's name, bounded 0 to 100, a step of 1.
-        assert {"label": "number"} in browser.shown("entry")
+        assert {"label": "number_input"} in browser.shown("entry")
         assert {"min": 0.0} in browser.shown("entry", "input")
         assert {"max": 100.0} in browser.shown("entry", "input")
         assert {"step": 1.0} in browser.shown("entry", "input")
 
         browser.type("entry", "input", value=42)
-        await _settles(ctx, number.value_of("c"), lambda v: v == 42.0)
+        await _settles(ctx, _value(NumberContent), lambda v: v == 42.0)
 
-        # Set from outside: the running cell shows it.
-        await nu.arun(number.set_value("c", 7.5), ctx)
+        # Set by a program: the running cell shows it.
+        await _write(ctx, _value(NumberContent).set(7.5))
         await _until(lambda: {"value": 7.5} in browser.shown("entry", "input"))
 
         # Config: a bound typed is stored and applied.
@@ -389,37 +467,33 @@ async def test_number_stores_what_is_typed_and_shows_what_is_set(ctx):
         task.cancel()
 
 
-async def _input(ctx: nu.Context, kind: object) -> tuple[_Inputs, asyncio.Task]:
-    """A cell of ``kind`` made as ``c`` on ``p``, running, its first paint done."""
-    await nu.arun(
-        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", kind.SNIPPET, cell_id="c"),
-        ctx,
-    )
-    browser = _Inputs()
-    task = await _running(ctx, "p", "c", browser)
-    await _until(lambda: browser.shown("entry") and browser.shown("entry", "input"))
-    return browser, task
-
-
 @pytest.mark.parametrize(
-    ("kind", "typed", "stored", "set_to", "shown"),
+    ("module", "kind", "typed", "stored", "set_to", "shown"),
     [
-        (text_input, "Basil", "Basil", "Thyme", "Thyme"),
-        (switch, True, True, False, False),
-        (select, "Two", "Two", "Three", "Three"),
-        (date, "2026-10-06", datetime.date(2026, 10, 6), "2027-01-01", "2027-01-01"),
-        (slider, 30, 30.0, 55.0, {"value": 55.0}),
+        (text_input, TextContent, "Basil", "Basil", "Thyme", "Thyme"),
+        (switch, FlagContent, True, True, False, False),
+        (checkbox, FlagContent, True, True, False, False),
+        (select, TextContent, "Two", "Two", "Three", "Three"),
+        (
+            date_picker,
+            DateContent,
+            "2026-10-06",
+            datetime.date(2026, 10, 6),
+            "2027-01-01",
+            "2027-01-01",
+        ),
+        (slider, NumberContent, 30, 30.0, 55.0, {"value": 55.0}),
     ],
-    ids=lambda v: getattr(v, "__name__", None),
+    ids=lambda v: getattr(v, "__name__", "").rpartition(".")[2] or None,
 )
 async def test_an_input_stores_what_is_typed_and_shows_what_is_set(
-    ctx, kind, typed, stored, set_to, shown
+    ctx, module, kind, typed, stored, set_to, shown
 ):
-    browser, task = await _input(ctx, kind)
+    browser, task = await _input(ctx, module)
     try:
         browser.type("entry", "input", value=typed)
-        await _settles(ctx, kind.value_of("c"), lambda v: v == stored)
-        await nu.arun(kind.set_value("c", set_to), ctx)
+        await _settles(ctx, _value(kind), lambda v: v == stored)
+        await _write(ctx, _value(kind).set(set_to))
         await _until(lambda: browser.shown("entry", "input")[-1] == shown)
         # Labelled by the cell's name, renamed from Config.
         browser.type("settings", "name", value="mine")
@@ -430,14 +504,13 @@ async def test_an_input_stores_what_is_typed_and_shows_what_is_set(
 
 
 async def test_a_cleared_date_is_gone(ctx):
-    browser, task = await _input(ctx, date)
+    browser, task = await _input(ctx, date_picker)
     try:
         assert browser.shown("entry", "input")[0] == ""
         browser.type("entry", "input", value="2026-10-06")
-        await _settles(ctx, date.value_of("c"), lambda v: v == datetime.date(2026, 10, 6))
+        await _settles(ctx, _value(DateContent), lambda v: v == datetime.date(2026, 10, 6))
         browser.type("entry", "input", value="")
-        held = DateContent.at((CELL, "c"), date.snippet.ITEM).value.exists()
-        await _settles(ctx, held, lambda v: not v)
+        await _settles(ctx, _value(DateContent).exists(), lambda v: not v)
     finally:
         task.cancel()
 
@@ -445,7 +518,7 @@ async def test_a_cleared_date_is_gone(ctx):
 async def test_select_options_come_from_config(ctx):
     browser, task = await _input(ctx, select)
     try:
-        assert {"options": select.snippet.OPTIONS} in browser.shown("entry", "input")
+        assert {"options": select.OPTIONS} in browser.shown("entry", "input")
         browser.type("settings", "options", value=["Red", "Blue"])
         await _until(lambda: browser.shown("entry", "input")[-1] == {"options": ["Red", "Blue"]})
         assert browser.shown("settings", "options")[-1] == ["Red", "Blue"]
@@ -460,6 +533,151 @@ async def test_slider_range_comes_from_config(ctx):
         browser.type("settings", "max", value=10)
         await _until(lambda: {"max": 10.0} in browser.shown("entry", "input"))
         assert {"value": 10.0} in browser.shown("settings", "max")
+    finally:
+        task.cancel()
+
+
+# --- one item, many editors ----------------------------------------------------------
+
+
+async def test_config_points_an_editor_at_another_cells_item(ctx):
+    mine, first = await _input(ctx, text_input, "a")
+    theirs, second = await _input(ctx, text_input, "b")
+    try:
+        # Its Config shows where its item is: this cell's value.
+        assert theirs.shown("item", "level", "input")[-1] == CELL
+        assert theirs.shown("item", "id")[-1] == ""
+
+        mine.type("entry", "input", value="Basil")
+        await _settles(ctx, _value(TextContent, "a"), lambda v: v == "Basil")
+
+        # Pointed at a's item, b shows it and edits it.
+        theirs.type("item", "scope", value="a")
+        target = ops.cell_state("b", Target.target)
+        await _settles(ctx, target, lambda v: (v or {}).get("scope") == "a")
+        await _until(lambda: theirs.shown("entry", "input")[-1] == "Basil")
+        theirs.type("entry", "input", value="Thyme")
+        await _settles(ctx, _value(TextContent, "a"), lambda v: v == "Thyme")
+        await _until(lambda: mine.shown("entry", "input")[-1] == "Thyme")
+        # b's own item was never written.
+        assert await _read(ctx, _value(TextContent, "b").exists()) is False
+    finally:
+        first.cancel()
+        second.cancel()
+
+
+@pytest.mark.parametrize(
+    ("level", "scope", "item_id"), [(PLANE, "", "title"), (SPACE, "", "readme"), (CELL, "x", "v")]
+)
+async def test_a_program_points_an_editor_at_any_scope(ctx, level, scope, item_id):
+    await nu.arun(
+        ops.add_plane("p", backend="async")
+        >> ops.insert_snippet("p", number_input.SNIPPET, cell_id="c"),
+        ctx,
+    )
+    pointed = {"level": level, "scope": scope, "id": item_id}
+    await _write(ctx, ops.cell_state("c", Target.target.set(pointed)))
+    browser = _Inputs()
+    task = await _running(ctx, "p", "c", browser)
+    try:
+        await _until(lambda: browser.shown("entry", "input"))
+        await _listening()
+        browser.type("entry", "input", value=12)
+        owner = {PLANE: "p", SPACE: "", CELL: scope}[level]
+        held = NumberContent.at((level, owner), item_id).value
+        await _settles(ctx, held, lambda v: v == 12.0)
+    finally:
+        task.cancel()
+
+
+# --- items of any kind ---------------------------------------------------------------
+
+
+async def test_item_draws_any_item_in_full_and_again_when_it_changes(ctx):
+    await nu.arun(
+        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", item.SNIPPET, cell_id="c"),
+        ctx,
+    )
+    await _write(ctx, _value(TextContent).set("# Basil"))
+    browser = _Inputs()
+    task = await _running(ctx, "p", "c", browser)
+    try:
+        # Left as it is: its own cell's text, drawn by the kind's render.
+        await _until(lambda: browser.shown("body") and browser.shown("body")[-1] == "# Basil")
+        await _write(ctx, _value(TextContent).set("# Thyme"))
+        await _until(lambda: browser.shown("body")[-1] == "# Thyme")
+
+        # Pointed at a number on the plane.
+        await _write(ctx, NumberContent.at((PLANE, "p"), "n").value.set(42.0))
+        number = kind_name(NumberContent)
+        pointed = {"kind": number, "level": PLANE, "scope": "", "id": "n"}
+        await _write(ctx, ops.cell_state("c", Target.target.set(pointed)))
+        await _until(lambda: {"value": "42"} in browser.shown("stat"))
+        assert browser.shown("which", "kind", "input")[-1] == number
+    finally:
+        task.cancel()
+
+
+async def test_items_lists_adds_opens_edits_and_removes(ctx):
+    await nu.arun(
+        ops.add_plane("p", backend="async") >> ops.insert_snippet("p", items.SNIPPET, cell_id="c"),
+        ctx,
+    )
+    held = TextContent.items((CELL, "c"))
+    await _write(ctx, held["one"].value.set("Basil"))
+    browser = _Inputs()
+    task = await _running(ctx, "p", "c", browser)
+    opened = ops.cell_state("c", items.Open.opened)
+    try:
+        # Each item a line drawn by its kind's render_hit.
+        await _until(lambda: "Basil" in browser.shown("i_one", "hit", "text"))
+
+        # Add: a new item, opened, edited through its field.
+        browser.notify((*browser.path("lines")[:-1], "head", "add"), None)
+        made = await _settles(ctx, opened, lambda v: bool(v))
+        assert sorted(await _read(ctx, nu.list(held.keys()))) == sorted(["one", made])
+        await _until(lambda: browser.shown("form", "value", "input"))
+        browser.type("form", "value", "input", value="Thyme")
+        await _settles(ctx, held[made].value, lambda v: v == "Thyme")
+        await _until(lambda: "Thyme" in browser.shown(f"i_{made}", "hit", "text"))
+
+        # Open another, then remove it.
+        browser.notify((*browser.path("lines"), "i_one", "open"), None)
+        await _settles(ctx, opened, lambda v: v == "one")
+        browser.notify((*browser.path("lines"), "i_one", "remove"), None)
+        await _settles(ctx, nu.list(held.keys()), lambda v: v == [made])
+        await _settles(ctx, opened, lambda v: v == "")
+    finally:
+        task.cancel()
+
+
+async def test_item_picker_keeps_the_picked_items_address(ctx):
+    await nu.arun(
+        ops.add_plane("p", backend="async")
+        >> ops.insert_snippet("p", item_picker.SNIPPET, cell_id="c"),
+        ctx,
+    )
+    await _write(
+        ctx,
+        _value(TextContent, "x").set("Basil")
+        >> TextContent.at((PLANE, "p"), "title").value.set("Garden"),
+    )
+    browser = _Inputs()
+    task = await _running(ctx, "p", "c", browser)
+    link = ops.cell_state("c", item_picker.Link.address)
+    try:
+        # Every text, cells first, then planes.
+        await _until(lambda: "Garden" in browser.shown("c1", "hit", "text"))
+        assert "Basil" in browser.shown("c0", "hit", "text")
+        assert "Nothing picked." in browser.shown("none")
+
+        browser.notify((*browser.path("rows"), "c1", "pick"), None)
+        picked = await _settles(ctx, link, lambda v: bool(v))
+        assert picked == {"kind": kind_name(TextContent), "scope": [PLANE, "p"], "id": "title"}
+        await _until(lambda: "Garden" in browser.shown("picked", "hit", "text"))
+
+        browser.notify((*browser.path("hit")[:-1], "unpick"), None)
+        await _settles(ctx, link.exists(), lambda v: not v)
     finally:
         task.cancel()
 

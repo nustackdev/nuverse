@@ -1,16 +1,16 @@
-"""The snippets ``/`` inserts, one package each.
+"""The snippets ``/`` inserts, one module each, by category.
 
-A snippet's package keeps the cell's real code apart from what a cell
-stores. ``snippet.py`` is the code: ``out()`` and the shapes it keeps its
-state in. ``shim.py`` is the few lines stored as a cell's prog, which import
-that code and bind its ``out()`` as the cell's ``out``, so a change to the
-code reaches every cell already made from it. ``ext.py`` registers the snippet, with the shim's
-text as its source, and ``ops.py`` holds the ops on its cells. A file is
-there only when the snippet has one: a snippet built on another's code has
-no ``snippet.py``, one with nothing to write or read has no ``ops.py``.
+- :mod:`.content`: views and editors over content items
+  (:mod:`nuverse.contents`): text, inputs, items and the table.
+- :mod:`.debugging`: lenses on the store.
+- :mod:`.examples`: small programs showing what a cell can do.
 
-Each package re-exports its ``SNIPPET`` and its ops. A placeholder's
-``SNIPPET`` is None, and it is left out of :data:`SNIPPETS`.
+A snippet is a view over content items: it reads and writes them by
+address and exposes no data ops of its own. A snippet module is the cell's
+real code, ``out()`` and the shapes it keeps its own state in, and its
+``SNIPPET``, registered with :func:`source` of the module as the cell's
+prog: one import line, so a change to the code reaches every cell already
+made from it.
 
 Nothing here imports a snippet up front. A cell's prog imports only its own
 snippet, and importing this package pulled in every other one with it, on
@@ -24,27 +24,35 @@ import importlib
 from typing import Any
 
 
-__all__ = ["SNIPPETS"]
+__all__ = ["SNIPPETS", "source"]
 
 
-#: The snippet packages, in menu order.
+#: The snippet modules, by category, in menu order.
 _ORDER = (
-    "prose",
-    "table",
-    "text_input",
-    "number",
-    "slider",
-    "switch",
-    "select",
-    "date",
-    "code",
-    "lens",
-    "plane_lens",
-    "cell_lens",
-    "ticker",
-    "password",
-    "converter",
+    "content.text_editor",
+    "content.table",
+    "content.item",
+    "content.items",
+    "content.item_picker",
+    "content.text_input",
+    "content.number_input",
+    "content.slider",
+    "content.switch",
+    "content.checkbox",
+    "content.select",
+    "content.date_picker",
+    "debugging.lens",
+    "debugging.plane_lens",
+    "debugging.cell_lens",
+    "examples.ticker",
+    "examples.password",
+    "examples.converter",
 )
+
+
+def source(module: str) -> str:
+    """A cell's prog for the snippet in ``module``: one line, importing its ``out``."""
+    return f"from {module} import out\n"
 
 
 def __getattr__(name: str) -> Any:  # noqa: ANN401
@@ -53,6 +61,6 @@ def __getattr__(name: str) -> Any:  # noqa: ANN401
         msg = f"module {__name__!r} has no attribute {name!r}"
         raise AttributeError(msg)
     modules = (importlib.import_module(f"{__name__}.{mod}") for mod in _ORDER)
-    snippets = tuple(module.SNIPPET for module in modules if module.SNIPPET is not None)
+    snippets = tuple(module.SNIPPET for module in modules)
     globals()["SNIPPETS"] = snippets
     return snippets

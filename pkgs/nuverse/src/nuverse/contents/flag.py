@@ -1,6 +1,6 @@
 """Flag: an on or off any cell keeps, found by which.
 
-What switch cells keep, one item each.
+What switch and checkbox cells keep, one item each.
 """
 
 from __future__ import annotations

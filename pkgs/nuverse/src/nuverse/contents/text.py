@@ -1,6 +1,6 @@
 """Text: a string any cell keeps, found by the words in it.
 
-What prose, text input and select cells keep, one item each.
+What text editor, text input and select cells keep, one item each.
 """
 
 from __future__ import annotations

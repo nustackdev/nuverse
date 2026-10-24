@@ -29,16 +29,27 @@ def test_importing_the_packages_loads_no_member():
 
 
 def test_a_cell_prog_loads_only_its_own_snippet():
-    loaded = _loaded("from nuverse.snippets.table import snippet")
-    assert not [m for m in loaded if m.startswith("nuverse.snippets.prose")]
+    loaded = _loaded("from nuverse.snippets.content.table import out")
+    snippets = [m for m in loaded if m.startswith("nuverse.snippets.")]
+    assert snippets == ["nuverse.snippets.content", "nuverse.snippets.content.table"]
     # Its rows' kind, and the text kind whose word matching a row shares.
     kinds = [m for m in loaded if m.startswith("nuverse.contents.")]
     assert kinds == ["nuverse.contents.row", "nuverse.contents.text"]
+
+
+def test_an_editor_loads_its_kind_and_what_editors_share():
+    loaded = _loaded("from nuverse.snippets.content.slider import out")
+    assert [m for m in loaded if m.startswith(("nuverse.snippets.", "nuverse.contents."))] == [
+        "nuverse.contents.number",
+        "nuverse.snippets.content",
+        "nuverse.snippets.content._editing",
+        "nuverse.snippets.content.slider",
+    ]
 
 
 def test_the_registries_load_every_member_in_order():
     from nuverse.planes import PLANES
     from nuverse.snippets import SNIPPETS
 
-    assert [s.name for s in SNIPPETS][:3] == ["text", "table", "text_input"]
+    assert [s.name for s in SNIPPETS][:3] == ["text", "table", "item"]
     assert PLANES[0].name == "jobs"

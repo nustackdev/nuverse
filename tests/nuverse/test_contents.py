@@ -24,8 +24,17 @@ from nuverse.contents import (
     RowContent,
     TextContent,
 )
-from nuverse.snippets import date, number, prose, select, slider, switch, text_input
-from nuverse.snippets.table import snippet as table
+from nuverse.snippets.content import (
+    checkbox,
+    date_picker,
+    number_input,
+    select,
+    slider,
+    switch,
+    text_editor,
+    text_input,
+)
+from nuverse.snippets.content._editing import DEFAULT_KIND, ITEM
 
 
 def _at(kind: type, item_id: str = "x") -> nu.Shape:
@@ -50,6 +59,10 @@ def test_every_kind_is_registered_by_its_importable_name():
         "nuverse.contents.row.RowContent",
     ]
     assert nuverse.extension().contents == CONTENTS
+
+
+def test_a_viewer_of_any_kind_shows_text_by_default():
+    assert DEFAULT_KIND == kind_name(TextContent)
 
 
 def test_each_kind_asks_by_its_keywords():
@@ -228,52 +241,43 @@ async def test_a_hit_on_an_item_never_written_draws_blank(store):
 @pytest.mark.parametrize(
     ("snippet", "kind", "value"),
     [
+        (text_editor, TextContent, "Basil likes sun"),
         (text_input, TextContent, "Basil"),
         (select, TextContent, "Two"),
-        (number, NumberContent, 42.0),
+        (number_input, NumberContent, 42.0),
         (slider, NumberContent, 7.5),
         (switch, FlagContent, True),
-        (date, DateContent, datetime.date(2026, 10, 6)),
+        (checkbox, FlagContent, True),
+        (date_picker, DateContent, datetime.date(2026, 10, 6)),
     ],
-    ids=lambda v: getattr(v, "__name__", None),
+    ids=lambda v: getattr(v, "__name__", "").rpartition(".")[2] or None,
 )
-async def test_an_input_keeps_its_value_in_its_item(store, snippet, kind, value):
+async def test_an_editor_keeps_its_value_in_its_cells_value_item(store, snippet, kind, value):
     await store.run(
         ops.add_plane("p", ui=True, backend="async")
         >> ops.insert_snippet("p", snippet.SNIPPET, cell_id="c")
-        >> snippet.set_value("c", value)
     )
-    item = kind.at((CELL, "c"), snippet.snippet.ITEM)
-    assert await store.read(item.value) == value
+    item = kind.at((CELL, "c"), ITEM)
+    await _put(store, item.value.set(value))
+    assert ITEM == "value"
     assert await store.read(kind.match(item)) is True
     # Not in the cell's own state, which keeps only what configures it.
     assert "value" not in (await store.read(States.cells["c"].extract()) or {})
 
 
-async def test_text_keeps_its_text_in_its_item(store):
-    await store.run(
-        ops.add_plane("p", ui=True, backend="async")
-        >> ops.insert_snippet("p", prose.SNIPPET, cell_id="c")
-        >> prose.set_text("c", "Basil likes sun")
-    )
-    item = TextContent.at((CELL, "c"), prose.snippet.ITEM)
-    assert await store.read(TextContent.match(item, text="basil")) is True
-    assert await store.read(TextContent.match(item, text="mint")) is False
-
-
 async def test_an_item_goes_with_its_cell(store):
+    item = NumberContent.at((CELL, "c"), ITEM)
     await store.run(
         ops.add_plane("p", ui=True, backend="async")
-        >> ops.insert_snippet("p", number.SNIPPET, cell_id="c")
-        >> number.set_value("c", 3.0)
-        >> ops.remove_cell("c")
+        >> ops.insert_snippet("p", number_input.SNIPPET, cell_id="c")
     )
-    item = NumberContent.at((CELL, "c"), number.snippet.ITEM)
+    await _put(store, item.value.set(3.0))
+    await store.run(ops.remove_cell("c"))
     assert await store.read(item.value.exists()) is False
 
 
 async def test_a_table_keeps_one_row_item_per_row(store):
-    rows = table.rows("c")
+    rows = RowContent.items((CELL, "c"))
     await _put(
         store,
         rows["r1"].cells["name"].set("Basil"),
@@ -285,6 +289,20 @@ async def test_a_table_keeps_one_row_item_per_row(store):
         assert await store.read(RowContent.match(item, text=name)) is True
     # A plane's items of the same kind are apart from a cell's of the same id.
     assert await store.read(RowContent.match(RowContent.at((PLANE, "c"), "r1"))) is False
+
+
+async def test_find_reaches_every_items_of_a_kind_from_a_program(store):
+    await _put(
+        store,
+        NumberContent.at((CELL, "n"), ITEM).value.set(250.0),
+        NumberContent.at((PLANE, "p"), "budget").value.set(40.0),
+        NumberContent.at((CELL, "s"), ITEM).value.set(25.0),
+    )
+    found = await store.read(NumberContent.find(min=30))
+    assert [(a["scope"], a["id"], item) for a, item in found] == [
+        ([CELL, "n"], ITEM, {"value": 250.0}),
+        ([PLANE, "p"], "budget", {"value": 40.0}),
+    ]
 
 
 # --- search, by kind ------------------------------------------------------------------
@@ -310,26 +328,32 @@ async def _hits(store, request: dict) -> list[tuple[str, list, str]]:
 
 
 async def test_a_search_by_kind_finds_what_snippets_keep(store):
+    def kept(kind: type, cell: str, value: object) -> nu.Nu:
+        return kind.at((CELL, cell), ITEM).value.set(value)
+
     await store.run(
         ops.add_plane("p", name="Budget", ui=True, backend="async")
-        >> ops.insert_snippet("p", number.SNIPPET, cell_id="n")
-        >> number.set_value("n", 250)
+        >> ops.insert_snippet("p", number_input.SNIPPET, cell_id="n")
         >> ops.insert_snippet("p", slider.SNIPPET, cell_id="s")
-        >> slider.set_value("s", 25)
-        >> ops.insert_snippet("p", prose.SNIPPET, cell_id="t")
-        >> prose.set_text("t", "Basil likes sun")
+        >> ops.insert_snippet("p", text_editor.SNIPPET, cell_id="t")
         >> ops.insert_snippet("p", text_input.SNIPPET, cell_id="i")
-        >> text_input.set_value("i", "mint")
     )
-    await _put(store, table.rows("g")["r1"].cells["name"].set("Basil"))
+    await _put(
+        store,
+        kept(NumberContent, "n", 250.0),
+        kept(NumberContent, "s", 25.0),
+        kept(TextContent, "t", "Basil likes sun"),
+        kept(TextContent, "i", "mint"),
+        RowContent.items((CELL, "g"))["r1"].cells["name"].set("Basil"),
+    )
     numbers = kind_name(NumberContent)
-    assert await _hits(store, {numbers: {"min": 100}}) == [(numbers, [CELL, "n"], "value")]
+    assert await _hits(store, {numbers: {"min": 100}}) == [(numbers, [CELL, "n"], ITEM)]
     # Asked nothing, every number, a slider's too.
     assert sorted(await _hits(store, {numbers: {}})) == [
-        (numbers, [CELL, "n"], "value"),
-        (numbers, [CELL, "s"], "value"),
+        (numbers, [CELL, "n"], ITEM),
+        (numbers, [CELL, "s"], ITEM),
     ]
     # Two kinds at once: the text cell and the table's row, not the text input.
     texts, rows = kind_name(TextContent), kind_name(RowContent)
     found = await _hits(store, {texts: {"text": "basil"}, rows: {"text": "basil"}})
-    assert found == [(texts, [CELL, "t"], "text"), (rows, [CELL, "g"], "r1")]
+    assert found == [(texts, [CELL, "t"], ITEM), (rows, [CELL, "g"], "r1")]

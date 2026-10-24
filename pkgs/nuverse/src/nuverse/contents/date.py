@@ -1,6 +1,6 @@
 """Date: a day any cell keeps, found within bounds.
 
-What date cells keep, one item each.
+What date picker cells keep, one item each.
 """
 
 from __future__ import annotations

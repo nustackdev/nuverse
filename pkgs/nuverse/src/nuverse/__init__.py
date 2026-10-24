@@ -2,8 +2,8 @@
 
 - :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``jobs``,
   ``runs``, ``workers``, ``planes``.
-- :mod:`.snippets`: what ``/`` inserts, one package each, and the ops on
-  the cells made from them.
+- :mod:`.snippets`: what ``/`` inserts, one module each, by category:
+  views and editors over content items, lenses, examples.
 - :mod:`.contents`: the content kinds the snippets keep their findable data
   in, Text, Number, Flag, Date and Row.
 

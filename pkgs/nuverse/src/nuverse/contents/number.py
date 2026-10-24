@@ -1,6 +1,6 @@
 """Number: a float any cell keeps, found within bounds.
 
-What number and slider cells keep, one item each.
+What number input and slider cells keep, one item each.
 """
 
 from __future__ import annotations
