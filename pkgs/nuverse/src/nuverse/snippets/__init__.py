@@ -2,7 +2,7 @@
 
 - :mod:`.content`: views and editors over content items
   (:mod:`nuverse.contents`): text, inputs, items and the table.
-- :mod:`.debugging`: lenses on the store.
+- :mod:`.debugging`: lenses on the store and on content items.
 - :mod:`.examples`: small programs showing what a cell can do.
 
 A snippet is a view over content items: it reads and writes them by
@@ -44,6 +44,9 @@ _ORDER = (
     "debugging.lens",
     "debugging.plane_lens",
     "debugging.cell_lens",
+    "debugging.space_content_lens",
+    "debugging.plane_content_lens",
+    "debugging.cell_content_lens",
     "examples.ticker",
     "examples.password",
     "examples.converter",

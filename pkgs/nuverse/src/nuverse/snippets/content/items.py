@@ -1,13 +1,12 @@
-"""An items cell: every item of one kind in one scope, listed, opened, edited, added and removed.
+"""An items cell: every item of one kind in one scope, listed, opened, added and removed.
 
 Its Config says which: the kind, by name, from the kinds the space
 registered, and the scope (:mod:`._editing`). Left as it is, it lists its
 own cell's text items. Each item is a line drawn with its kind's
 ``render_hit``, with Open and Remove. Add makes one with ``Content.new`` and
-opens it. The item open is drawn in full with ``render``, and below it a
-field per plain field of the kind's Shape (text, number, on or off, date)
-edits it. Which item is open is the cell's own state; the items are
-everyone's.
+opens it. The item open is drawn in full with ``render``. Editing is an
+editor cell's, pointed at the item by its address. Which item is open is the
+cell's own state; the items are everyone's.
 
 What it draws is built for the kind when it runs (:class:`._editing.ForKind`),
 so it uses the kind's own API: ``items``, ``at``, ``new``.
@@ -19,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 
 import nu
 import nuspace
-import nustd.datetime.kv
 import nustd.kv
 import nustd.ui
 from nuspace import Snippet, ops
@@ -89,11 +87,10 @@ class Line(nustd.ui.Row):
 
 
 class Opened(nustd.ui.Column):
-    """The item open: drawn in full, then its fields."""
+    """The item open, drawn in full."""
 
     title = nustd.ui.HeadingRef.slot(level=4)
     view = nustd.ui.Column.slot()
-    form = nustd.ui.Column.slot(gap=2)
 
 
 class Listing(nustd.ui.Column):
@@ -101,70 +98,6 @@ class Listing(nustd.ui.Column):
     empty = nustd.ui.EmptyStateRef.slot()
     lines = nustd.ui.Column.slot(gap=1)
     opened = Opened.slot(gap=3)
-
-
-class TextField(nustd.ui.Column):
-    label = nustd.ui.TextRef.slot()
-    input = nustd.ui.InputRef.slot()
-
-
-class NumberField(nustd.ui.Column):
-    label = nustd.ui.TextRef.slot()
-    input = nustd.ui.NumberInputRef.slot()
-
-
-class FlagField(nustd.ui.Column):
-    label = nustd.ui.TextRef.slot()
-    input = nustd.ui.SwitchRef.slot()
-
-
-class DateField(nustd.ui.Column):
-    label = nustd.ui.TextRef.slot()
-    input = nustd.ui.DatePickerRef.slot()
-
-
-def _field(name: str, ref: nu.Nu, under: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]] | None:
-    """One plain field of an item as an input under ``under``, both ways. None for any other field."""
-
-    def section(cls: type[nustd.ui.Column]) -> nu.Nu:
-        return SectionRef(name, section_cls=cls, parent_ref=under)
-
-    if isinstance(ref, nustd.kv.BoolRef):
-        box = section(FlagField)
-        show, typed = box.input.set(ref.fallback(False)), ref.set(nu.ToBool(box.input))
-        echo = box.input.set(ref)
-    elif isinstance(ref, (nustd.kv.FloatRef, nustd.kv.IntRef)):
-        box = section(NumberField)
-        cast = nu.ToInt if isinstance(ref, nustd.kv.IntRef) else nu.ToFloat
-        show, typed = box.input.set_value(ref.fallback(0)), ref.set(cast(box.input))
-        echo = box.input.set_value(ref)
-    elif isinstance(ref, nustd.kv.StrRef):
-        box = section(TextField)
-        show, typed = box.input.set(ref.fallback("")), ref.set(nu.ToStr(box.input))
-        echo = box.input.set(nu.str(ref))
-    elif isinstance(ref, nustd.datetime.kv.DateRef):
-        box = section(DateField)
-        day = nu.Str(box.input)
-        iso = nu.Str(nu.If(ref.exists(), nu.ToStr(ref), ""))
-        show, typed = box.input.set(iso), nu.IfDo(day == "", ref.erase(), ref.set(day))
-        echo = box.input.set(iso)
-    else:
-        return None
-    reactions = [
-        nu.ReactForever(box.input.on_change(), typed),
-        nu.ReactForever(ref.on_change(), echo),
-    ]
-    return box.label.set(name.replace("_", " ").capitalize()) >> show, reactions
-
-
-def _form(kind: type[Content[Any]], item: nu.Shape, under: nu.Nu) -> nu.Nu:
-    """An input per plain field of the kind's Shape, editing ``item``, for as long as it is open."""
-    fields = [_field(name, getattr(item, name), under) for name in kind.schema()._slots]
-    held = [f for f in fields if f is not None]
-    if not held:
-        return nu.Noop()
-    shows = nu.Sequential(*(show for show, _ in held))
-    return shows >> nu.ParallelAsync(*(r for _, reactions in held for r in reactions))
 
 
 def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
@@ -209,13 +142,7 @@ def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
         item = kind.at(scope, item_id)
         view = opened.view.erase() >> landed(kind.render(item), opened.view)
         there = ops.snapshot(items.contains(item_id))
-        shown = (
-            opened.title.set(item_id)
-            >> view
-            >> nu.ParallelAsync(
-                _form(kind, item, opened.form), nu.ReactForever(items.on_change(), view)
-            )
-        )
+        shown = opened.title.set(item_id) >> view >> nu.ReactForever(items.on_change(), view)
         return opened.erase() >> nu.IfDo((item_id != "").and_(there), shown)
 
     return nu.ParallelAsync(
@@ -261,7 +188,7 @@ SNIPPET = Snippet(
     "items",
     "Items",
     source(__name__),
-    description="Every item of one kind in one scope: open, edit, add and remove them.",
+    description="Every item of one kind in one scope: open, add and remove them.",
     group="Content",
     icon="list-checks",
 )

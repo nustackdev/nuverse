@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Add cell, plane and space content lenses, and leave editing to editors in Items
 - Regroup snippets by category as Content views, adding Item, Items and Item picker
 - Keep snippet data in Content kinds and drop per-snippet search
 - Release nudemos 0.1.2 with the Design, Ops, Data, Research and Knowledge demos

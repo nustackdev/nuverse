@@ -36,7 +36,13 @@ from nuverse.snippets.content import (
     text_input,
 )
 from nuverse.snippets.content._editing import ITEM, Target
-from nuverse.snippets.debugging import cell_lens, plane_lens
+from nuverse.snippets.debugging import (
+    cell_content_lens,
+    cell_lens,
+    plane_content_lens,
+    plane_lens,
+    space_content_lens,
+)
 from nuverse.snippets.examples import converter, password
 
 
@@ -75,7 +81,13 @@ async def ctx():
 
 
 class _Browser(WsSession):
-    """A session with no socket. Keeps frames, and plays the select's part."""
+    """A session with no socket. Keeps frames, and plays the select's part.
+
+    Attributes:
+        select: The name of the select it plays.
+    """
+
+    select = "cell"
 
     def __init__(self) -> None:
         super().__init__(ws=None)
@@ -84,11 +96,11 @@ class _Browser(WsSession):
 
     async def send(self, frame: Frame) -> None:
         self.frames.append(frame)
-        if frame.ref[-1] == "cell" and isinstance(frame.payload, str):
+        if frame.ref[-1] == self.select and isinstance(frame.payload, str):
             self.selected = frame.payload
 
     async def aread(self, path: tuple[str, ...]) -> object:
-        assert path[-1] == "cell"
+        assert path[-1] == self.select
         return self.selected
 
     def notify(self, path: tuple[str, ...], payload: object) -> None:
@@ -97,7 +109,7 @@ class _Browser(WsSession):
     def pick(self, cell_id: str) -> None:
         """What the dropdown does: select locally, notify with no payload."""
         self.selected = cell_id
-        self.notify(self.path("cell"), None)
+        self.notify(self.path(self.select), None)
 
     def path(self, name: str) -> tuple[str, ...]:
         return next(f.ref for f in self.frames if f.ref[-1] == name)
@@ -107,7 +119,7 @@ class _Browser(WsSession):
 
     def options(self) -> list:
         """The dropdown's latest list."""
-        writes = [f.payload for f in self.frames if f.ref[-1] == "cell"]
+        writes = [f.payload for f in self.frames if f.ref[-1] == self.select]
         return next(w["options"] for w in reversed(writes) if isinstance(w, dict))
 
 
@@ -212,6 +224,171 @@ async def test_cell_lens_alone_on_its_plane_browses_itself(ctx):
         await _until(lambda: any(f.ref[-1] == "lens" for f in browser.frames))
         assert browser.selected == "me"
         assert cell_lens.SNIPPET.source.startswith(_keys(browser.last("lens"))["prog"][:20])
+    finally:
+        task.cancel()
+
+
+# --- content lenses: one scope's items, by kind, raw and rendered -------------------
+
+
+class _Lens(_Browser):
+    """A content lens's session: its select picks the scope."""
+
+    select = "pick"
+
+    def shown(self, *names: str) -> list:
+        """Every payload written to the ref ending in ``names``, oldest first."""
+        return [f.payload for f in self.frames if f.ref[-len(names) :] == names]
+
+    def column(self, index: int) -> dict:
+        """``{key: preview}`` of the latest cascade's column ``index``, ``{}`` when it has none."""
+        columns = self.last("lens")["columns"]
+        return _rows(columns[index]) if index < len(columns) else {}
+
+    async def nav(self, cursor: list[str]) -> None:
+        """What a click does: the whole new cursor sent, then its cascade painted."""
+        before = len(self.frames)
+        self.notify(self.path("lens"), cursor)
+        await _until(
+            lambda: (
+                any(f.ref[-1] == "lens" for f in self.frames[before:])
+                and self.last("lens")["cursor"] == cursor
+            )
+        )
+
+
+def _rows(column: dict) -> dict:
+    return {e["key"]: e["preview"] for e in column["entries"]}
+
+
+async def _painted(browser: _Lens) -> None:
+    """The first cascade painted, and the lens listening for moves."""
+    await _until(lambda: any(f.ref[-1] == "lens" for f in browser.frames))
+    await _listening()
+
+
+TEXT, NUMBER, FLAG = kind_name(TextContent), kind_name(NumberContent), kind_name(FlagContent)
+
+
+@pytest.mark.parametrize("module", [space_content_lens, plane_content_lens, cell_content_lens])
+def test_a_content_lens_is_one_import_line(module):
+    assert module.SNIPPET.source == f"from {module.__name__} import out\n"
+    assert module.SNIPPET.group == "Debugging"
+
+
+async def test_cell_content_lens_browses_a_cells_items_by_kind(ctx):
+    await nu.arun(
+        ops.add_plane("p", backend="async")
+        >> ops.add_cell("p", cell_content_lens.SNIPPET.source, cell_id="me", name="lens")
+        >> ops.add_cell("p", "one", cell_id="c1"),
+        ctx,
+    )
+    await _write(
+        ctx,
+        TextContent.at((CELL, "me"), "value").value.set("# Basil")
+        >> NumberContent.at((CELL, "me"), "n").value.set(42.0)
+        >> TextContent.at((CELL, "c1"), "x").value.set("Thyme")
+        >> TextContent.at((PLANE, "p"), "title").value.set("Garden"),
+    )
+    browser = _Lens()
+    task = await _running(ctx, "p", "me", browser)
+    try:
+        # Its own cell first: the kinds holding its items, by title.
+        await _painted(browser)
+        assert browser.selected == "me"
+        assert browser.options() == [
+            {"value": "me", "label": "lens"},
+            {"value": "c1", "label": "c1"},
+        ]
+        assert browser.column(0) == {NUMBER: "Number", TEXT: "Text"}
+
+        # A kind: its item ids. An item: its stored fields, and drawn by its kind.
+        await browser.nav([TEXT])
+        assert browser.column(1) == {"value": ""}
+        await browser.nav([TEXT, "value"])
+        assert browser.column(2) == {"value": "# Basil"}
+        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["# Basil"])
+
+        # A write repaints both, the cursor kept.
+        await _write(ctx, TextContent.at((CELL, "me"), "value").value.set("# Thyme"))
+        await _until(lambda: browser.column(2) == {"value": "# Thyme"})
+        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["# Thyme"])
+
+        # Another cell picked: its items, from the root.
+        browser.pick("c1")
+        await _until(
+            lambda: browser.last("lens")["cursor"] == [] and browser.column(0) == {TEXT: "Text"}
+        )
+        await browser.nav([TEXT])
+        assert browser.column(1) == {"x": ""}
+    finally:
+        task.cancel()
+
+
+async def test_plane_content_lens_browses_a_planes_own_items(ctx):
+    await nu.arun(
+        ops.add_plane("p", name="Home", backend="async")
+        >> ops.add_plane("q", backend="async")
+        >> ops.add_cell("p", plane_content_lens.SNIPPET.source, cell_id="me"),
+        ctx,
+    )
+    await _write(
+        ctx,
+        TextContent.at((PLANE, "p"), "title").value.set("Garden")
+        >> NumberContent.at((CELL, "me"), "n").value.set(1.0)
+        >> FlagContent.at((PLANE, "q"), "done").value.set(True),
+    )
+    browser = _Lens()
+    task = await _running(ctx, "p", "me", browser)
+    try:
+        # Its own plane first, its cells' items left out.
+        await _painted(browser)
+        assert browser.selected == "p"
+        assert {"value": "p", "label": "Home"} in browser.options()
+        assert {"value": "q", "label": "q"} in browser.options()
+        assert browser.column(0) == {TEXT: "Text"}
+        await browser.nav([TEXT, "title"])
+        assert browser.column(2) == {"value": "Garden"}
+        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["Garden"])
+
+        browser.pick("q")
+        await _until(lambda: browser.column(0) == {FLAG: "Flag"})
+        await browser.nav([FLAG, "done"])
+        assert browser.column(2) == {"value": "True"}
+    finally:
+        task.cancel()
+
+
+async def test_space_content_lens_browses_the_spaces_own_items(ctx):
+    await nu.arun(
+        ops.add_plane("p", backend="async")
+        >> ops.add_cell("p", space_content_lens.SNIPPET.source, cell_id="me"),
+        ctx,
+    )
+    await _write(
+        ctx,
+        TextContent.space("readme").value.set("Hello")
+        >> NumberContent.at((PLANE, "p"), "n").value.set(1.0),
+    )
+    browser = _Lens()
+    task = await _running(ctx, "p", "me", browser)
+    try:
+        await _painted(browser)
+        assert "pick" not in {f.ref[-1] for f in browser.frames}
+        assert browser.column(0) == {TEXT: "Text"}
+        await browser.nav([TEXT, "readme"])
+        assert browser.column(1) == {"readme": ""}
+        assert browser.column(2) == {"value": "Hello"}
+        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["Hello"])
+
+        # A kind written later shows up.
+        await _write(ctx, NumberContent.space("n").value.set(3.0))
+        await _until(lambda: browser.column(0) == {NUMBER: "Number", TEXT: "Text"})
+
+        # A cursor naming no kind: one error column, the rest kept.
+        await browser.nav(["nope", "x"])
+        assert browser.column(0) == {NUMBER: "Number", TEXT: "Text"}
+        assert list(browser.column(1)) == ["error"]
     finally:
         task.cancel()
 
@@ -618,7 +795,7 @@ async def test_item_draws_any_item_in_full_and_again_when_it_changes(ctx):
         task.cancel()
 
 
-async def test_items_lists_adds_opens_edits_and_removes(ctx):
+async def test_items_lists_adds_opens_and_removes(ctx):
     await nu.arun(
         ops.add_plane("p", backend="async") >> ops.insert_snippet("p", items.SNIPPET, cell_id="c"),
         ctx,
@@ -632,13 +809,11 @@ async def test_items_lists_adds_opens_edits_and_removes(ctx):
         # Each item a line drawn by its kind's render_hit.
         await _until(lambda: "Basil" in browser.shown("i_one", "hit", "text"))
 
-        # Add: a new item, opened, edited through its field.
+        # Add: a new item, opened. Written by its address, as an editor does, its line follows.
         browser.notify((*browser.path("lines")[:-1], "head", "add"), None)
         made = await _settles(ctx, opened, lambda v: bool(v))
         assert sorted(await _read(ctx, nu.list(held.keys()))) == sorted(["one", made])
-        await _until(lambda: browser.shown("form", "value", "input"))
-        browser.type("form", "value", "input", value="Thyme")
-        await _settles(ctx, held[made].value, lambda v: v == "Thyme")
+        await _write(ctx, held[made].value.set("Thyme"))
         await _until(lambda: "Thyme" in browser.shown(f"i_{made}", "hit", "text"))
 
         # Open another, then remove it.
