@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nuagent"
-version = "0.2.2"
+version = "0.2.3"
 description = "nuagent: the model answers in Nu, Nu runs the answer."
 readme = "README.md"
 license = "Apache-2.0"
@@ -29,7 +29,7 @@ llm = [
 ]
 # The Chat plane, a nuspace extension: a conversation with an agent in a space.
 space = [
-    "nuspace>=0.5.4",
+    "nuspace>=0.5.7",
 ]
 
 [project.urls]

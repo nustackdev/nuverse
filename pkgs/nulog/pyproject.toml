@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nulog"
-version = "0.2.1"
+version = "0.2.2"
 description = "Fast, serverless logger built on Nu, for infinite-scale streams."
 readme = "README.md"
 license = "Apache-2.0"
@@ -24,7 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 # The Log planes, in any space: `pip install "nulog[space]"`.
 space = [
-    "nuspace",
+    "nuspace>=0.5.7",
 ]
 
 [project.urls]
