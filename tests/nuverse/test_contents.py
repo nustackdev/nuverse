@@ -14,8 +14,8 @@ from nuspace import ops
 from nuspace.content import CELL, PLANE, kind_name
 from nuspace.ext import content_spec, space_registry
 from nuspace.shapes import Reroot, Space, States
-from nuspace.system import search
 from nuspace.system.kernel.body import Rewrites
+from nuspace.system.ui import search
 from nustd.ui.core.session import Session
 from nuverse.cells.content import (
     checkbox,

@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Follow nuspace's search plane to its new home in the system ui
 - Release nuverse 0.3.4, nulog 0.2.2, nuagent 0.2.3, nudemos 0.1.3 on nuspace 0.5.7
 - Name content kinds after their classes, keyed by package, so items survive moving modules
 - Rename snippets to cells, matching the planes, cells and content extension points

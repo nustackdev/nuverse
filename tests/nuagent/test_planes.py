@@ -36,7 +36,7 @@ from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel import store
 from nuspace.system.kernel.body import Rewrites
 from nuspace.system.services import ensure_system, init, nav, reactions
-from nuspace.system.settings import ensure_settings
+from nuspace.system.ui.settings import ensure_settings
 from nustd.kv import Snapshot
 
 
