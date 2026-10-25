@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from .cells import BAR, cell
 
@@ -162,7 +162,7 @@ def out(plane):
 """)
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "memes_monitor",
     "Monitor",
     icon="activity",

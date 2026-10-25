@@ -37,7 +37,7 @@ for _kind in KINDS:
 def test_discovery_finds_the_agents_plane():
     from nuspace.ext import discover
 
-    (ext,) = [e for e in discover() if e.name == "nudemos"]
+    ext = discover()["nudemos"]
     assert replace(PLANE, name=f"nudemos.{PLANE.name}") in ext.planes
 
 

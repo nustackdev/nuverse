@@ -29,7 +29,7 @@ checks at once:
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import cells
 
@@ -41,9 +41,9 @@ _WIDE = {"editable": True, "full_width": True, "compact": True}
 
 
 def _page(
-    name: str, label: str, icon: str, page_cells: tuple[tuple[str, str], ...], *children: Plane
-) -> Plane:
-    return Plane(
+    name: str, label: str, icon: str, page_cells: tuple[tuple[str, str], ...], *children: PlaneSpec
+) -> PlaneSpec:
+    return PlaneSpec(
         f"design_{name}",
         label,
         icon=icon,
@@ -54,7 +54,7 @@ def _page(
     )
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "design",
     "Design",
     icon="palette",

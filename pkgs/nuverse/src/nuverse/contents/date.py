@@ -12,7 +12,7 @@ import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
 
 
-__all__ = ["Date", "DateContent", "DateHit", "DateView", "iso"]
+__all__ = ["CONTENT", "Date", "DateContent", "DateHit", "DateView", "iso"]
 
 
 class Date(nu.Shape):
@@ -38,7 +38,7 @@ def iso(item: Date) -> nu.Str:
     return nu.Str(nu.If(item.value.exists(), nu.ToStr(item.value), ""))
 
 
-class DateContent(nuspace.Content[Date]):
+class DateContent(nuspace.Content[Date], name="Date"):
     """The date kind: matched within bounds, drawn ISO."""
 
     @classmethod
@@ -71,3 +71,7 @@ class DateContent(nuspace.Content[Date]):
     def render_hit(cls, item: Date) -> nu.Nu:
         """The date, ISO, on one line."""
         return DateHit.text.set(iso(item))
+
+
+#: The spec nuverse registers the kind with, as ``nuverse.Date``.
+CONTENT = nuspace.ContentSpec(DateContent, description="A day, found within bounds.")

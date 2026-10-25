@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import nustd.ui.lens
-from nuspace import Cell
+from nuspace import CellSpec
 
 
 if TYPE_CHECKING:
@@ -51,7 +51,7 @@ out = lens(SHAPE, PREFIX)
 '''
 
 
-CELL = Cell(
+CELL = CellSpec(
     "lens",
     "Lens",
     _SOURCE,

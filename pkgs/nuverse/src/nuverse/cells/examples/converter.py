@@ -12,7 +12,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Cell, ops
+from nuspace import CellSpec, ops
 
 from .. import source
 
@@ -140,7 +140,7 @@ def out() -> nu.Nu:
     )
 
 
-CELL = Cell(
+CELL = CellSpec(
     "converter",
     "Unit converter",
     source(__name__),

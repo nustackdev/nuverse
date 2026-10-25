@@ -17,7 +17,7 @@ what-ifs, a cell per metric, a million web events queried as you type.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import cells, pages
 
@@ -25,7 +25,7 @@ from . import cells, pages
 __all__ = ["PLANE"]
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "data",
     "Owlbridge",
     icon="chart-line",

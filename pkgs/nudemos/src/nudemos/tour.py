@@ -6,7 +6,7 @@ creates one by one, each on its own backend, with its own cells and state.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import counter, sampled
 
@@ -33,7 +33,7 @@ out = nustd.ui.MarkdownRef("intro").set(TEXT) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "tour",
     "Nu demos",
     icon="compass",

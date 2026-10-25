@@ -12,7 +12,7 @@ job's state from there: the page holds no state of its own.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["PAGE", "SAY", "SKETCH", "STATUS", "TRANSCRIPT"]
@@ -192,7 +192,7 @@ def out(plane):
 """)
 
 
-PAGE = Plane(
+PAGE = PlaneSpec(
     "agents_page",
     "Agent",
     icon="bot",

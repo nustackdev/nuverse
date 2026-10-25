@@ -1,9 +1,9 @@
 """An item cell: any one item, of any kind, drawn in full by its kind's ``render``.
 
-Its Config says which: the kind, by name, from the kinds the space
-registered, the scope and the item's id (:mod:`._editing`). Left as it is,
-it shows its own cell's ``value`` text item. It only shows: an editor of the
-same item edits it, and every change of the kind draws it again.
+Its Config says which: the kind, by name, from the installed kinds, the
+scope and the item's id (:mod:`._editing`). Left as it is, it shows its own
+cell's ``value`` text item. It only shows: an editor of the same item edits
+it, and every change of the kind draws it again.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import nu
 import nuspace
 import nustd.ui
-from nuspace import Cell, ops
+from nuspace import CellSpec, ops
 from nuspace.content import Drawing
 
 from .. import source
@@ -74,13 +74,13 @@ def out() -> nu.Nu:
     """The item and its Config, for as long as the cell runs."""
     which = View.config.which
     show, reactions = where(which, FIELDS, shown={"kind": DEFAULT_KIND})
-    kinds = which.kind.input.set_options(ops.snapshot(kind_options()))
+    kinds = which.kind.input.set_options(kind_options())
     held = ops.snapshot(Target.target.fallback({}))
     shown = nu.ReactLatest(Target.target.on_change(), nu.let(held, _shown), initial=True)
     return ops.bracketed(kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 
-CELL = Cell(
+CELL = CellSpec(
     "item",
     "Item",
     source(__name__),

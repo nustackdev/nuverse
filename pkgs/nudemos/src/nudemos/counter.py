@@ -9,7 +9,7 @@ kept beside the count, holds them to one tick a second between them.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["ABOUT", "COUNT", "PLANE"]
@@ -72,7 +72,7 @@ out = nustd.ui.MarkdownRef("about").set(TEXT) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "counter",
     "Counter",
     icon="hash",

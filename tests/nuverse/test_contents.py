@@ -11,7 +11,8 @@ import nu
 import nustd.kv
 import nuverse
 from nuspace import ops
-from nuspace.content import CELL, PLANE, info, kind_name
+from nuspace.content import CELL, PLANE, kind_name
+from nuspace.ext import content_spec, space_registry
 from nuspace.shapes import Reroot, Space, States
 from nuspace.system import search
 from nuspace.system.kernel.body import Rewrites
@@ -27,14 +28,14 @@ from nuverse.cells.content import (
     text_input,
 )
 from nuverse.cells.content._editing import DEFAULT_KIND, ITEM
-from nuverse.contents import (
-    CONTENTS,
-    DateContent,
-    FlagContent,
-    NumberContent,
-    RowContent,
-    TextContent,
-)
+from nuverse.contents.date import DateContent
+from nuverse.contents.flag import FlagContent
+from nuverse.contents.number import NumberContent
+from nuverse.contents.row import RowContent
+from nuverse.contents.text import TextContent
+
+
+CONTENTS = nuverse.extension().contents
 
 
 def _at(kind: type, item_id: str = "x") -> nu.Shape:
@@ -49,16 +50,18 @@ async def _put(store, *writes: nu.Nu) -> None:
 # --- registered ---------------------------------------------------------------------
 
 
-def test_every_kind_is_registered_by_its_importable_name():
-    names = [kind_name(k) for k in nuverse.extension().contents]
+def test_every_kind_is_registered_by_its_package_and_name():
+    names = [kind_name(c.kind) for c in nuverse.extension().contents]
     assert names == [
-        "nuverse.contents.text.TextContent",
-        "nuverse.contents.number.NumberContent",
-        "nuverse.contents.flag.FlagContent",
-        "nuverse.contents.date.DateContent",
-        "nuverse.contents.row.RowContent",
+        "nuverse.Text",
+        "nuverse.Number",
+        "nuverse.Flag",
+        "nuverse.Date",
+        "nuverse.Row",
     ]
     assert nuverse.extension().contents == CONTENTS
+    assert [content_spec(n) for n in names] == list(CONTENTS)
+    assert list(space_registry(extensions=["nuverse"]).contents) == names
 
 
 def test_a_viewer_of_any_kind_shows_text_by_default():
@@ -66,7 +69,7 @@ def test_a_viewer_of_any_kind_shows_text_by_default():
 
 
 def test_each_kind_asks_by_its_keywords():
-    fields = {k.title(): [(f["name"], f["input"]) for f in info(k)["fields"]] for k in CONTENTS}
+    fields = {c.label: [(f.name, f.input) for f in c.kind.form()] for c in CONTENTS}
     assert fields == {
         "Text": [("text", "text")],
         "Number": [("min", "number"), ("max", "number")],

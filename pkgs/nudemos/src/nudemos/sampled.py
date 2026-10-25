@@ -16,7 +16,7 @@ time holds them to one batch per half second between them.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["ABOUT", "CHART", "FEED", "PLANE"]
@@ -124,7 +124,7 @@ out = nustd.ui.MarkdownRef("about").set(TEXT) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "sampled",
     "Sampled",
     icon="chart-line",

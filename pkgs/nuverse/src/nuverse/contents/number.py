@@ -12,7 +12,7 @@ import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
 
 
-__all__ = ["Number", "NumberContent", "NumberHit", "NumberView", "Shown"]
+__all__ = ["CONTENT", "Number", "NumberContent", "NumberHit", "NumberView", "Shown"]
 
 
 def _shown(value: float) -> str:
@@ -41,7 +41,7 @@ class NumberHit(nustd.ui.Row):
     text = nustd.ui.TextRef.slot()
 
 
-class NumberContent(nuspace.Content[Number]):
+class NumberContent(nuspace.Content[Number], name="Number"):
     """The number kind: matched within bounds, drawn as a person writes it."""
 
     @classmethod
@@ -73,3 +73,7 @@ class NumberContent(nuspace.Content[Number]):
     def render_hit(cls, item: Number) -> nu.Nu:
         """The value on one line."""
         return NumberHit.text.set(Shown(item.value.fallback(0.0)))
+
+
+#: The spec nuverse registers the kind with, as ``nuverse.Number``.
+CONTENT = nuspace.ContentSpec(NumberContent, description="A number, found within bounds.")

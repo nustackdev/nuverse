@@ -13,7 +13,7 @@ import nuspace
 import nustd.kv
 import nustd.ui
 import nustd.ui.lens
-from nuspace import Cell, ops
+from nuspace import CellSpec, ops
 
 
 if TYPE_CHECKING:
@@ -67,7 +67,7 @@ _SOURCE = f'''\
 """A lens on one cell of this plane, picked from a dropdown. Point the shape and the prefix elsewhere to browse something else of it."""
 
 import nuspace
-from nuspace import Cell, ops
+from nuspace import ops
 from {__name__} import out as lens
 
 
@@ -82,7 +82,7 @@ out = lens(
 '''
 
 
-CELL = Cell(
+CELL = CellSpec(
     "cell_lens",
     "Cell lens",
     _SOURCE,

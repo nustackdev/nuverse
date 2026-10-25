@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import Cell
+from nuspace import CellSpec
 
 from ...contents.date import Date, DateContent, iso
 from .. import source
@@ -53,7 +53,7 @@ def out() -> nu.Nu:
     return editor(DateContent, Box, _edit)
 
 
-CELL = Cell(
+CELL = CellSpec(
     "date_picker",
     "Date picker",
     source(__name__),

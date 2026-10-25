@@ -27,7 +27,7 @@ import nu
 import nuspace
 import nustd.itertools
 import nustd.time
-from nuspace import Plane, ops
+from nuspace import PlaneSpec, ops
 from nuspace.shapes import Space
 from nuspace.system.utils import snap
 
@@ -536,7 +536,7 @@ def _page(
     wide: bool = True,
 ) -> nu.Nu:
     """A page under ``parent`` with its cells, made once: a page already there is left alone."""
-    spec = Plane(made_by, kind.title(), cells=tuple(cells), backend="async")
+    spec = PlaneSpec(made_by, kind.title(), cells=tuple(cells), backend="async")
     meta = nu.Dict.of(base=base, icon=icon, editable=True, full_width=wide, **{kind: subject})
     make = ops.create_plane(spec, parent=parent, name=name, plane_id=pid_) >> ops.set_plane_meta(
         pid_, meta

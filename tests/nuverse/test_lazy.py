@@ -47,9 +47,10 @@ def test_an_editor_loads_its_kind_and_what_editors_share():
     ]
 
 
-def test_the_registries_load_every_member_in_order():
-    from nuverse.cells import CELLS
-    from nuverse.planes import PLANES
+def test_the_extension_gathers_every_spec_in_order():
+    import nuverse
 
-    assert [s.name for s in CELLS][:3] == ["text", "table", "item"]
-    assert PLANES[0].name == "jobs"
+    ext = nuverse.extension()
+    assert [s.name for s in ext.cells][:3] == ["text", "table", "item"]
+    assert ext.planes[0].name == "jobs"
+    assert [s.name for s in ext.contents] == ["Text", "Number", "Flag", "Date", "Row"]

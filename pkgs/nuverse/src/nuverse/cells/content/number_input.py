@@ -13,7 +13,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Cell
+from nuspace import CellSpec
 
 from ...contents.number import Number, NumberContent
 from .. import source
@@ -67,7 +67,7 @@ def out() -> nu.Nu:
     return editor(NumberContent, Box, _edit, first=show, also=reactions)
 
 
-CELL = Cell(
+CELL = CellSpec(
     "number_input",
     "Number input",
     source(__name__),

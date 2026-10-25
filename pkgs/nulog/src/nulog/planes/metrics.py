@@ -13,7 +13,7 @@ picker. The series list follows the store, as the stream list does.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from .cells import BAR, cell
 
@@ -131,7 +131,7 @@ def out(plane):
 """)
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "nulog_metrics",
     "Metrics",
     icon="chart-line",

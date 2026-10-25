@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import Cell
+from nuspace import CellSpec
 
 from ...contents.flag import Flag, FlagContent
 from .. import source
@@ -51,7 +51,7 @@ def out() -> nu.Nu:
     return editor(FlagContent, Box, _edit)
 
 
-CELL = Cell(
+CELL = CellSpec(
     "checkbox",
     "Checkbox",
     source(__name__),

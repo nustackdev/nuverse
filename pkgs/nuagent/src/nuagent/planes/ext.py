@@ -11,7 +11,7 @@ cells the agent adds are its own source, not shims.
 from __future__ import annotations
 
 import nu
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["COMPOSER", "PLANE", "said_prog"]
@@ -31,7 +31,7 @@ def said_prog(at: nu.IntArg) -> nu.Str:
     return nu.Str(head) + nu.str(at) + ")\n"
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "chat",
     "Chat",
     icon="messages-square",

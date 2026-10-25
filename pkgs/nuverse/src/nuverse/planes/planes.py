@@ -7,7 +7,7 @@ registered Plane that made them, and every plane.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["MADE_BY", "PLANE", "TABLE"]
@@ -102,7 +102,7 @@ out = redraws([nuspace.Space.planes.on_descendants_change("*", "*")], rows(), ta
 """
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "planes",
     "Planes",
     icon="layers",

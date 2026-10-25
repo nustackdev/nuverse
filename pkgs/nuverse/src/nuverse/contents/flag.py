@@ -12,7 +12,7 @@ import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
 
 
-__all__ = ["Flag", "FlagContent", "FlagHit", "FlagView"]
+__all__ = ["CONTENT", "Flag", "FlagContent", "FlagHit", "FlagView"]
 
 
 class Flag(nu.Shape):
@@ -39,7 +39,7 @@ def _badge(item: Flag) -> tuple[nu.Nu, nu.Nu]:
     return nu.If(on, "on", "off"), nu.If(on, "ok", "neutral")
 
 
-class FlagContent(nuspace.Content[Flag]):
+class FlagContent(nuspace.Content[Flag], name="Flag"):
     """The flag kind: matched by on or off, drawn as a badge."""
 
     @classmethod
@@ -65,3 +65,7 @@ class FlagContent(nuspace.Content[Flag]):
         """``on`` or ``off``, as a badge."""
         label, variant = _badge(item)
         return FlagHit.badge.set(label, variant=variant)
+
+
+#: The spec nuverse registers the kind with, as ``nuverse.Flag``.
+CONTENT = nuspace.ContentSpec(FlagContent, description="An on or off.")

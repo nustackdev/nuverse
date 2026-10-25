@@ -1,12 +1,12 @@
 """An items cell: every item of one kind in one scope, listed, opened, added and removed.
 
-Its Config says which: the kind, by name, from the kinds the space
-registered, and the scope (:mod:`._editing`). Left as it is, it lists its
-own cell's text items. Each item is a line drawn with its kind's
-``render_hit``, with Open and Remove. Add makes one with ``Content.new`` and
-opens it. The item open is drawn in full with ``render``. Editing is an
-editor cell's, pointed at the item by its address. Which item is open is the
-cell's own state; the items are everyone's.
+Its Config says which: the kind, by name, from the installed kinds, and
+the scope (:mod:`._editing`). Left as it is, it lists its own cell's text
+items. Each item is a line drawn with its kind's ``render_hit``, with Open
+and Remove. Add makes one with ``Content.new`` and opens it. The item open
+is drawn in full with ``render``. Editing is an editor cell's, pointed at
+the item by its address. Which item is open is the cell's own state; the
+items are everyone's.
 
 What it draws is built for the kind when it runs (:class:`._editing.ForKind`),
 so it uses the kind's own API: ``items``, ``at``, ``new``.
@@ -20,7 +20,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Cell, ops
+from nuspace import CellSpec, ops
 from nustd.ui.core import SectionRef
 
 from .. import source
@@ -178,13 +178,13 @@ def out() -> nu.Nu:
     """The items and their Config, for as long as the cell runs."""
     which = View.config.which
     show, reactions = where(which, FIELDS, shown={"kind": DEFAULT_KIND})
-    kinds = which.kind.input.set_options(ops.snapshot(kind_options()))
+    kinds = which.kind.input.set_options(kind_options())
     held = ops.snapshot(Target.target.fallback({}))
     shown = nu.ReactLatest(Target.target.on_change(), nu.let(held, _shown), initial=True)
     return ops.bracketed(kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 
-CELL = Cell(
+CELL = CellSpec(
     "items",
     "Items",
     source(__name__),

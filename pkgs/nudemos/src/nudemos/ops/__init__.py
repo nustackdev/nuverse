@@ -25,7 +25,7 @@ an incident, the status page turns, the runbook rolls it back.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import cells
 
@@ -33,7 +33,7 @@ from . import cells
 __all__ = ["PLANE"]
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "ops",
     "Ops",
     icon="server",

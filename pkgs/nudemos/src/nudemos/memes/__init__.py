@@ -21,7 +21,7 @@ extra brings it, ``pip install "nudemos[memes]"``.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import cells, monitor, overview, sync
 
@@ -29,7 +29,7 @@ from . import cells, monitor, overview, sync
 __all__ = ["PLANE"]
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "memes",
     "Memes",
     icon="flame",

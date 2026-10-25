@@ -9,8 +9,9 @@ for :data:`ITEM`). Where it points is the cell's own state
 a program can point one by writing it (``ops.cell_state(c, Target.target.set(...))``).
 
 The viewers of any kind (:mod:`.item`, :mod:`.items`, :mod:`.item_picker`)
-pick the kind too, by name, from the kinds the space registered, and build
-what they draw for it at run time with :class:`ForKind`.
+pick the kind too, by name, from the installed kinds
+(:func:`kind_options`, read off the registry where the cell is built), and
+build what they draw for it at run time with :class:`ForKind`.
 """
 
 from __future__ import annotations
@@ -24,7 +25,8 @@ import nustd.ui
 from nu.engine import Declared
 from nu.lang import ScalarQuery
 from nuspace import ops
-from nuspace.content import CELL, PLANE, SPACE, load_kind
+from nuspace.content import CELL, PLANE, SPACE
+from nuspace.ext import content_spec, content_specs
 from nustd.ui.core import Ref as UiRef
 
 
@@ -39,7 +41,6 @@ if TYPE_CHECKING:
 __all__ = [
     "DEFAULT_KIND",
     "ITEM",
-    "KINDS",
     "LEVEL_OPTIONS",
     "SECTIONS",
     "ForKind",
@@ -74,10 +75,7 @@ SECTIONS = [{"id": "settings", "label": "Config"}, {"id": "item", "label": "Item
 
 #: The kind a viewer of any kind (:mod:`.item`, :mod:`.items`, :mod:`.item_picker`)
 #: shows when its Config names none: text.
-DEFAULT_KIND = "nuverse.contents.text.TextContent"
-
-#: Every registered kind, as the host wrote it at open: name to ``{label, fields}``.
-KINDS = nuspace.Space.state.info.contents
+DEFAULT_KIND = "nuverse.Text"
 
 
 class Target(nuspace.CellState):
@@ -263,12 +261,9 @@ def bounded(
     return nu.Sequential(*(show(name) for name in held)), reactions
 
 
-def kind_options() -> nu.Nu:
-    """The registered kinds as select options, ``{value: name, label}``. A bare read of Space."""
-    names = nu.list(KINDS.keys())
-    return nu.Collect(
-        nu.Map(nu.Iter(names), lambda k: nu.Dict.of(value=k, label=KINDS[nu.Str(k)].label))
-    )
+def kind_options() -> list[dict[str, str]]:
+    """The installed kinds as select options, ``{value: name, label}``, off the registry where the cell is built."""
+    return [{"value": name, "label": spec.label} for name, spec in content_specs().items()]
 
 
 def _ui(ref: StructuredRef) -> bool:
@@ -284,7 +279,8 @@ def landed(term: nu.Nu, under: nu.Nu) -> nu.Nu:
 class ForKind(ScalarQuery):
     """The term ``build(kind, *args)`` makes for a kind known only at run time. Run it with ``nu.Eval``.
 
-    The kind is imported by name, and ``build`` called with it and the
+    The kind is found by name, through its installed spec
+    (:func:`~nuspace.ext.content_spec`), and ``build`` called with it and the
     arguments' values, plain python, so it can use the whole
     :class:`nuspace.Content` API (``items``, ``at``, ``new``, ``find``,
     ``render``). What it builds is a program of its own: its bare ui chains
@@ -302,8 +298,8 @@ class ForKind(ScalarQuery):
         build: A module level function, ``(kind, *args) -> nu.Nu``.
 
     Raises:
-        ImportError, AttributeError, TypeError: When it runs, the name is not
-            a kind that imports (:func:`~nuspace.content.load_kind`).
+        LookupError: When it runs, no installed kind has the name
+            (:func:`~nuspace.ext.content_spec`).
     """
 
     _structural = Declared(value=frozenset({1}), name="structural")
@@ -319,7 +315,7 @@ class ForKind(ScalarQuery):
         self._payload["build"] = build
 
     def _term(self, kind: object, args: Sequence[object]) -> nu.Nu:
-        made = self._payload["build"](load_kind(str(kind)), *args)
+        made = self._payload["build"](content_spec(str(kind)).kind, *args)
         return ops.bracketed(landed(made, self._children[1]))
 
     def _compile(self, nid: int, children: tuple[Callable, ...]) -> Callable:

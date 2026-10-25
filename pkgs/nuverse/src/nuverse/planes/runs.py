@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import nu
 import nuspace
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["CELLS", "COUNTS", "LIVE", "PLANE", "age", "lives"]
@@ -160,7 +160,7 @@ out = redraws(lives(), rows(), table, every=60.0)
 """
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "runs",
     "Runs",
     icon="activity",

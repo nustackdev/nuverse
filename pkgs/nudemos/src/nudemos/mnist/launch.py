@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["FORM", "PLANE", "RUNS"]
@@ -156,7 +156,7 @@ def out(plane):
 """
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "mnist_launch",
     "Launch",
     icon="rocket",

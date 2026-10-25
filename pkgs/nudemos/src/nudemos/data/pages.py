@@ -11,7 +11,7 @@ Every dashboard cell is the same few lines: :func:`~.kit.read` a view from
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from .cells import BAR, FILTERS, cell
 
@@ -19,8 +19,8 @@ from .cells import BAR, FILTERS, cell
 __all__ = ["CUSTOMER_CELLS", "PAGES"]
 
 
-def _page(name: str, label: str, icon: str, description: str, cells: tuple) -> Plane:
-    return Plane(
+def _page(name: str, label: str, icon: str, description: str, cells: tuple) -> PlaneSpec:
+    return PlaneSpec(
         f"data_{name}",
         label,
         icon=icon,

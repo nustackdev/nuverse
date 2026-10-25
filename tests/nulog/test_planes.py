@@ -145,9 +145,9 @@ async def _stop(task: asyncio.Task) -> None:
 
 
 def test_the_extension_registers_the_log_plane():
-    reg = space_registry(extensions=[nulog.extension()], discover=False)
-    assert "log" in reg.planes
-    spec = reg.planes["log"]
+    reg = space_registry(extensions=["nulog"])
+    assert list(reg.planes) == ["nulog.log"]
+    spec = reg.planes["nulog.log"]
     assert [c.name for c in spec.children] == ["nulog_messages", "nulog_metrics", "nulog_config"]
     assert spec.backend == "async" and all(c.backend == "async" for c in spec.children)
 

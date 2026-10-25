@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from .cells import BAR, cell
 
@@ -110,7 +110,7 @@ out = nustd.ui.MarkdownRef("about").set(TEXT) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "nulog_config",
     "Config",
     icon="cog",

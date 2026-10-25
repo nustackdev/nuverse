@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nuspace import Cell
+from nuspace import CellSpec
 from nuspace.content import SPACE
 
 from .. import source
@@ -23,7 +23,7 @@ def out() -> nu.Nu:
     return browse(SPACE, "")
 
 
-CELL = Cell(
+CELL = CellSpec(
     "space_content_lens",
     "Space content lens",
     source(__name__),

@@ -21,7 +21,7 @@ Needs nuspace: install ``nulog[space]``. ``import nulog`` never loads this.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import config, messages, metrics, overview
 from .cells import BAR
@@ -34,7 +34,7 @@ __all__ = ["PLANE"]
 #: The planes under the root, in order.
 CHILDREN = (messages.PLANE, metrics.PLANE, config.PLANE)
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     ROOT,
     "Log",
     icon="database",

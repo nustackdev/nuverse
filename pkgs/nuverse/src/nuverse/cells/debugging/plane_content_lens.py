@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nuspace import Cell, Space, ops
+from nuspace import CellSpec, Space, ops
 from nuspace.content import PLANE
 
 from .. import source
@@ -28,7 +28,7 @@ def out() -> nu.Nu:
     return picked(PLANE, options, ops.Here.plane, Space.planes.on_children_change())
 
 
-CELL = Cell(
+CELL = CellSpec(
     "plane_content_lens",
     "Plane content lens",
     source(__name__),

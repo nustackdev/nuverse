@@ -14,7 +14,7 @@ from nu.lang.sentinels import UNSET, Unset
 from .text import matches
 
 
-__all__ = ["SEPARATOR", "Line", "Row", "RowContent", "RowHit", "RowView", "line"]
+__all__ = ["CONTENT", "SEPARATOR", "Line", "Row", "RowContent", "RowHit", "RowView", "line"]
 
 
 #: What stands between two cells of a row drawn on one line.
@@ -61,7 +61,7 @@ def line(item: Row) -> nu.Str:
     return nu.Str(Line(_cells(item)))
 
 
-class RowContent(nuspace.Content[Row]):
+class RowContent(nuspace.Content[Row], name="Row"):
     """The row kind: matched by the words in any of its cells, drawn on one line."""
 
     @classmethod
@@ -85,3 +85,9 @@ class RowContent(nuspace.Content[Row]):
     def render_hit(cls, item: Row) -> nu.Nu:
         """The row's cells on one line."""
         return RowHit.text.set(line(item))
+
+
+#: The spec nuverse registers the kind with, as ``nuverse.Row``.
+CONTENT = nuspace.ContentSpec(
+    RowContent, description="A table row, found by the words in its cells."
+)

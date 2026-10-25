@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nuspace import Cell, Space, ops
+from nuspace import CellSpec, Space, ops
 from nuspace.content import CELL as CELL_LEVEL
 
 from .. import source
@@ -31,7 +31,7 @@ def out() -> nu.Nu:
     )
 
 
-CELL = Cell(
+CELL = CellSpec(
     "cell_content_lens",
     "Cell content lens",
     source(__name__),

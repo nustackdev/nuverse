@@ -24,7 +24,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.time
-from nuspace import Plane, ops
+from nuspace import PlaneSpec, ops
 from nuspace.shapes import Space
 from nuspace.system.utils import snap
 
@@ -293,7 +293,7 @@ def _page(
     cells: tuple[tuple[str, str], ...],
 ) -> nu.Nu:
     """A page under ``parent`` with its cells, made once: a page already there is left alone."""
-    spec = Plane(f"{ROOT}_{kind}", kind.title(), cells=tuple(cells), backend="async")
+    spec = PlaneSpec(f"{ROOT}_{kind}", kind.title(), cells=tuple(cells), backend="async")
     meta = nu.Dict.of(
         base=base, icon=icon, editable=True, full_width=True, compact=True, subject=subject
     )

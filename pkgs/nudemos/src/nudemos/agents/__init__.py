@@ -23,7 +23,7 @@ of nustd) and a logged-in ``claude`` CLI. No API key: it runs on the login.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import board, orchestrate
 
@@ -31,7 +31,7 @@ from . import board, orchestrate
 __all__ = ["PLANE"]
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "agents",
     "Agents",
     icon="bot",

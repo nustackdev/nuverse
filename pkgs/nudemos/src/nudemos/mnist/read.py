@@ -22,7 +22,7 @@ page goes without it, and the two buttons still feed it.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["PLANE", "READ"]
@@ -234,7 +234,7 @@ def out(plane):
 '''
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "mnist_read",
     "Read",
     icon="pencil",

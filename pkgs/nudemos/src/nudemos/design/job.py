@@ -99,7 +99,7 @@ def cut(base: nu.StrArg, export: nu.StrArg, version: nu.StrArg, spec: nu.Nu) -> 
 
     ``spec`` is read once and baked into the job's cell. A version already cut is left alone.
     """
-    from nuspace import Plane
+    from nuspace import PlaneSpec
 
     from .cells import RELEASE
 
@@ -110,7 +110,7 @@ def cut(base: nu.StrArg, export: nu.StrArg, version: nu.StrArg, spec: nu.Nu) -> 
     )
     make = (
         ops.create_plane(
-            Plane(PAGE, "Release", cells=RELEASE, backend="async"),
+            PlaneSpec(PAGE, "Release", cells=RELEASE, backend="async"),
             parent=export,
             name=version,
             plane_id=page,

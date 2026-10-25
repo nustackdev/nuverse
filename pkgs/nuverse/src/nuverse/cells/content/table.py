@@ -17,7 +17,7 @@ import nuspace
 import nustd.kv
 import nustd.ui
 import nustd.ui.table
-from nuspace import Cell, ops
+from nuspace import CellSpec, ops
 from nuspace.content import CELL as CELL_LEVEL
 
 from ...contents.row import RowContent
@@ -84,7 +84,7 @@ def out() -> nu.Nu:
     return ops.atomic_state(_here(seed)) >> grid
 
 
-CELL = Cell(
+CELL = CellSpec(
     "table",
     "Table",
     source(__name__),

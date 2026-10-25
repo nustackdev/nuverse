@@ -28,7 +28,7 @@ week's digest and the notebook at once.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import cells
 
@@ -36,7 +36,7 @@ from . import cells
 __all__ = ["PLANE"]
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "research",
     "Research",
     icon="atom",

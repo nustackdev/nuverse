@@ -12,7 +12,7 @@ every tab overlays the same runs.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["LEADER", "OVERLAY", "PLANE", "TABLE"]
@@ -125,7 +125,7 @@ def out(plane):
 """)
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "mnist_compare",
     "Compare",
     icon="trophy",

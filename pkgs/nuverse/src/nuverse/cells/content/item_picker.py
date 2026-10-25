@@ -1,13 +1,13 @@
 """An item picker cell: picks one item of a kind and keeps its address, linking to it.
 
-Its Config names the kind, by name, from the kinds the space registered
+Its Config names the kind, by name, from the installed kinds
 (:mod:`._editing`); left as it is, text. It lists every item of the kind,
 from every scope, as ``Content.find`` walks them, each drawn with its kind's
 ``render_hit`` and a Pick button. The picked item's address,
 ``{"kind", "scope": [level, id], "id"}`` (:func:`nuspace.content.address`),
 is the cell's own state, :attr:`Link.address`: a program follows the link
-with ``load_kind`` and ``Content.at``. One item relates to another by
-address, never by holding it.
+with ``nuspace.ext.content_spec(kind).kind`` and ``Content.at``. One item
+relates to another by address, never by holding it.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Cell, ops
+from nuspace import CellSpec, ops
 from nuspace.content import Drawing, kind_name
 from nustd.ui.core import SectionRef
 
@@ -153,7 +153,7 @@ def out() -> nu.Nu:
     """The picked item, the candidates and the Config, for as long as the cell runs."""
     which = View.config.which
     show, reactions = where(which, ("kind",), shown={"kind": DEFAULT_KIND})
-    kinds = which.kind.input.set_options(ops.snapshot(kind_options()))
+    kinds = which.kind.input.set_options(kind_options())
     held = ops.snapshot(Target.target.fallback({}))
     return ops.bracketed(
         kinds
@@ -167,7 +167,7 @@ def out() -> nu.Nu:
     )
 
 
-CELL = Cell(
+CELL = CellSpec(
     "item_picker",
     "Item picker",
     source(__name__),

@@ -189,9 +189,9 @@ def _page(
     cells: tuple[tuple[str, str], ...],
 ) -> nu.Nu:
     """A page under ``parent`` with its cells, made once: a page already there is left alone."""
-    from nuspace import Plane
+    from nuspace import PlaneSpec
 
-    spec = Plane(f"{ROOT}_{kind}", kind.title(), cells=tuple(cells), backend="async")
+    spec = PlaneSpec(f"{ROOT}_{kind}", kind.title(), cells=tuple(cells), backend="async")
     meta = nu.Dict.of(base=base, icon=icon, editable=True, full_width=True, subject=subject)
     make = ops.create_plane(spec, parent=parent, name=name, plane_id=pid) >> ops.set_plane_meta(
         pid, meta

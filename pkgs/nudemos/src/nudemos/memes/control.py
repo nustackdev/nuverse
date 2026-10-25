@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import nu
 import nuspace
-from nuspace import Plane, ops
+from nuspace import PlaneSpec, ops
 from nuspace.shapes import Space
 from nuspace.system.utils import snap
 
@@ -80,7 +80,7 @@ def open_token(root: nu.StrArg, mint: nu.StrArg, nav: nu.Nu, beside: nu.StrArg =
     """
     from .token import CELLS
 
-    spec = Plane(TOKEN, "Token", cells=CELLS, backend="async")
+    spec = PlaneSpec(TOKEN, "Token", cells=CELLS, backend="async")
 
     def opened(page: nu.ObjectRef, under: nu.ObjectRef) -> nu.Nu:
         pid = nu.Str(page)

@@ -23,7 +23,8 @@ import nustd.ui
 import nustd.ui.lens
 from nu.lang import Cardinality
 from nuspace import States, ops
-from nuspace.content import Drawing, load_kind
+from nuspace.content import Drawing
+from nuspace.ext import content_spec
 from nustd.ui.lens.columns import LensFailed
 
 
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from nuspace.content import Content
+    from nuspace.ext import ContentSpec
 
 
 __all__ = ["ContentColumns", "Item", "View", "browse", "content_columns", "option", "picked"]
@@ -62,13 +64,13 @@ class View(nustd.ui.Column):
     item = Item.slot(gap=2)
 
 
-def _kinds(names: Sequence[object]) -> dict[str, type[Content[Any]]]:
-    """The kinds named in the store that import, by name, sorted. One that does not is left out."""
+def _specs(names: Sequence[object]) -> dict[str, ContentSpec]:
+    """The installed specs of the kinds named in the store, by name, sorted. One not installed is left out."""
     found = {}
     for name in sorted(str(n) for n in names):
         try:
-            found[name] = load_kind(name)
-        except (ImportError, AttributeError, TypeError):
+            found[name] = content_spec(name)
+        except LookupError:
             continue
     return found
 
@@ -90,16 +92,14 @@ def _door(key: nu.Nu, kind: str, preview: str = "") -> nu.Nu:
     return nu.Dict.of(key=key, kind=kind, preview=preview, navigable=True, vtype="")
 
 
-def _kinds_column(
-    kinds: dict[str, type[Content[Any]]], scope: tuple[str, str], max_rows: int
-) -> nu.Nu:
-    """The kinds holding items in ``scope``, one row each, its title as preview."""
+def _kinds_column(specs: dict[str, ContentSpec], scope: tuple[str, str], max_rows: int) -> nu.Nu:
+    """The kinds holding items in ``scope``, one row each, its spec's label as preview."""
 
-    def held(name: str, kind: type[Content[Any]]) -> nu.Nu:
-        count = nu.Len(nu.list(kind.items(scope).keys()))
-        return nu.List.of(count, _door(nu.Str(name), "mapping", kind.title()))
+    def held(name: str, spec: ContentSpec) -> nu.Nu:
+        count = nu.Len(nu.list(spec.kind.items(scope).keys()))
+        return nu.List.of(count, _door(nu.Str(name), "mapping", spec.label))
 
-    pairs = nu.List.of(*(held(name, kind) for name, kind in kinds.items()))
+    pairs = nu.List.of(*(held(name, spec) for name, spec in specs.items()))
     rows = (
         pairs.iter()
         .filter(lambda pair: nu.Int(nu.GetItem(pair, nu.Int(0))) > 0)
@@ -139,19 +139,19 @@ def content_columns(
         max_rows: How many rows one column ships.
     """
     scope = (level, str(scope_id))
-    kinds = _kinds(names)
+    specs = _specs(names)
     steps = tuple(str(s) for s in (cursor or ()))
-    cols = [_kinds_column(kinds, scope, max_rows)]
+    cols = [_kinds_column(specs, scope, max_rows)]
     if steps:
-        kind = kinds.get(steps[0])
-        if kind is None:
+        spec = specs.get(steps[0])
+        if spec is None:
             cols.append(LensFailed(f"{steps[0]}: no content kind of that name"))
         else:
-            cols.append(_ids_column(kind, scope, max_rows))
+            cols.append(_ids_column(spec.kind, scope, max_rows))
     head = nu.List.of(*cols)
-    if len(steps) < 2 or steps[0] not in kinds:
+    if len(steps) < 2 or steps[0] not in specs:
         return head
-    kind = kinds[steps[0]]
+    kind = specs[steps[0]].kind
     item = nustd.ui.lens.column_terms(
         kind.schema(), steps[2:], prefix=kind.at(scope, steps[1]), max_rows=max_rows
     )

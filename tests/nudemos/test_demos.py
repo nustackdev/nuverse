@@ -11,7 +11,7 @@ import nu
 import nuspace
 import nustd.kv
 from nudemos import counter, movies, sampled, tour
-from nuspace import Plane, ops
+from nuspace import PlaneSpec, ops
 from nuspace.shapes import Reroot, Space, reroot
 from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel.body import Rewrites
@@ -99,7 +99,7 @@ async def _stop(*tasks: asyncio.Task) -> None:
 def test_discovery_finds_the_tour_and_the_demos():
     from nuspace.ext import discover
 
-    (ext,) = [e for e in discover() if e.name == "nudemos"]
+    ext = discover()["nudemos"]
     assert [p.name for p in ext.planes] == [
         "nudemos.tour",
         "nudemos.counter",
@@ -117,7 +117,7 @@ def test_discovery_finds_the_tour_and_the_demos():
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.name)
-def test_each_spec_is_a_demo(spec: Plane):
+def test_each_spec_is_a_demo(spec: PlaneSpec):
     from nuspace.system.backends import BACKENDS
 
     assert spec.group == "Demos"

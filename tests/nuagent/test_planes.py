@@ -147,7 +147,7 @@ SOURCES = {
 def test_discovery_finds_the_chat_plane():
     from nuspace.ext import discover
 
-    (ext,) = [e for e in discover() if e.name == "nuagent"]
+    ext = discover()["nuagent"]
     assert [p.name for p in ext.planes] == ["nuagent.chat"]
     assert ext.planes == (replace(PLANE, name="nuagent.chat"),)
     assert nuagent.extension().planes == (PLANE,)

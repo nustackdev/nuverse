@@ -22,7 +22,7 @@ from nudemos.memes.book import Book
 from nudemos.memes.chain import decode_block
 from nudemos.memes.job import written
 from nudemos.memes.state import TOKEN, at_root, token_page
-from nuspace import Plane, ops
+from nuspace import PlaneSpec, ops
 from nuspace.shapes import Reroot, Space
 from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel.body import Rewrites
@@ -66,7 +66,7 @@ class _Browser(WsSession):
         return [f.payload for f in self.frames if f.ref and f.ref[-1] == name]
 
 
-def _small(spec: Plane) -> Plane:
+def _small(spec: PlaneSpec) -> PlaneSpec:
     """``spec`` with two launch cards, not twelve: the same cells, a smaller program to check."""
     cells = tuple((name, src.replace("\nN = 12\n", "\nN = 2\n")) for name, src in spec.cells)
     return dataclasses.replace(spec, cells=cells, children=tuple(map(_small, spec.children)))
@@ -152,7 +152,7 @@ async def test_every_cell_runs_and_draws(store):
 async def test_a_token_page_shows_its_token(store):
     await _seed(store)
     page = await store.read(token_page("m", CAP))
-    spec = Plane(TOKEN, "Token", cells=token.CELLS, backend="async")
+    spec = PlaneSpec(TOKEN, "Token", cells=token.CELLS, backend="async")
     await store.run(
         ops.create_plane(spec, parent="m", name=CAP, plane_id=page)
         >> ops.set_plane_meta(page, nu.Dict.of(base="m", mint=CAP))

@@ -14,7 +14,16 @@ import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
 
 
-__all__ = ["HIT_WIDTH", "Text", "TextContent", "TextHit", "TextView", "WordAt", "matches"]
+__all__ = [
+    "CONTENT",
+    "HIT_WIDTH",
+    "Text",
+    "TextContent",
+    "TextHit",
+    "TextView",
+    "WordAt",
+    "matches",
+]
 
 
 #: How many characters of the text a hit shows.
@@ -58,7 +67,7 @@ class TextHit(nustd.ui.Row):
     text = nustd.ui.TextRef.slot()
 
 
-class TextContent(nuspace.Content[Text]):
+class TextContent(nuspace.Content[Text], name="Text"):
     """The text kind: matched by whole words, drawn as markdown."""
 
     @classmethod
@@ -84,3 +93,7 @@ class TextContent(nuspace.Content[Text]):
         body = nu.Str(nu.str(item.value).fallback("")).replace("\n", " ").strip()
         cut = body[:HIT_WIDTH] + nu.If(body.len() > HIT_WIDTH, "…", "")
         return TextHit.text.set(cut)
+
+
+#: The spec nuverse registers the kind with, as ``nuverse.Text``.
+CONTENT = nuspace.ContentSpec(TextContent, description="A string, found by its words.")

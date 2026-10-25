@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import nu
-from nuspace import Plane, ops
+from nuspace import PlaneSpec, ops
 
 from .flows import BOARD, SCENARIO
 from .state import Agent, Flow, at, flow_at, flows_of, status_of
@@ -237,8 +237,8 @@ def out(plane):
 """
 
 
-def _plane(kind: str, label: str, icon: str, description: str) -> Plane:
-    return Plane(
+def _plane(kind: str, label: str, icon: str, description: str) -> PlaneSpec:
+    return PlaneSpec(
         f"agents_{kind}",
         label,
         icon=icon,

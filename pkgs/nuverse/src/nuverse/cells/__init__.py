@@ -12,58 +12,18 @@ real code, ``out()`` and the shapes it keeps its own state in, and its
 prog: one import line, so a change to the code reaches every cell already
 made from it.
 
-Nothing here imports a Cell up front. A cell's prog imports only its own
-Cell, and importing this package pulled in every other one with it, on
-whichever thread loaded first. :data:`CELLS` imports them all on first
-read instead.
+Nothing here imports a Cell. A cell's prog imports only its own Cell, and
+importing this package pulled in every other one with it, on whichever
+thread loaded first: two cells loading on two threads deadlocked.
+:func:`nuverse.extension` gathers the specs.
 """
 
 from __future__ import annotations
 
-import importlib
-from typing import Any
 
-
-__all__ = ["CELLS", "source"]
-
-
-#: The Cell modules, by category, in menu order.
-_ORDER = (
-    "content.text_editor",
-    "content.table",
-    "content.item",
-    "content.items",
-    "content.item_picker",
-    "content.text_input",
-    "content.number_input",
-    "content.slider",
-    "content.switch",
-    "content.checkbox",
-    "content.select",
-    "content.date_picker",
-    "debugging.lens",
-    "debugging.plane_lens",
-    "debugging.cell_lens",
-    "debugging.space_content_lens",
-    "debugging.plane_content_lens",
-    "debugging.cell_content_lens",
-    "examples.ticker",
-    "examples.password",
-    "examples.converter",
-)
+__all__ = ["source"]
 
 
 def source(module: str) -> str:
     """A cell's prog for the Cell in ``module``: one line, importing its ``out``."""
     return f"from {module} import out\n"
-
-
-def __getattr__(name: str) -> Any:  # noqa: ANN401
-    """:data:`CELLS`, every Cell ready to register, built on first read."""
-    if name != "CELLS":
-        msg = f"module {__name__!r} has no attribute {name!r}"
-        raise AttributeError(msg)
-    modules = (importlib.import_module(f"{__name__}.{mod}") for mod in _ORDER)
-    cells = tuple(module.CELL for module in modules)
-    globals()["CELLS"] = cells
-    return cells

@@ -19,7 +19,7 @@ first step. It comes with the ``mnist`` extra: ``pip install "nudemos[mnist]"``.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import compare, launch, read
 
@@ -74,7 +74,7 @@ def out(plane):
 '''
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "mnist",
     "MNIST",
     icon="network",

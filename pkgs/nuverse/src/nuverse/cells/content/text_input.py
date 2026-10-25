@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import Cell
+from nuspace import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
@@ -52,7 +52,7 @@ def out() -> nu.Nu:
     return editor(TextContent, Box, _edit)
 
 
-CELL = Cell(
+CELL = CellSpec(
     "text_input",
     "Text input",
     source(__name__),

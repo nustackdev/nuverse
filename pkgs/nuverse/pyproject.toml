@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nuverse"
 version = "0.3.3"
-description = "nuverse std: the Planes and Cells every nuspace space ships with."
+description = "Ready made spaces and extensions for common tasks."
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]

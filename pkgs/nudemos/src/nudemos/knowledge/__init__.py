@@ -32,7 +32,7 @@ themselves from the base.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import cells
 
@@ -40,7 +40,7 @@ from . import cells
 __all__ = ["PLANE"]
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "knowledge",
     "Knowledge",
     icon="sprout",

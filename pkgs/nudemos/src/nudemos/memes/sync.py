@@ -14,7 +14,7 @@ sync uses ``$NUVERSE_MEMES_RPC``, then the public mainnet endpoint.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from .cells import BAR, cell
 
@@ -150,7 +150,7 @@ out = nustd.ui.MarkdownRef("about").set(TEXT) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "memes_sync",
     "Sync",
     icon="cog",

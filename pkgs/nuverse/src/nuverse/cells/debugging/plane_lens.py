@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from nuspace import Cell
+from nuspace import CellSpec
 
 
 __all__ = ["CELL"]
@@ -22,7 +22,7 @@ out = lens(nuspace.shapes.Plane, nuspace.Space.planes[ops.Here.plane])
 '''
 
 
-CELL = Cell(
+CELL = CellSpec(
     "plane_lens",
     "Plane lens",
     _SOURCE,

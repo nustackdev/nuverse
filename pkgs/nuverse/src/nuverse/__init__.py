@@ -25,11 +25,66 @@ __all__ = ["extension"]
 
 
 def extension() -> Extension:
-    """Every nuverse Plane, Cell and content kind, as one extension."""
+    """Every nuverse Plane, Cell and content kind, as one extension.
+
+    Each spec lives beside its code, ``PLANE``, ``CELL`` or ``CONTENT`` in
+    its module, gathered here in order: Planes as the picker lists them,
+    Cells as the ``/`` menu does, kinds as the search form does.
+    """
     from nuspace import Extension
 
-    from .cells import CELLS
-    from .contents import CONTENTS
-    from .planes import PLANES
+    from .cells.content import (
+        checkbox,
+        date_picker,
+        item,
+        item_picker,
+        items,
+        number_input,
+        select,
+        slider,
+        switch,
+        table,
+        text_editor,
+        text_input,
+    )
+    from .cells.debugging import (
+        cell_content_lens,
+        cell_lens,
+        lens,
+        plane_content_lens,
+        plane_lens,
+        space_content_lens,
+    )
+    from .cells.examples import converter, password, ticker
+    from .contents import date, flag, number, row, text
+    from .planes import jobs, planes, runs, workers
 
-    return Extension(planes=PLANES, cells=CELLS, contents=CONTENTS, envs={})
+    cells = (
+        text_editor,
+        table,
+        item,
+        items,
+        item_picker,
+        text_input,
+        number_input,
+        slider,
+        switch,
+        checkbox,
+        select,
+        date_picker,
+        lens,
+        plane_lens,
+        cell_lens,
+        space_content_lens,
+        plane_content_lens,
+        cell_content_lens,
+        ticker,
+        password,
+        converter,
+    )
+    return Extension(
+        planes=tuple(m.PLANE for m in (jobs, runs, workers, planes)),
+        cells=tuple(m.CELL for m in cells),
+        contents=tuple(m.CONTENT for m in (text, number, flag, date, row)),
+        envs={},
+    )

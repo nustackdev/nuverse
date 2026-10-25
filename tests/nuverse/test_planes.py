@@ -9,6 +9,7 @@ from _support.made import MADE
 
 import nu
 import nustd.kv
+import nuverse
 from nuspace import ops
 from nuspace.ops.utils import atomic
 from nuspace.shapes import Reroot, Space, States, reroot
@@ -241,7 +242,7 @@ async def _job(store, name: str = "Nightly") -> str:
 
 
 async def test_the_jobs_plane_registers_first():
-    from nuverse.planes import PLANES
+    PLANES = nuverse.extension().planes
 
     assert PLANES[0].name == "jobs"
     assert (jobs.PLANE.label, jobs.PLANE.icon) == ("Jobs", "briefcase")
@@ -327,7 +328,8 @@ async def test_deleting_a_job_cleans_boot_and_supervision(store):
 
 def test_every_plane_names_a_registered_backend():
     from nuspace.system.backends import BACKENDS
-    from nuverse.planes import PLANES
+
+    PLANES = nuverse.extension().planes
 
     assert all(spec.backend in BACKENDS for spec in PLANES)
     assert {spec.name: spec.backend for spec in PLANES} == dict.fromkeys(

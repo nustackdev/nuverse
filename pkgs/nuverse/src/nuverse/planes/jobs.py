@@ -18,7 +18,7 @@ Three cells, meeting in the plane's shared state (``Jobs.selected``):
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["DETAIL", "MAIN", "NEW", "PLANE", "TABLE"]
@@ -353,7 +353,7 @@ out = follows(Jobs.selected, showing)
 """
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "jobs",
     "Jobs",
     icon="briefcase",

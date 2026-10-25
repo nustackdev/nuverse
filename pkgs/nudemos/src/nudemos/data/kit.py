@@ -455,11 +455,11 @@ def open_customer(
     root: nu.StrArg, cid: nu.StrArg, name: nu.StrArg, under: nu.StrArg, nav: nu.Nu
 ) -> nu.Nu:
     """Open a customer's page, made under ``under`` (the Customers page) the first time."""
-    from nuspace import Plane
+    from nuspace import PlaneSpec
 
     from .pages import CUSTOMER_CELLS
 
-    spec = Plane(CUSTOMER, "Customer", cells=CUSTOMER_CELLS, backend="async")
+    spec = PlaneSpec(CUSTOMER, "Customer", cells=CUSTOMER_CELLS, backend="async")
     pid = customer_page(root, cid)
     meta = nu.Dict.of(base=root, customer=cid, icon="lucide:user", editable=True, full_width=True)
     make = ops.create_plane(spec, parent=under, name=name, plane_id=pid) >> ops.set_plane_meta(

@@ -13,7 +13,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Cell
+from nuspace import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
@@ -86,7 +86,7 @@ def out() -> nu.Nu:
     )
 
 
-CELL = Cell(
+CELL = CellSpec(
     "select",
     "Select",
     source(__name__),

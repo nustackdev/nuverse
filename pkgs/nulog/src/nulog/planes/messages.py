@@ -15,7 +15,7 @@ follows the store: a new stream shows up in the picker on its own.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from .cells import BAR, cell
 
@@ -193,7 +193,7 @@ def out(plane):
 """)
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "nulog_messages",
     "Messages",
     icon="list",

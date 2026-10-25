@@ -26,7 +26,7 @@ its facts can bring a new person's page into People.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from . import cells
 
@@ -34,7 +34,7 @@ from . import cells
 __all__ = ["PLANE"]
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "movies",
     "Movies",
     icon="film",

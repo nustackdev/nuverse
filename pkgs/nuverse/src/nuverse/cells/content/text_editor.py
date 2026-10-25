@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import Cell, ops
+from nuspace import CellSpec, ops
 
 from ...contents.text import Text, TextContent
 from .. import source
@@ -46,7 +46,7 @@ def out() -> nu.Nu:
     return ops.bracketed(editing(TextContent, _edit))
 
 
-CELL = Cell(
+CELL = CellSpec(
     "text",
     "Text",
     source(__name__),

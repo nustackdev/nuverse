@@ -11,6 +11,7 @@ import pytest_asyncio
 
 import nu
 import nustd.kv
+import nuverse
 from nu.lang import ScalarQuery
 from nuspace import ops
 from nuspace.content import CELL, PLANE, SPACE, kind_name
@@ -19,7 +20,6 @@ from nuspace.system.devices.web.env import session_env
 from nuspace.system.kernel.body import Rewrites
 from nustd.ui.core import OP_NOTIFY, Frame, WsSession
 from nustd.ui.core.session import Session
-from nuverse.cells import CELLS
 from nuverse.cells.content import (
     checkbox,
     date_picker,
@@ -43,7 +43,14 @@ from nuverse.cells.debugging import (
     space_content_lens,
 )
 from nuverse.cells.examples import converter, password
-from nuverse.contents import DateContent, FlagContent, NumberContent, RowContent, TextContent
+from nuverse.contents.date import DateContent
+from nuverse.contents.flag import FlagContent
+from nuverse.contents.number import NumberContent
+from nuverse.contents.row import RowContent
+from nuverse.contents.text import TextContent
+
+
+CELLS = nuverse.extension().cells
 
 
 if TYPE_CHECKING:

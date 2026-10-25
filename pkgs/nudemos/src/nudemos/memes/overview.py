@@ -12,7 +12,7 @@ The order is each tab's own: two tabs sort two ways.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 from .cells import BAR, LAUNCHES, TILES, cell
 
@@ -136,7 +136,7 @@ def out(plane):
 """)
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "memes_overview",
     "Overview",
     icon="square-terminal",

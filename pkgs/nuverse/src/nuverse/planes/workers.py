@@ -8,7 +8,7 @@ Ages move with the clock, so the table is read again every minute too.
 
 from __future__ import annotations
 
-from nuspace import Plane
+from nuspace import PlaneSpec
 
 
 __all__ = ["COUNTS", "PLANE", "TABLE"]
@@ -86,7 +86,7 @@ out = redraws(lives(), rows(), table, every=60.0)
 """
 
 
-PLANE = Plane(
+PLANE = PlaneSpec(
     "workers",
     "Workers",
     icon="cpu",
