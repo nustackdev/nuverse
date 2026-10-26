@@ -293,7 +293,7 @@ class Side(nustd.ui.Grid):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     side = Side.slot(columns=2, min_width=380, gap=4)
     head = nustd.ui.HeadingRef.slot(level=4)
     table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Top customers")
@@ -311,7 +311,7 @@ def out(plane):
         def opened(ev):
             cid = nu.Str(ev["key"])
             name = snap(kit.read("who", cid))
-            return kit.open_customer(root, cid, name, plane, View.nav)
+            return kit.open_customer(root, cid, name, plane, View.history)
 
         read = kit.read("customers", Shop.filters.fallback({}))
         return nu.ParallelAsync(redraws(kit.changes(), read, draw), nu.ReactForever(View.table.on_row_click(), opened))

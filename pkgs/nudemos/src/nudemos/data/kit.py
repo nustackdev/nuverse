@@ -27,7 +27,9 @@ import numpy as np
 
 import nu
 import nuspace
+import nuspace.ui
 import nustd.kv
+import nustd.ui
 from nuspace import ops
 from nuspace.shapes import Space
 from nuspace.system.utils import snap
@@ -46,7 +48,6 @@ __all__ = [
     "MADE_BY",
     "Product",
     "Shop",
-    "go",
     "on_shop",
     "pack",
     "page_of",
@@ -160,11 +161,6 @@ def on_shop(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
         return ready >> ops.bracketed(at(r, build(r)))
 
     return nu.let(snap(root_of(plane)), landed)
-
-
-def go(nav: nu.Nu, uri: nu.StrArg) -> nu.Nu:
-    """Navigate the shell to ``uri`` (the shell follows back and forward only: push, push, back)."""
-    return nu.let(uri, lambda u: nav.set(u) >> nav.set(nu.Str(u) + "?open") >> nav.back())
 
 
 # --- shards ---------------------------------------------------------------------------------
@@ -452,9 +448,9 @@ def customer_page(root: nu.StrArg, cid: nu.StrArg) -> nu.Str:
 
 
 def open_customer(
-    root: nu.StrArg, cid: nu.StrArg, name: nu.StrArg, under: nu.StrArg, nav: nu.Nu
+    root: nu.StrArg, cid: nu.StrArg, name: nu.StrArg, under: nu.StrArg, history: nustd.ui.HistoryRef
 ) -> nu.Nu:
-    """Open a customer's page, made under ``under`` (the Customers page) the first time."""
+    """Open a customer's page on ``history``, made under ``under`` (the Customers page) the first time."""
     from nuspace import PlaneSpec
 
     from .pages import CUSTOMER_CELLS
@@ -465,7 +461,9 @@ def open_customer(
     make = ops.create_plane(spec, parent=under, name=name, plane_id=pid) >> ops.set_plane_meta(
         pid, meta
     )
-    return nu.IfDo(nu.Bool(snap(ops.plane_exists(pid))).not_(), make) >> go(nav, nu.Str("/") + pid)
+    return nu.IfDo(nu.Bool(snap(ops.plane_exists(pid))).not_(), make) >> history.push(
+        nuspace.ui.href(pid)
+    )
 
 
 def subject(plane: nu.StrArg) -> nu.Str:

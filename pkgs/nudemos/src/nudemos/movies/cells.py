@@ -23,6 +23,7 @@ __all__ = ["ATLAS", "FILM", "PEOPLE", "PERSON", "ROOT", "TIMELINE"]
 
 WELCOME = '''\
 import nu
+import nuspace.ui
 import nustd.ui
 
 TEXT = """\\
@@ -51,11 +52,11 @@ def out(plane):
     return (
         View.about.set(TEXT)
         >> ways.lead.set("Browse by ")
-        >> ways.people.set(href=f"/{plane}.people", label="people")
+        >> ways.people.set(href=nuspace.ui.href(f"{plane}.people"), label="people")
         >> ways.a.set(",  by year on the ")
-        >> ways.timeline.set(href=f"/{plane}.timeline", label="timeline")
+        >> ways.timeline.set(href=nuspace.ui.href(f"{plane}.timeline"), label="timeline")
         >> ways.b.set(",  or the whole map in the ")
-        >> ways.atlas.set(href=f"/{plane}.atlas", label="atlas")
+        >> ways.atlas.set(href=nuspace.ui.href(f"{plane}.atlas"), label="atlas")
         >> nu.ForeverDo(nu.Delay(3600.0))
     )
 '''
@@ -255,7 +256,7 @@ def front(films, key, base):
     facts = [str(f.get("year") or ""), f"{f['runtime']} min" if f.get("runtime") else "", " / ".join(f.get("genres") or [])]
     credits = [f"**Directed by** {who(f['director'])}" if f.get("director") else "",
                "**With** " + ", ".join(who(c) for c in f.get("cast") or []) if f.get("cast") else "",
-               f"[Open beside the shelf](/{base}+{base}.film.{key})"]
+               f"[Back to the shelf](/{base}), or Option+click it to keep this film open beside"]
     return {"src": kit.poster_url(f), "title": f.get("title", ""), "line": "  ·  ".join(x for x in facts if x),
             "credits": "\\n\\n".join(c for c in credits if c)}
 

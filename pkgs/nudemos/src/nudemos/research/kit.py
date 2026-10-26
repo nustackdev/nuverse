@@ -49,7 +49,6 @@ __all__ = [
     "changes",
     "claim_page",
     "folder_page",
-    "go",
     "launch_run",
     "merged",
     "on_desk",
@@ -168,11 +167,6 @@ def merged(value: dict | None, fields: dict) -> dict:
 def patch(ref: nu.Nu, fields: nu.Nu) -> nu.Nu:
     """Write ``fields`` over the dict at ``ref``, in the commit that reads it."""
     return ops.atomic_state(ref.set(merged(ref.fallback({}), fields)))
-
-
-def go(nav: nu.Nu, uri: nu.StrArg) -> nu.Nu:
-    """Navigate the shell to ``uri``: push it and one past it, and step back onto it."""
-    return nu.let(uri, lambda u: nav.set(u) >> nav.set(nu.Str(u) + "?open") >> nav.back())
 
 
 # --- making pages ---------------------------------------------------------------------------

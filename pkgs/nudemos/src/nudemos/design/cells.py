@@ -38,6 +38,7 @@ __all__ = [
 
 HEAD = """\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import park, redraws, snap
@@ -930,7 +931,7 @@ class Go(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     drift = nustd.ui.MarkdownRef.slot()
     go = Go.slot(gap=3, align="end")
 
@@ -960,7 +961,7 @@ def following(releases):
 def cut(base, export):
     def made(version):
         v = nu.Str(version)
-        return job.cut(base, export, v, snap(kit.spec())) >> kit.go(View.nav, nu.Str("/") + job.release_page(base, v))
+        return job.cut(base, export, v, snap(kit.spec())) >> View.history.push(nuspace.ui.href(job.release_page(base, v)))
 
     typed = nu.Str(View.go.version).strip()
     return nu.IfDo(typed != "", nu.let(typed, made))
@@ -987,7 +988,7 @@ COLUMNS = [{"key": "version", "label": "Release", "width": 110}, {"key": "files"
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="page", clickable_rows=True, dense=True, label="Releases, newest first")
 
 
@@ -1006,7 +1007,7 @@ def out(plane):
     def build(base):
         return nu.ParallelAsync(
             redraws([System.mail.on_change()], rows(System.releases.fallback([])), View.table.set_rows, every=30.0),
-            nu.ReactForever(View.table.on_row_click(), lambda ev: kit.go(View.nav, nu.Str("/") + nu.Str(ev["key"]))),
+            nu.ReactForever(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"]))),
         )
 
     return kit.on_system(plane, build)

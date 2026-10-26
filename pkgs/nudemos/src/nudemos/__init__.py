@@ -11,6 +11,7 @@
 - :mod:`.ops`: a storefront run from a space: real jobs, logs, deploys, incidents and alert rules. Needs the ``ops`` extra.
 - :mod:`.data`: a coffee roaster's books as live dashboards over a million rows, fed by a stream and an importer. Needs the ``data`` extra.
 - :mod:`.research`: an LLM research desk: papers weighed against claims, our own evals on Claude beside them. Needs the ``research`` extra.
+- :mod:`.recipes`: the kit's page recipes, each a live, editable page, linked to each other.
 - :mod:`.knowledge`: a team wiki and handbook where pages query the base and facts are cited everywhere. Needs the ``knowledge`` extra.
 
 nuspace finds this package through the ``nuspace.extensions`` entry point,
@@ -43,6 +44,7 @@ def extension() -> Extension:
         mnist,
         movies,
         ops,
+        recipes,
         research,
         sampled,
         tour,
@@ -62,5 +64,6 @@ def extension() -> Extension:
             design.PLANE,
             data.PLANE,
             ops.PLANE,
+            recipes.PLANE,
         )
     )

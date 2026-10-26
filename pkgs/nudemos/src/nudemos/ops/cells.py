@@ -175,6 +175,7 @@ ROOT = (("welcome", WELCOME), ("pulse", PULSE), ("live", LIVE), ("feed", FEED))
 BOARD = """\
 import nu
 import nustd.time
+import nuspace.ui
 import nustd.ui
 from nuspace.system.utils import redraws
 from nudemos.ops import kit, shape, views
@@ -192,7 +193,7 @@ COLUMNS = [
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     intro = nustd.ui.TextRef.slot()
     jobs = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Jobs")
 
@@ -200,7 +201,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root):
         rows = views.job_rows(nu.Dict(Ops.jobs.extract()).fallback({}), nustd.time.time())
-        opened = nu.ReactForever(View.jobs.on_row_click(), lambda ev: kit.go(View.nav, nu.Str("/") + root + ".jobs." + nu.Str(ev["key"])))
+        opened = nu.ReactForever(View.jobs.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(nu.Str(root) + ".jobs." + nu.Str(ev["key"]))))
         intro = View.intro.set("Every job runs as a headless plane in its own process, kept up or scheduled by the supervisor. Click one for its runs, its log and its controls.")
         return intro >> nu.ParallelAsync(redraws([Ops.jobs.on_change()], rows, View.jobs.set_rows, every=5.0), opened)
 
@@ -801,6 +802,7 @@ DEPLOYS = (("ship", SHIP), ("history", HISTORY))
 INCIDENT_BOARD = """\
 import nu
 import nustd.time
+import nuspace.ui
 import nustd.ui
 from nuspace.system.utils import redraws
 from nudemos.ops import kit, shape, views
@@ -818,7 +820,7 @@ COLUMNS = [
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     empty = nustd.ui.TextRef.slot()
     incidents = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Incidents")
 
@@ -832,7 +834,7 @@ def out(plane):
     def build(root):
         rows = views.incident_rows(nu.Dict(Ops.incidents.extract()).fallback({}), nustd.time.time())
         draw = lambda r: View.incidents.set_rows(r) >> View.empty.set(said(r))
-        opened = nu.ReactForever(View.incidents.on_row_click(), lambda ev: kit.go(View.nav, nu.Str("/") + root + ".incident." + nu.Str(ev["key"])))
+        opened = nu.ReactForever(View.incidents.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(nu.Str(root) + ".incident." + nu.Str(ev["key"]))))
         return nu.ParallelAsync(redraws([Ops.incidents.on_change()], rows, draw, every=10.0), opened)
 
     return kit.on_ops(plane, build)

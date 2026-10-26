@@ -38,7 +38,6 @@ __all__ = [
     "choices",
     "curves",
     "drawn",
-    "go",
     "heatmaps",
     "ink",
     "leader",
@@ -113,15 +112,6 @@ def board(root: nu.StrArg) -> nu.Nu:
         return nu.List.of(run[0], run[2], run_view(nu.Str(run[1])))
 
     return runs_of(root).iter().map(row).to_list()
-
-
-def go(nav: nu.Nu, uri: nu.StrArg) -> nu.Nu:
-    """Navigate the shell to ``uri``.
-
-    The shell follows the browser's back and forward only, so push the page
-    and one past it, and step back onto it.
-    """
-    return nu.let(uri, lambda u: nav.set(u) >> nav.set(nu.Str(u) + "?open") >> nav.back())
 
 
 # --- shaping -----------------------------------------------------------------------------------

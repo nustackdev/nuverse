@@ -36,6 +36,7 @@ __all__ = [
 
 WELCOME = r'''
 import nu
+import nuspace.ui
 import nustd.ui
 from nudemos.research import kit
 
@@ -63,7 +64,7 @@ class View(nustd.ui.Column):
 def out(plane):
     L = View.links
     links = nu.Sequential(*(
-        getattr(L, name).set(href=f"/{plane}.{name}", label=label)
+        getattr(L, name).set(href=nuspace.ui.href(f"{plane}.{name}"), label=label)
         for name, label in (("reading", "Reading list"), ("claims", "Claims"), ("models", "Models"),
                             ("evals", "Evals"), ("watch", "Watch"), ("notebook", "Notebook"))
     ))
@@ -262,6 +263,7 @@ def out(plane):
 
 SHELF = r"""
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace.system.utils import redraws
 from nudemos.research import kit, views
@@ -279,7 +281,7 @@ COLUMNS = [
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", editable=True, clickable_rows=True, label="Reading list", dense=True)
 
 
@@ -302,7 +304,7 @@ def out(plane):
         return nu.ParallelAsync(
             redraws(kit.changes("sources", "evidence"), rows(Desk.sources.extract(), Desk.evidence.extract()), T.set_rows),
             nu.ReactForever(T.on_edit(), edit),
-            nu.ReactForever(T.on_row_click(), lambda ev: kit.go(View.nav, nu.Str("/") + kit.source_page(base, nu.Str(ev["key"])))),
+            nu.ReactForever(T.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.source_page(base, nu.Str(ev["key"]))))),
         )
 
     return kit.on_desk(plane, build)
@@ -520,6 +522,7 @@ SOURCE = (
 
 CLAIM_TABLE = r"""
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace.system.utils import redraws
 from nudemos.research import kit, views
@@ -535,7 +538,7 @@ COLUMNS = [
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, label="Claims", dense=True, sort_column="score", sort_direction="desc")
 
 
@@ -549,7 +552,7 @@ def rows(d):
 
 def out(plane):
     def build(base):
-        opened = nu.ReactForever(View.table.on_row_click(), lambda ev: kit.go(View.nav, nu.Str("/") + kit.claim_page(base, nu.Str(ev["key"]))))
+        opened = nu.ReactForever(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.claim_page(base, nu.Str(ev["key"])))))
         return nu.ParallelAsync(redraws(kit.changes("claims", "evidence", "runs", "models", "probes"), rows(kit.whole()), View.table.set_rows), opened)
 
     return kit.on_desk(plane, build)
@@ -872,7 +875,6 @@ class Go(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
     about = nustd.ui.MarkdownRef.slot()
     arm = Arm.slot(columns=3, min_width=200, gap=4)
     go = Go.slot(gap=3)
@@ -906,6 +908,7 @@ def out(plane):
 
 LEADERBOARD = r"""
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import redraws
@@ -926,7 +929,7 @@ COLUMNS = [
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     heading = nustd.ui.HeadingRef.slot(level=4)
     table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, label="Leaderboard", dense=True)
 
@@ -935,7 +938,7 @@ def out(plane):
     board = nu.host(views.leaderboard)
 
     def build(base):
-        opened = nu.ReactForever(View.table.on_row_click(), lambda ev: kit.go(View.nav, nu.Str("/") + kit.run_page(base, nu.Str(ev["key"]))))
+        opened = nu.ReactForever(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.run_page(base, nu.Str(ev["key"])))))
         return nu.ParallelAsync(redraws(kit.changes("runs"), board(Desk.runs.extract()), View.table.set_rows, every=20.0), opened)
 
     return View.heading.set_label("Leaderboard") >> kit.on_desk(plane, build)

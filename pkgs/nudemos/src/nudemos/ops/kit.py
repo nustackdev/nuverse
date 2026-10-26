@@ -688,11 +688,6 @@ def on_subject(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) 
     return nu.let(snap(about), lambda s: on_ops(plane, lambda r: build(r, nu.Str(s))))
 
 
-def go(nav: nu.Nu, uri: nu.StrArg) -> nu.Nu:
-    """Navigate the shell to ``uri``: push it and one past it, then step back onto it."""
-    return nu.let(uri, lambda u: nav.set(u) >> nav.set(nu.Str(u) + "?open") >> nav.back())
-
-
 def tail(name: nu.StrArg, n: nu.IntArg) -> nu.List:
     """The newest ``n`` lines of job ``name``'s stream, newest first: a read the size of ``n``. Bare."""
     newest = Ops.logs[name].entries.reversed_values()

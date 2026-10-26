@@ -163,6 +163,7 @@ def out(plane):
 
 INTRO = '''\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import snap
@@ -194,7 +195,7 @@ class View(nustd.ui.Column):
 
 def links(kids):
     def to(i):
-        return nu.Str("/") + nu.Str(nu.List(kids)[i])
+        return nuspace.ui.href(nu.List(kids)[i])
 
     l = View.links
     return l.overview.set(href=to(0), label="Open the terminal") >> l.monitor.set(href=to(1), label="Monitor") >> l.sync.set(href=to(2), label="Sync settings")
@@ -229,7 +230,7 @@ class Shown(nu.Shape):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     head = nustd.ui.HeadingRef.slot(level=4)
     cards = Cards.slot(min_width=240, gap=3)
 
@@ -249,9 +250,9 @@ def draw(cards):
     return nu.Sequential(*each) >> Shown.mints.set(mints)
 
 
-def opener(root, plane, i):
+def opener(root, i):
     mints = nu.List(Shown.mints)
-    go = control.open_token(root, nu.Str(mints[i]), View.nav, beside=plane)
+    go = control.open_token(root, nu.Str(mints[i]), View.history)
     return nu.ReactForever(getattr(View.cards, f"c{i}").body.open.on_click(), nu.IfDo(mints.len() > i, go))
 
 
@@ -262,7 +263,7 @@ def out(plane):
         read = views.launch_cards(at_root(root, Memes.launches.fallback([])), nustd.time.time(), N, images)
         moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.images.on_change())]
         shown = redraws(moves, read, draw, every=5.0)
-        opens = [opener(root, plane, i) for i in range(N)]
+        opens = [opener(root, i) for i in range(N)]
         return View.head.set("New launches") >> nu.Frame(Shown, nu.ParallelAsync(shown, *opens), mints=[])
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))

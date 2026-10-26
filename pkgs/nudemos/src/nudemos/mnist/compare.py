@@ -20,6 +20,7 @@ __all__ = ["LEADER", "OVERLAY", "PLANE", "TABLE"]
 
 _IMPORTS = """\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.shapes import Space
@@ -69,7 +70,7 @@ COLUMNS = [
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="page", clickable_rows=True, editable=True, dense=True)
 
 
@@ -90,7 +91,7 @@ def out(plane):
         return nu.ParallelAsync(
             redraws(runs, read, t.set_rows, every=2.0),
             nu.ReactForever(t.on_edit(), plot),
-            nu.ReactForever(t.on_row_click(), lambda ev: views.go(View.nav, nu.Str("/") + nu.Str(ev["key"]))),
+            nu.ReactForever(t.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"]))),
         )
 
     return nu.let(snap(ops.parent(plane)), follow)

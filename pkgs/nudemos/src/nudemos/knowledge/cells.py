@@ -19,6 +19,7 @@ __all__ = ["COLLECTION", "DOC_CELLS", "IMPORTS", "ROOT", "VIEW_CELLS", "cell"]
 #: What every cell imports.
 IMPORTS = """\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import redraws, snap
@@ -105,7 +106,7 @@ class Form(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     form = Form.slot(gap=3, align="end")
 
 
@@ -118,7 +119,7 @@ def out(plane):
         def made(c):
             c = nu.Dict(c)
             slug = nu.Str(c["slug"])
-            opened = kit.go(View.nav, nu.Str("/") + kit.doc_page(base, slug))
+            opened = View.history.push(nuspace.ui.href(kit.doc_page(base, slug)))
             return kit.add_doc(base, slug, c["doc"], "captured") >> form.title.set("") >> opened
 
         add = nu.IfDo(typed != "", nu.let(views.capture(typed, Base.docs.extract(), kit.now()), made))
@@ -397,14 +398,14 @@ def _opens(name: str, extra: str = "") -> str:
     """A table of pages whose row click opens the page: the shared part of a folder's cell."""
     return f"""\
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     head = nustd.ui.HeadingRef.slot(level=3)
     note = nustd.ui.TextRef.slot()
     table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="{name}")
 {extra}
 
 def opens(base):
-    return nu.ReactForever(View.table.on_row_click(), lambda ev: kit.go(View.nav, nu.Str("/") + kit.doc_page(base, nu.Str(ev["key"]))))
+    return nu.ReactForever(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.doc_page(base, nu.Str(ev["key"])))))
 """
 
 
@@ -484,7 +485,7 @@ class Form(nustd.ui.Collapsible):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     form = Form.slot(title="New meeting note", open=True)
 
 
@@ -503,7 +504,7 @@ def out(plane):
         def made(c):
             c = nu.Dict(c)
             slug = nu.Str(c["slug"])
-            return kit.add_doc(base, slug, c["doc"], "wrote up") >> f.line.title.set("") >> kit.go(View.nav, nu.Str("/") + kit.doc_page(base, slug))
+            return kit.add_doc(base, slug, c["doc"], "wrote up") >> f.line.title.set("") >> View.history.push(nuspace.ui.href(kit.doc_page(base, slug)))
 
         new = views.meeting_new(nu.Str(f.line.title), nu.Str(f.line.project), nu.List(f.people), "", Base.docs.extract(), kit.now())
         return f.line.project.set_options(projects(Base.docs.extract())) >> nu.ReactForever(f.write.on_click(), nu.let(new, made))
@@ -739,7 +740,7 @@ class Both(nustd.ui.Column):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     note = nustd.ui.TextRef.slot()
     both = Both.slot(gap=4)
 
@@ -750,7 +751,7 @@ def out(plane):
         draw = lambda v: View.both.chart.set(option=v)
         side = redraws([Base.docs.on_change()], views.graph_side(docs, base), View.both.side.set)
         # A node opens its page; an edge or the legend names no page, and does nothing.
-        go = lambda s: nu.IfDo(nu.Str(s) != "", kit.go(View.nav, nu.Str("/") + kit.doc_page(base, nu.Str(s))))
+        go = lambda s: nu.IfDo(nu.Str(s) != "", View.history.push(nuspace.ui.href(kit.doc_page(base, nu.Str(s)))))
         opened = nu.ReactForever(View.both.chart.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev)["name"]).fallback(""), Base.docs.extract()), go))
         return nu.ParallelAsync(redraws([Base.docs.on_change()], views.graph_option(docs, base), draw), side, opened)
 
@@ -793,7 +794,7 @@ class Act(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     bar = Bar.slot(gap=3, align="center")
     top = Top.slot(gap=6, align="center")
     act = Act.slot(gap=3, align="center")
@@ -829,7 +830,7 @@ def stale(health):
 def out(plane):
     def build(base):
         read = views.health_view(Base.health.fallback({}), kit.live(base, "checker"), Base.docs.extract(), kit.now())
-        opened = lambda ev: kit.go(View.nav, nu.Str("/") + kit.doc_page(base, doc_of(ev["key"])))
+        opened = lambda ev: View.history.push(nuspace.ui.href(kit.doc_page(base, doc_of(ev["key"]))))
         return nu.ParallelAsync(
             redraws([Base.health.on_change()], read, draw, every=5.0),
             nu.ReactForever(View.act.reviewed.on_click(), kit.reviewed(stale(Base.health.fallback({})))),

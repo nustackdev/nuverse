@@ -38,7 +38,6 @@ __all__ = [
     "System",
     "drawn",
     "edit",
-    "go",
     "is_root",
     "on_system",
     "reset",
@@ -108,11 +107,6 @@ def on_system(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
         return ops.bracketed(ops.plane_state(b, build(b)))
 
     return nu.let(snap(root_of(plane)), landed)
-
-
-def go(nav: nu.Nu, uri: nu.StrArg) -> nu.Nu:
-    """Send the shell to ``uri``. The shell follows back and forward only: push it, one past, step back."""
-    return nu.let(uri, lambda u: nav.set(u) >> nav.set(nu.Str(u) + "?open") >> nav.back())
 
 
 # --- reading -------------------------------------------------------------------------------------

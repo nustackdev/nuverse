@@ -42,7 +42,6 @@ __all__ = [
     "entries_of",
     "events_of",
     "fresh_dir",
-    "go",
     "head",
     "head_of",
     "sketch_from",
@@ -121,15 +120,6 @@ def board(root: nu.StrArg) -> nu.Nu:
         return nu.List.of(pair[0], pair[1], agent_view(nu.Str(pair[1])))
 
     return agents_of(root).iter().filter(lambda r: nu.Str(nu.List(r)[1]) != "").map(row).to_list()
-
-
-def go(nav: nu.Nu, uri: nu.StrArg) -> nu.Nu:
-    """Navigate the shell to ``uri``.
-
-    The shell follows the browser's back and forward only, so push the page
-    and one past it, and step back onto it.
-    """
-    return nu.let(uri, lambda u: nav.set(u) >> nav.set(nu.Str(u) + "?open") >> nav.back())
 
 
 # --- launching ---------------------------------------------------------------------------------

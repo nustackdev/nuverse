@@ -22,6 +22,7 @@ FORM = """\
 import importlib.util
 
 import nu
+import nuspace.ui
 import nustd.ui
 import nuspace
 from nuspace import ops
@@ -64,7 +65,7 @@ MISSING = '**Training needs torch.** Install it with `pip install "nudemos[mnist
 
 class View(nustd.ui.Column):
     notice = nustd.ui.MarkdownRef.slot()
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     knobs = Knobs.slot(columns=3, min_width=200, gap=3)
     go = Go.slot(gap=2, align="end")
 
@@ -99,7 +100,7 @@ def runs(root, how):
     def start(plan):
         each = nu.ForEachDo(nu.List(plan), lambda p: launch(root, nu.List(p)[0], nu.List(p)[1]))
         newest = snap(nu.List(runs_of(root))[-1][0])
-        opened = views.go(View.nav, nu.Str("/") + nu.Str(newest))
+        opened = View.history.push(nuspace.ui.href(newest))
         return each >> View.go.name.set("") >> nu.IfDo(nu.Str(how) == "one", opened)
 
     typed = nu.Str(View.go.name).strip()
@@ -131,6 +132,7 @@ def out(plane):
 
 RUNS = """\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.shapes import Space
@@ -141,7 +143,7 @@ COLUMNS = [{"key": "run", "label": "Run"}, "status", "lr", "progress", {"key": "
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     head = nustd.ui.HeadingRef.slot(level=4)
     runs = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="page", clickable_rows=True, dense=True)
 
@@ -149,7 +151,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def follow(root):
         runs = Space.planes[nu.Str(root)].children.on_change()
-        opened = nu.ReactForever(View.runs.on_row_click(), lambda ev: views.go(View.nav, nu.Str("/") + nu.Str(ev["key"])))
+        opened = nu.ReactForever(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"])))
         return nu.ParallelAsync(redraws([runs], views.rows(views.board(nu.Str(root))), View.runs.set_rows, every=2.0), opened)
 
     return View.head.set("Runs, newest first") >> nu.let(snap(ops.parent(plane)), follow)

@@ -53,7 +53,6 @@ __all__ = [
     "ensure_pages",
     "event",
     "folder_page",
-    "go",
     "job_of",
     "live",
     "log",
@@ -185,11 +184,6 @@ def now() -> nu.Float:
 
 
 # --- what cells write -----------------------------------------------------------------------
-
-
-def go(nav: nu.Nu, uri: nu.StrArg) -> nu.Nu:
-    """Navigate the shell to ``uri``: push it and one past it, then step back onto it."""
-    return nu.let(uri, lambda u: nav.set(u) >> nav.set(nu.Str(u) + "?open") >> nav.back())
 
 
 @nu.host

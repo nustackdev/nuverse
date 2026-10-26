@@ -16,6 +16,7 @@ __all__ = ["BOARD", "INTRO", "NEW"]
 
 INTRO = '''\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import snap
@@ -46,7 +47,7 @@ class View(nustd.ui.Column):
 
 def links(kids):
     def to(i):
-        return nu.Str("/") + nu.Str(nu.List(kids)[i])
+        return nuspace.ui.href(nu.List(kids)[i])
 
     L = View.links
     return (
@@ -62,6 +63,7 @@ def out(plane):
 
 NEW = """\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import snap
@@ -89,7 +91,7 @@ class Go(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     notice = nustd.ui.MarkdownRef.slot()
     head = nustd.ui.HeadingRef.slot(level=4)
     who = Who.slot(columns=4, min_width=180, gap=3)
@@ -104,7 +106,7 @@ def started(root):
     # One agent from what the form says, its page opened.
     def made(spec):
         def opened(page):
-            return launch(root, spec, page=page) >> views.go(View.nav, nu.Str("/") + nu.Str(page))
+            return launch(root, spec, page=page) >> View.history.push(nuspace.ui.href(page))
 
         return nu.let("", opened) >> W.name.set("") >> View.brief.set("")
 

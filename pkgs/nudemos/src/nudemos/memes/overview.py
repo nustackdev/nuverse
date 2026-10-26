@@ -3,7 +3,7 @@
 - ``bar``, ``tiles``: the sync's state and the headline numbers, as on the root.
 - ``tokens``: the tokens, by newest, market cap, volume, nearest graduation
   or last trade, picked above the table or by a column header. A click opens
-  the token's page beside this one.
+  the token's page.
 - ``tape``: the newest trades across every token. A click opens the token.
 - ``launches``: the newest coins, as cards.
 
@@ -52,7 +52,7 @@ class Head(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     head = Head.slot(gap=3, align="center", justify="between")
     table = nustd.ui.TableRef.slot(
         columns=COLUMNS, row_key="mint", clickable_rows=True, dense=True, label="Tokens",
@@ -90,7 +90,7 @@ def out(plane):
 
         picked = nu.ReactForever(View.head.sort.on_change(), order(nu.Str(View.head.sort)))
         clicked = nu.ReactForever(t.on_sort(), lambda ev: nu.let(by_column(ev["sort_column"]), lambda s: nu.IfDo(nu.Str(s) != "", order(s))))
-        opened = nu.ReactForever(t.on_row_click(), lambda ev: control.open_token(root, nu.Str(ev["key"]), View.nav, beside=plane))
+        opened = nu.ReactForever(t.on_row_click(), lambda ev: control.open_token(root, nu.Str(ev["key"]), View.history))
         body = nu.ParallelAsync(shown, picked, clicked, opened)
         # A slot shows once it is first written: the title, then the picker.
         head = View.head.title.set("Tokens") >> View.head.sort.set_options(ORDERS) >> View.head.sort.set("new")
@@ -112,7 +112,7 @@ COLUMNS = [
 
 
 class View(nustd.ui.Column):
-    nav = nustd.ui.NavRef.slot()
+    history = nustd.ui.HistoryRef.slot()
     head = nustd.ui.HeadingRef.slot(level=4)
     tape = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Trades")
 
@@ -128,7 +128,7 @@ def out(plane):
         rows = redraws([at_root(root, Memes.beat.on_change())], read, View.tape.set_rows, every=2.0)
         opened = nu.ReactForever(
             View.tape.on_row_click(),
-            lambda ev: control.open_token(root, mint_of(ev["key"]), View.nav, beside=plane),
+            lambda ev: control.open_token(root, mint_of(ev["key"]), View.history),
         )
         return View.head.set("Trades, as they print") >> nu.ParallelAsync(rows, opened)
 

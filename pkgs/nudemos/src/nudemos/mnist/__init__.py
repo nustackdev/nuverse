@@ -29,6 +29,7 @@ __all__ = ["INTRO", "PLANE"]
 
 INTRO = '''\
 import nu
+import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.system.utils import snap
@@ -60,7 +61,7 @@ class View(nustd.ui.Column):
 def links(kids):
     # Launch, Compare and Read, the first three planes under this one.
     def to(i):
-        return nu.Str("/") + nu.Str(nu.List(kids)[i])
+        return nuspace.ui.href(nu.List(kids)[i])
 
     L = View.links
     return (

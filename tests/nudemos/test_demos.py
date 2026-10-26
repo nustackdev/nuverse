@@ -113,6 +113,7 @@ def test_discovery_finds_the_tour_and_the_demos():
         "nudemos.design",
         "nudemos.data",
         "nudemos.ops",
+        "nudemos.recipes",
     ]
 
 
@@ -228,3 +229,36 @@ async def test_sampled_feeds_in_batches_and_charts_a_sample(store):
     assert 0 < len(keys) <= 200
     assert keys == sorted(keys)
     assert all(-11.0 <= y <= 11.0 for _, y in points)
+
+
+# The way a demo moves the page: a HistoryRef slot in the cell's View, pushed
+# a pane URL. The row clicks and launches across the demos all do this.
+PUSHES = """\
+import nu
+import nuspace.ui
+import nustd.ui
+
+
+class View(nustd.ui.Column):
+    history = nustd.ui.HistoryRef.slot()
+    head = nustd.ui.HeadingRef.slot(level=4)
+
+
+def out(plane):
+    return View.head.set("Opening") >> View.history.push(nuspace.ui.href(plane + ".run", {"id": 7})) >> nu.ForeverDo(nu.Delay(3600.0))
+"""
+
+
+async def test_a_cell_moves_the_page_with_a_history_ref_under_itself(store):
+    await store.run(ops.add_plane("p", backend="async") >> ops.add_cell("p", PUSHES, cell_id="c"))
+    tab = _Browser()
+    task = await _run(store, "p", "c", tab)
+    try:
+        await _until(lambda: bool(tab.drawn("history")))
+    finally:
+        await _stop(task)
+    (frame,) = [f for f in tab.frames if f.ref[-1] == "history"]
+    assert frame.payload == {"action": "push", "uri": "/p.run?id=7"}
+    # Rooted under the cell like any other Ref it draws, typed for the kit's History.
+    assert frame.ref[-2:] == ("c", "history")
+    assert frame.chain[-1][1] == "HistoryRef"
