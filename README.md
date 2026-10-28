@@ -1,9 +1,9 @@
 <div align="center">
   <img width="128" alt="nuverse" src="https://nustack.dev/brand/logo-square-512@2x.png" />
   <h1>
-    nuverse - the nu ecosystem
+    nuverse - the nu universe
   </h1>
-  <p>Ready made spaces and extensions, one install away.</p>
+  <p>Ready-made packages, one install away.</p>
 
   [![PyPI - Python Version](https://img.shields.io/badge/python-%3E%3D%203.10-blue)](https://pypi.org/project/nuverse/)
   [![PyPI Package](https://img.shields.io/pypi/v/nuverse?color=yellow)](https://pypi.org/project/nuverse/)
@@ -26,8 +26,8 @@ Install a package and it shows up in your space, nothing to wire up. Build your 
 | Package | What |
 | --- | --- |
 | [nuverse](pkgs/nuverse) | The everyday planes and cells: runs, jobs and workers planes; tables, lenses, tickers, inputs |
-| [nudemos](pkgs/nudemos) | Ready made spaces: a tour, a counter, a film base, MNIST trained live, a live meme market, Claude Code agents |
-| [nuagent](pkgs/nuagent) | Agents that answer in Nu: the loop, Claude Code and LLM backends, a Chat plane |
+| [nudemos](pkgs/nudemos) | Ready-made spaces: a tour, a counter, a film base, MNIST trained live, a live meme market, Claude Code agents |
+| [nuagent](pkgs/nuagent) | Agents that answer in nu: the loop, Claude Code and LLM backends, a Chat plane |
 | [nulog](pkgs/nulog) | Serverless logger and metrics store, with Log planes to watch it live |
 
 ## Install
