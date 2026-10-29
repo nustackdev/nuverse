@@ -52,5 +52,5 @@ def test_the_extension_gathers_every_spec_in_order():
 
     ext = nuverse.extension()
     assert [s.name for s in ext.cells][:3] == ["text", "table", "item"]
-    assert ext.planes[0].name == "jobs"
+    assert ext.planes[0].name == "quickstart"
     assert [s.name for s in ext.contents] == ["Text", "Number", "Flag", "Date", "Row"]

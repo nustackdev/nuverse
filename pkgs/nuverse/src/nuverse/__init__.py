@@ -1,7 +1,7 @@
 """nuverse: the extensions a space offers out of the box.
 
-- :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``jobs``,
-  ``runs``, ``workers``, ``planes``.
+- :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``quickstart``,
+  ``jobs``, ``runs``, ``workers``, ``planes``.
 - :mod:`.cells`: what ``/`` inserts, one module each, by category:
   views and editors over content items, lenses, examples.
 - :mod:`.contents`: the content kinds the Cells keep their findable data
@@ -57,7 +57,7 @@ def extension() -> Extension:
     )
     from .cells.examples import converter, password, ticker
     from .contents import date, flag, number, row, text
-    from .planes import jobs, planes, runs, workers
+    from .planes import jobs, planes, quickstart, runs, workers
 
     cells = (
         text_editor,
@@ -83,7 +83,7 @@ def extension() -> Extension:
         converter,
     )
     return Extension(
-        planes=tuple(m.PLANE for m in (jobs, runs, workers, planes)),
+        planes=tuple(m.PLANE for m in (quickstart, jobs, runs, workers, planes)),
         cells=tuple(m.CELL for m in cells),
         contents=tuple(m.CONTENT for m in (text, number, flag, date, row)),
         envs={},

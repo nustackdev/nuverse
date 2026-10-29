@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Add the quickstart plane, the first page a newcomer sees in a space
 - Release nudemos 0.1.4 on nuspace 0.6.0
 - Move the demos onto kit History navigation and add the Recipes page demos
 - Follow nuspace's search plane to its new home in the system ui
