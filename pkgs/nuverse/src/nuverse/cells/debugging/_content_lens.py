@@ -92,11 +92,17 @@ def _door(key: nu.Nu, kind: str, preview: str = "") -> nu.Nu:
     return nu.Dict.of(key=key, kind=kind, preview=preview, navigable=True, vtype="")
 
 
+def _ids(kind: type[Content[Any]], scope: tuple[str, str]) -> nu.List:
+    """The ids of ``kind``'s items in ``scope``, ``[]`` for a scope no item of it landed in yet."""
+    items = kind.items(scope)
+    return nu.list(nu.If(items.exists(), nu.list(items.keys()), []))
+
+
 def _kinds_column(specs: dict[str, ContentSpec], scope: tuple[str, str], max_rows: int) -> nu.Nu:
     """The kinds holding items in ``scope``, one row each, its spec's label as preview."""
 
     def held(name: str, spec: ContentSpec) -> nu.Nu:
-        count = nu.Len(nu.list(spec.kind.items(scope).keys()))
+        count = nu.Len(_ids(spec.kind, scope))
         return nu.List.of(count, _door(nu.Str(name), "mapping", spec.label))
 
     pairs = nu.List.of(*(held(name, spec) for name, spec in specs.items()))
@@ -111,7 +117,7 @@ def _kinds_column(specs: dict[str, ContentSpec], scope: tuple[str, str], max_row
 
 def _ids_column(kind: type[Content[Any]], scope: tuple[str, str], max_rows: int) -> nu.Nu:
     """The ids of ``kind``'s items in ``scope``, one row each."""
-    ids = nu.list(kind.items(scope).keys())
+    ids = _ids(kind, scope)
     return _column(
         "mapping", ids.iter().map(lambda at: _door(nu.ToStr(at), "shape")).to_list(), max_rows
     )

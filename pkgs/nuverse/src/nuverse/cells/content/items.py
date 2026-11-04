@@ -104,7 +104,8 @@ def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
     """One scope's items of ``kind``: the lines, Add, and the item open, for as long as it is shown."""
     scope = (level, scope_id)
     items = kind.items(scope)
-    ids = ops.snapshot(nu.list(items.keys()))
+    # A scope no item landed in yet has no mapping: it lists none.
+    ids = ops.snapshot(nu.list(nu.If(items.exists(), nu.list(items.keys()), [])))
     opened = Listing.opened
 
     def line(found: nu.Nu) -> nu.Nu:
