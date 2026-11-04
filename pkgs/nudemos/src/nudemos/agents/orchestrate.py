@@ -206,7 +206,7 @@ def started(plane):
 def added(plane):
     # A task onto the newest board: a free worker pulls it on the board's next round.
     text = snap(nu.Str(View.more.task).strip())
-    newest = snap(nu.str(nu.Last(flows_of(plane).iter())).fallback(""))
+    newest = snap(nu.str(flows_of(plane).iter().last(default="")))
     def add(t, job):
         return nu.IfDo((nu.Str(t) != "").and_(nu.Str(job) != ""), orchestrate.add_task(job, t) >> View.more.task.set(""))
     return nu.let(text, lambda t: nu.let(newest, lambda j: add(t, j)))

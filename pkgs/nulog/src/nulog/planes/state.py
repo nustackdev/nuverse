@@ -143,7 +143,7 @@ def child(root: nu.StrArg, made_by: str) -> nu.Str:
         .iter()
         .filter(lambda p: Space.planes[nu.Str(p)].props.made_by.fallback("") == made_by)
     )
-    return nu.Str(nu.str(nu.First(found)).fallback(""))
+    return nu.Str(nu.str(found.first(default="")))
 
 
 class _Said(nu.Shape):

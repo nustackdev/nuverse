@@ -114,7 +114,7 @@ def _made_by(plane: nu.Nu) -> nu.Str:
 def job_of(page: nu.StrArg) -> nu.Str:
     """The job under a run page, ``""`` while it has none. Bare read."""
     jobs = ops.children(page).iter().filter(lambda p: _made_by(p) == JOB)
-    return nu.str(nu.First(jobs)).fallback("")
+    return nu.str(jobs.first(default=""))
 
 
 def job_cell(job: nu.StrArg) -> nu.Str:

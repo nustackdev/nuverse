@@ -114,7 +114,7 @@ def at_root(root: nu.StrArg, term: nu.Nu) -> nu.Nu:
 def overview_of(root: nu.StrArg) -> nu.Str:
     """The root's Overview plane, where token pages hang; the root itself when it has none. Bare read."""
     found = ops.children(root).iter().filter(lambda p: _made_by(nu.Str(p)) == OVERVIEW)
-    return nu.str(nu.First(found)).fallback(root)
+    return nu.str(found.first(default=root))
 
 
 def job_of(root: nu.StrArg) -> nu.Str:

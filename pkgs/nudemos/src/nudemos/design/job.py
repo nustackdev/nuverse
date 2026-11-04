@@ -81,7 +81,7 @@ def made_by(plane: nu.StrArg) -> nu.Str:
 def export_of(base: nu.StrArg) -> nu.Str:
     """The Export page under a Design plane, ``""`` when it has none. Bare read."""
     found = ops.children(base).iter().filter(lambda p: made_by(nu.Str(p)) == "design_export")
-    return nu.str(nu.First(found)).fallback("")
+    return nu.str(found.first(default=""))
 
 
 @nu.host

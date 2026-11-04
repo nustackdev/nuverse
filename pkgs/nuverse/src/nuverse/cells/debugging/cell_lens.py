@@ -45,8 +45,8 @@ def out(plane: nu.StrArg, cell: nu.StrArg, shape: type, at: Callable[[nu.Nu], nu
 
     options = read(ops.cell_rows(plane).iter().map(option).to_list())
     # The first cell that is not this one, or this one when it is alone.
-    others = ops.cells(plane).iter().filter(lambda c: c != cell).first()
-    first = read(nu.Str(others).fallback(cell))
+    others = ops.cells(plane).iter().filter(lambda c: c != cell).first(default=cell)
+    first = read(nu.Str(others))
 
     # browse never finishes: each pick cancels it and starts it on the new cell.
     browse = nu.let(

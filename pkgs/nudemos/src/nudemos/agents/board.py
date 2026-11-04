@@ -119,14 +119,14 @@ def started(root):
 
 def demo(root):
     # The built-in scenario: the Fan-out flow, three builders and a judge, on one brief.
-    fanout = nu.First(ops.children(root).iter().filter(lambda p: made_by(p) == "agents_fanout"))
+    fanout = ops.children(root).iter().filter(lambda p: made_by(p) == "agents_fanout").first(default="")
 
     def run(plane):
         name = nu.Str("Fan-out ") + nu.str(nu.Int(snap(flows_of(plane).len())) + 1)
         spec = nu.Dict.of(brief=SCENARIO, n=3, tasks=[])
         return launch_flow(nu.Str(plane), root, "fanout", spec, name)
 
-    return nu.let(snap(nu.str(fanout).fallback("")), run)
+    return nu.let(snap(nu.str(fanout)), run)
 
 
 def defaults():
