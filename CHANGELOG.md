@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Log reads of a stream or series never written give nothing instead of failing
 - Test stores create their containers up front, the way a space does at open
 - Absent plane metadata and text values fall back before they are shown as text
 - Looking up a child plane or cell gives a default when none is found

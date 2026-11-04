@@ -73,10 +73,13 @@ def tail(stream: nu.StrArg, n: nu.IntArg) -> nu.List:
     """The newest ``n`` entries of ``stream``, newest-first.
 
     O(n) via a bounded reverse-cursor scan over the log index: reads
-    exactly n entries regardless of stream size.
+    exactly n entries regardless of stream size. ``[]`` for a stream never
+    written: a stream exists once its first entry lands.
     """
-    newest = Messages.streams[stream].entries.reversed_values()
-    return nu.Iterator(nustd.itertools.islice(newest, n)).map(_row).to_list()
+    held = Messages.streams[stream].entries
+    newest = held.reversed_values()
+    rows = nu.Iterator(nustd.itertools.islice(newest, n)).map(_row).to_list()
+    return nu.List(nu.If(held.exists(), rows, []))
 
 
 def slice(
@@ -89,7 +92,8 @@ def slice(
 
     O(``stop``): walks the value stream via ``itertools.islice`` and stops
     early, with no full-stream materialization. Non-negative bounds only;
-    for "last N" use :func:`tail`.
+    for "last N" use :func:`tail`. ``[]`` for a stream never written.
     """
-    entries = Messages.streams[stream].entries.values()
-    return nu.Iterator(nustd.itertools.islice(entries, start, stop, step)).map(_row).to_list()
+    held = Messages.streams[stream].entries
+    rows = nu.Iterator(nustd.itertools.islice(held.values(), start, stop, step)).map(_row).to_list()
+    return nu.List(nu.If(held.exists(), rows, []))

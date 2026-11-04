@@ -72,9 +72,11 @@ def range(
 
     Keys are microsecond epochs, so ``begin`` / ``end`` are microsecond
     bounds. Indexed under the hood: cost is O(number of points in the
-    window), not O(series size).
+    window), not O(series size). ``[]`` for a series never observed.
     """
-    return Metrics.series[name].points.range(begin, end).iter().map(_row).to_list()
+    held = Metrics.series[name].points
+    rows = held.range(begin, end).iter().map(_row).to_list()
+    return nu.List(nu.If(held.exists(), rows, []))
 
 
 def sample(
@@ -87,6 +89,8 @@ def sample(
 
     Kh57 range reservoir sampling: stable under appends outside the
     queried range. Cost is ~``2n`` reads, not O(series size); this is what
-    kh57 buys.
+    kh57 buys. ``[]`` for a series never observed.
     """
-    return Metrics.series[name].points.sample(n, begin, end).iter().map(_row).to_list()
+    held = Metrics.series[name].points
+    rows = held.sample(n, begin, end).iter().map(_row).to_list()
+    return nu.List(nu.If(held.exists(), rows, []))

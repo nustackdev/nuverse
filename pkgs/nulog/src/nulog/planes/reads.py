@@ -41,15 +41,15 @@ def _now_us() -> nu.Nu:
 
 
 def streams(cap: nu.IntArg = consts.KEYS_CAP) -> nu.Nu:
-    """Up to ``cap`` stream names, in key order."""
-    names = nustd.itertools.islice(Messages.streams.iter(), cap)
-    return nustd.kv.Snapshot(nu.Collect(names), scope=Messages)
+    """Up to ``cap`` stream names, in key order. ``[]`` for a log nothing was written to yet."""
+    names = nu.Collect(nustd.itertools.islice(Messages.streams.iter(), cap))
+    return nustd.kv.Snapshot(nu.If(Messages.streams.exists(), names, []), scope=Messages)
 
 
 def series(cap: nu.IntArg = consts.KEYS_CAP) -> nu.Nu:
-    """Up to ``cap`` metric series names, in key order."""
-    names = nustd.itertools.islice(Metrics.series.iter(), cap)
-    return nustd.kv.Snapshot(nu.Collect(names), scope=Metrics)
+    """Up to ``cap`` metric series names, in key order. ``[]`` for a log never observed."""
+    names = nu.Collect(nustd.itertools.islice(Metrics.series.iter(), cap))
+    return nustd.kv.Snapshot(nu.If(Metrics.series.exists(), names, []), scope=Metrics)
 
 
 def entries(stream: nu.StrArg, mode: nu.StrArg, count: nu.IntArg) -> nu.Nu:
