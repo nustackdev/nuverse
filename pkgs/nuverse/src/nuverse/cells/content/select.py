@@ -66,7 +66,7 @@ def out() -> nu.Nu:
     """The select and its Config, for as long as the cell runs."""
     settings = Box.config.settings
     # Seeded once: emptied by hand, the options stay empty.
-    seed = nu.IfDo(Choice.seeded.missing(), Choice.options.set(OPTIONS) >> Choice.seeded.set(True))
+    seed = nu.IfDo(Choice.seeded.is_null(), Choice.options.set(OPTIONS) >> Choice.seeded.set(True))
 
     def show_options() -> nu.Nu:
         options = nu.list(Choice.options).fallback([])

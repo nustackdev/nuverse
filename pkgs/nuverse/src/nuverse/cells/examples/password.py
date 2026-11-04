@@ -69,7 +69,7 @@ def out() -> nu.Nu:
         # The option first, then a password made with it, in one commit.
         return slot.set(value) >> draw
 
-    first = nu.IfDo(Pass.password.missing(), draw)
+    first = nu.IfDo(Pass.password.is_null(), draw)
     return ops.bracketed(
         first
         >> Box.password.set(nu.str(Pass.password))

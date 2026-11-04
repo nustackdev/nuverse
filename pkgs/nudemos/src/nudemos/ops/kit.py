@@ -667,7 +667,7 @@ def seed(root: nu.Str) -> nu.Nu:
         return nu.Sequential(*(one(n, s) for n, s in model.JOBS.items()))
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
-        take = nu.IfDo(Ops.booted.missing(), Ops.booted.set(True) >> mine.set(True) >> knobs())
+        take = nu.IfDo(Ops.booted.is_null(), Ops.booted.set(True) >> mine.set(True) >> knobs())
         build = folders() >> job_pages() >> jobs()
         return landed(root, take) >> nu.IfDo(nu.Bool(mine), build)
 

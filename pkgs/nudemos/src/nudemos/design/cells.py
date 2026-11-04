@@ -156,7 +156,7 @@ def seed(base):
     first_release = nu.let(snap(job.export_of(base)), lambda export: nu.IfDo(nu.Str(export) != "", job.cut(base, nu.Str(export), "v1.0.0", specs.DEFAULTS)))
 
     def first(mine):
-        take = nu.IfDo(System.seeded.missing(), System.seeded.set(True) >> past >> mine.set(True))
+        take = nu.IfDo(System.seeded.is_null(), System.seeded.set(True) >> past >> mine.set(True))
         return ops.atomic_state(ops.plane_state(base, take)) >> nu.IfDo(nu.Bool(mine), made >> nuspace.supervise(studio_job) >> first_release)
 
     return nu.let(False, first)

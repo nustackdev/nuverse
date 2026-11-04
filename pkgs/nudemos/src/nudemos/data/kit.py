@@ -377,7 +377,7 @@ def seed(root: nu.Str) -> nu.Nu:
         )
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
-        take = nu.IfDo(Shop.seeded.missing(), Shop.seeded.set(True) >> mine.set(True))
+        take = nu.IfDo(Shop.seeded.is_null(), Shop.seeded.set(True) >> mine.set(True))
         build = nu.let(opening(time.time()), write) >> start(root)
         return ops.atomic_state(at(root, take)) >> nu.IfDo(nu.Bool(mine), build)
 

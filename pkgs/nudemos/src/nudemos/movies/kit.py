@@ -327,7 +327,7 @@ def seed(base: nu.Str) -> nu.Nu:
         return nu.ForEachDo(nu.List.of(*FILMS), lambda film: add_film(base, film))
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
-        take = nu.IfDo(Catalog.seeded.missing(), Catalog.seeded.set(True) >> mine.set(True))
+        take = nu.IfDo(Catalog.seeded.is_null(), Catalog.seeded.set(True) >> mine.set(True))
         build = (
             browsing("people", "People", "lucide:users", PEOPLE)
             >> browsing("timeline", "Timeline", "lucide:calendar", TIMELINE)

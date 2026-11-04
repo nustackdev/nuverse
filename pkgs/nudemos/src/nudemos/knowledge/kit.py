@@ -421,7 +421,7 @@ def seed(base: nu.Str) -> nu.Nu:
         return ops.atomic_state(ops.plane_state(base, docs >> facts >> Base.log.set(o["log"])))
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
-        take = nu.IfDo(Base.seeded.missing(), Base.seeded.set(True) >> mine.set(True))
+        take = nu.IfDo(Base.seeded.is_null(), Base.seeded.set(True) >> mine.set(True))
         views = nu.Sequential(*(view_page(base, n, label, icon) for n, label, icon in VIEWS))
         # the root reads as the team's own wiki, not the category it is registered under
         named = ops.rename_plane(base, "Larkspur")

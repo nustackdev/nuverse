@@ -132,7 +132,7 @@ def seed(store: Store, prompt: StrArg) -> Nu:
 
     Notes:
         - ``done`` is written False before the first turn. Unset it reads
-          EMPTY, the loop condition is never true, and no turn runs.
+          NULL, the loop condition is never true, and no turn runs.
     """
     opening = nu.Dict.of(role="user", content=prompt)
     return store.bracket(store.session.messages.set(nu.List.of(opening))) >> store.rewrite(

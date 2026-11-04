@@ -187,6 +187,6 @@ class ClaudeCode:
         elif isinstance(self.sid, str):
             held = nu.Frame(Thread, session, sid=self.sid)
         else:
-            minted = nu.IfDo(self.sid.is_empty(), self.sid.set(nustd.cc.NewSession()))
+            minted = nu.IfDo(self.sid.is_null(), self.sid.set(nustd.cc.NewSession()))
             held = minted >> nu.Frame(Thread, session, sid=self.sid)
         return nu.With(nustd.cc.bind(Agent, **self.options), body=held)

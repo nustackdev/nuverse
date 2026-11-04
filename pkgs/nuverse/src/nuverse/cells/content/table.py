@@ -71,7 +71,7 @@ def out() -> nu.Nu:
     """Seed once, then the grid as the store holds it, for as long as the cell runs."""
     rows = RowContent.items((CELL_LEVEL, ops.Here.cell))
     seed = nu.IfDo(
-        Sheet.seeded.missing(),
+        Sheet.seeded.is_null(),
         nu.Sequential(*(rows[k].cells.set(cells) for k, cells in SEED.items()))
         >> Sheet.order.set(list(SEED))
         >> Sheet.seeded.set(True),

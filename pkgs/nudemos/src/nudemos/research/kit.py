@@ -315,7 +315,7 @@ def seed(base: nu.Str) -> nu.Nu:
             >> Desk.seeded.set(True)
         )
 
-    content = _keep(base, nu.IfDo(Desk.seeded.missing(), nu.let(opening(nustd.time.time()), store)))
+    content = _keep(base, nu.IfDo(Desk.seeded.is_null(), nu.let(opening(nustd.time.time()), store)))
 
     def pages(due: nu.ObjectRef) -> nu.Nu:
         d = nu.Dict(due)
