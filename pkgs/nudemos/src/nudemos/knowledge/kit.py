@@ -126,12 +126,12 @@ class Base(nuspace.PlaneState):
 
 def base_of(plane: nu.StrArg) -> nu.Str:
     """The base a page belongs to: its meta's ``base``, or the plane itself at the root."""
-    return nu.str(Space.planes[plane].meta["base"]).fallback(plane)
+    return nu.str(Space.planes[plane].meta["base"].fallback(plane))
 
 
 def about(plane: nu.StrArg) -> nu.Str:
     """The page's subject from its meta: a doc's slug, or a view's name."""
-    return nu.str(Space.planes[plane].meta["subject"]).fallback("")
+    return nu.str(Space.planes[plane].meta["subject"].fallback(""))
 
 
 def on_base(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:

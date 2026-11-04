@@ -96,7 +96,7 @@ def root_of(plane: nu.StrArg) -> nu.Str:
     walk = nu.If(
         is_root(plane), plane, nu.If(is_root(up), up, nu.If(is_root(up2), up2, ops.parent(up2)))
     )
-    return nu.str(Space.planes[plane].meta["base"]).fallback(nu.Str(walk))
+    return nu.str(Space.planes[plane].meta["base"].fallback(nu.Str(walk)))
 
 
 def on_system(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:

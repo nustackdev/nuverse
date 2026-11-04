@@ -119,7 +119,7 @@ def _made_by(plane: nu.StrArg) -> nu.Str:
 
 def root_of(plane: nu.StrArg) -> nu.Str:
     """The Owlbridge root a plane belongs to: itself, its meta's ``base``, or its parent. Bare read."""
-    base = nu.str(Space.planes[plane].meta["base"]).fallback(ops.parent(plane))
+    base = nu.str(Space.planes[plane].meta["base"].fallback(ops.parent(plane)))
     return nu.Str(nu.If(_made_by(plane) == MADE_BY, plane, base))
 
 
@@ -468,4 +468,4 @@ def open_customer(
 
 def subject(plane: nu.StrArg) -> nu.Str:
     """What a page is about, from its meta: a customer page's customer id."""
-    return nu.str(Space.planes[plane].meta["customer"]).fallback("0")
+    return nu.str(Space.planes[plane].meta["customer"].fallback("0"))

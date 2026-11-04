@@ -94,12 +94,12 @@ class Catalog(nuspace.PlaneState):
 
 def base_of(plane: nu.StrArg) -> nu.Str:
     """The cinematheque a page belongs to: its meta's ``base``, or the plane itself at the root."""
-    return nu.str(Space.planes[plane].meta["base"]).fallback(plane)
+    return nu.str(Space.planes[plane].meta["base"].fallback(plane))
 
 
 def about(plane: nu.StrArg, kind: str) -> nu.Str:
     """What a page is about, from its meta: ``film`` (a key) or ``person`` (a name)."""
-    return nu.str(Space.planes[plane].meta[kind]).fallback("")
+    return nu.str(Space.planes[plane].meta[kind].fallback(""))
 
 
 def on_catalog(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:

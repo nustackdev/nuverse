@@ -164,7 +164,7 @@ def _record(at: nu.Int) -> nu.Nu:
     kept = nu.Dict.of(
         at=at,
         reply=Chat.reply.fallback(""),
-        program=nu.str(Chat.program).fallback(""),
+        program=nu.str(Chat.program.fallback("")),
         kind=Chat.outcome.kind.fallback(""),
         observation=nu.str(told["content"]),
     )

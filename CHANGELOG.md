@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Absent plane metadata and text values fall back before they are shown as text
 - Looking up a child plane or cell gives a default when none is found
 - Seed-once and fresh-session checks ask for an absent value with nu's NULL
 - Release nuverse 0.3.5 on nuspace 0.6.2

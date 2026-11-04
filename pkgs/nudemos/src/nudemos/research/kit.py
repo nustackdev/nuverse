@@ -92,12 +92,12 @@ class Desk(nuspace.PlaneState):
 
 def base_of(plane: nu.StrArg) -> nu.Str:
     """The desk a page belongs to: its meta's ``base``, or the plane itself at the root."""
-    return nu.str(Space.planes[plane].meta["base"]).fallback(plane)
+    return nu.str(Space.planes[plane].meta["base"].fallback(plane))
 
 
 def about(plane: nu.StrArg) -> nu.Str:
     """What a page is about, from its meta: a source's, a claim's or a run's key."""
-    return nu.str(Space.planes[plane].meta["subject"]).fallback("")
+    return nu.str(Space.planes[plane].meta["subject"].fallback(""))
 
 
 def on_desk(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:

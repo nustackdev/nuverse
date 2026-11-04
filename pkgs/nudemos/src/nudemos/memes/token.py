@@ -28,7 +28,7 @@ from nuspace.shapes import Space
 
 
 def mint_of(plane):
-    return nu.str(Space.planes[plane].meta["mint"]).fallback("")
+    return nu.str(Space.planes[plane].meta["mint"].fallback(""))
 
 
 def view_of(root, mint):

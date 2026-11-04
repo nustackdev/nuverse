@@ -85,12 +85,12 @@ class TextContent(nuspace.Content[Text], name="Text"):
     @classmethod
     def render(cls, item: Text) -> nu.Nu:
         """The text whole, as markdown."""
-        return TextView.body.set(nu.str(item.value).fallback(""))
+        return TextView.body.set(nu.str(item.value.fallback("")))
 
     @classmethod
     def render_hit(cls, item: Text) -> nu.Nu:
         """The text's first :data:`HIT_WIDTH` characters on one line, an ellipsis where cut."""
-        body = nu.Str(nu.str(item.value).fallback("")).replace("\n", " ").strip()
+        body = nu.Str(nu.str(item.value.fallback(""))).replace("\n", " ").strip()
         cut = body[:HIT_WIDTH] + nu.If(body.len() > HIT_WIDTH, "…", "")
         return TextHit.text.set(cut)
 

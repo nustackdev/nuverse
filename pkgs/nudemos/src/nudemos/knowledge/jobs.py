@@ -185,7 +185,7 @@ PACE = 0.3
 def out(plane):
     def run(base):
         at = lambda term: ops.plane_state(base, term)
-        read = at(nu.Dict.of(key=nu.str(Base.imports["key"]).fallback(""), have=Base.docs.extract()))
+        read = at(nu.Dict.of(key=nu.str(Base.imports["key"].fallback("")), have=Base.docs.extract()))
 
         def go(p):
             p = nu.Dict(p)

@@ -112,7 +112,7 @@ def _field(ui: nu.Nu, name: str) -> nu.Nu:
 
 def _given(held: nu.Nu, name: str) -> nu.Str:
     """One field of a target, ``""`` when missing."""
-    return nu.Str(nu.str(nu.Dict(held).get_item(name, "")).fallback(""))
+    return nu.Str(nu.str(nu.Dict(held).get_item(name, "")))
 
 
 def kind_of(held: nu.Nu) -> nu.Str:

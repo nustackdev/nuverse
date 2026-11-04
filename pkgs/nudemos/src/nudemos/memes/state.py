@@ -102,7 +102,7 @@ def _made_by(plane: nu.StrArg) -> nu.Str:
 
 def root_of(plane: nu.StrArg) -> nu.Str:
     """The Memes root a plane belongs to: itself, its meta's ``base``, or its parent. Bare read."""
-    base = nu.str(Space.planes[plane].meta["base"]).fallback(ops.parent(plane))
+    base = nu.str(Space.planes[plane].meta["base"].fallback(ops.parent(plane)))
     return nu.Str(nu.If(_made_by(plane) == MADE_BY, plane, base))
 
 

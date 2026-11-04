@@ -684,7 +684,7 @@ def on_ops(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
 
 def on_subject(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
     """``build(root, subject)`` on a job or incident page, the subject read from the page's meta ``kind``."""
-    about = nu.str(Space.planes[plane].meta[kind]).fallback("")
+    about = nu.str(Space.planes[plane].meta[kind].fallback(""))
     return nu.let(snap(about), lambda s: on_ops(plane, lambda r: build(r, nu.Str(s))))
 
 

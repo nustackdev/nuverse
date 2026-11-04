@@ -752,7 +752,7 @@ def out(plane):
         side = redraws([Base.docs.on_change()], views.graph_side(docs, base), View.both.side.set)
         # A node opens its page; an edge or the legend names no page, and does nothing.
         go = lambda s: nu.IfDo(nu.Str(s) != "", View.history.push(nuspace.ui.href(kit.doc_page(base, nu.Str(s)))))
-        opened = nu.ReactForever(View.both.chart.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev)["name"]).fallback(""), Base.docs.extract()), go))
+        opened = nu.ReactForever(View.both.chart.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev).get_item("name", "")), Base.docs.extract()), go))
         return nu.ParallelAsync(redraws([Base.docs.on_change()], views.graph_option(docs, base), draw), side, opened)
 
     note = "Every page and every link, drawn from the pages as they are. Hover to see a page's neighbours, click to open it."
