@@ -55,6 +55,7 @@ __all__ = [
     "Rpc",
     "Stopped",
     "Unpictured",
+    "made",
     "saved",
     "written",
 ]
@@ -180,6 +181,16 @@ class Stopped(_Call):
     method = "on_stop"
 
 
+def made() -> nu.Nu:
+    """The per token mappings, made where missing, so the first load and flush find them. Bare."""
+    m = Memes
+    return (
+        m.tokens.init(nu.Dict.create())
+        >> m.trades.init(nu.Dict.create())
+        >> m.candles.init(nu.Dict.create())
+    )
+
+
 def saved() -> nu.Nu:
     """Everything :meth:`.Book.load` reads, as one dict, over :class:`Memes`. Bare."""
     m = Memes
@@ -267,7 +278,8 @@ from nuspace import ops
 from nuspace.system.utils import snap
 from nudemos.memes.book import Book
 from nudemos.memes.job import (
-    Failed, Flush, Load, Offchain, Picture, Pictured, Plan, Reply, Rpc, Stopped, Unpictured, control, saved, written,
+    Failed, Flush, Load, Offchain, Picture, Pictured, Plan, Reply, Rpc, Stopped, Unpictured, control, made, saved,
+    written,
 )
 from nudemos.memes.state import Control, at_root, root_of
 
@@ -311,7 +323,8 @@ def out(plane):
         going = snap(at_root(root, Control.stop.fallback(False)).not_())
         chain = nu.WhileDo(going, turn(root))
         # The chain's loop ends the run: the fetchers go with it.
-        loop = Load(snap(at_root(root, saved()))) >> nu.Race(chain, pictures()) >> Stopped() >> commit(root)
+        ready = ops.atomic_state(at_root(root, made()))
+        loop = ready >> Load(snap(at_root(root, saved()))) >> nu.Race(chain, pictures()) >> Stopped() >> commit(root)
         transport = (nustd.http.bind(Rpc, timeout=TIMEOUT), nustd.http.bind(Offchain, timeout=OFFCHAIN))
         return nu.With(*transport, nu.Provide(Book, BOOK), body=loop)
 

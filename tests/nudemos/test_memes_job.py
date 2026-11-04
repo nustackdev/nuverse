@@ -121,7 +121,8 @@ async def test_the_job_follows_the_chain_backs_off_and_stops(store, chain):
     task = await _run_job(store)
 
     async def launched():
-        return await store.read(_at(Memes.tokens.contains(CAP)))
+        tokens = Memes.tokens
+        return await store.read(_at(nu.If(tokens.exists(), tokens.contains(CAP), False)))
 
     await _until(launched)
     await _until(lambda: _points(store))

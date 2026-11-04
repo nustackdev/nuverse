@@ -45,7 +45,9 @@ async def _until(check, timeout: float = 10.0) -> None:
 
 
 async def _agents(store) -> dict:
-    return dict(await store.read(nu.dict(_flow_state(Flow.agents.fallback({})))))
+    # Polled from before the flow begins, so before its agents exist.
+    agents = Flow.agents
+    return dict(await store.read(_flow_state(nu.If(agents.exists(), nu.dict(agents), {}))))
 
 
 async def _answer(store, job: str, text: str, *, count: int = 1) -> None:

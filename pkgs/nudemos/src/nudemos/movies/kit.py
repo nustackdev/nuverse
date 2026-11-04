@@ -335,7 +335,8 @@ def seed(base: nu.Str) -> nu.Nu:
             >> films()
             >> ensure_people(base)
         )
-        return ops.atomic_state(ops.plane_state(base, take)) >> nu.IfDo(nu.Bool(mine), build)
+        made = Catalog.films.init(nu.Dict.create()) >> take
+        return ops.atomic_state(ops.plane_state(base, made)) >> nu.IfDo(nu.Bool(mine), build)
 
     return nu.let(False, first)
 

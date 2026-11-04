@@ -62,7 +62,10 @@ def launch(
         if fixed:
             new_page = nu.IfDo(snap(ops.plane_exists(plane_id).not_()), new_page)
             new_job = nu.IfDo(snap(ops.plane_exists(f"{plane_id}_run").not_()), new_job)
-        return nu.Sequential(new_page, new_job, nuspace.supervise(nu.Str(j)), *kept)
+        # Its inbox and log, made with it: the page and the flow read them from the start.
+        lists = Agent.inbox.init(nu.List.create()) >> Agent.log.init(nu.List.create())
+        listed = ops.atomic_state(at(nu.Str(j), lists))
+        return nu.Sequential(new_page, new_job, listed, nuspace.supervise(nu.Str(j)), *kept)
 
     ids = ("", "") if plane_id is None else (plane_id, f"{plane_id}_run")
     # The spec is read once: it may make a folder, or read state that moves.

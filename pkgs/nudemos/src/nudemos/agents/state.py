@@ -36,6 +36,7 @@ __all__ = [
     "agents_of",
     "at",
     "flow_at",
+    "flow_made",
     "flows_of",
     "job_cell",
     "job_of",
@@ -104,6 +105,15 @@ class Flow(nuspace.CellState):
     # Its end: the judge's verdict, the chain's review, the board's tally. Markdown.
     outcome = nustd.kv.StrRef.slot()
     started = nustd.kv.FloatRef.slot()
+
+
+def flow_made() -> nu.Nu:
+    """A flow's agent containers, made where missing: every read of its agents finds them. Unbracketed."""
+    return (
+        Flow.agents.init(nu.Dict.create())
+        >> Flow.pages.init(nu.Dict.create())
+        >> Flow.roles.init(nu.List.create())
+    )
 
 
 def made_by(plane: nu.Nu) -> nu.Str:

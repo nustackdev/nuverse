@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Demo planes create their state up front, so first reads find it
 - A chat's conversation lists exist from the start, before the first message
 - Log reads of a stream or series never written give nothing instead of failing
 - Test stores create their containers up front, the way a space does at open

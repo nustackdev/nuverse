@@ -26,7 +26,7 @@ from nuspace import ops
 from nuspace.system.utils import snap
 
 from .launch import launch, say
-from .state import Agent, Flow, at
+from .state import Agent, Flow, at, flow_made
 
 
 __all__ = [
@@ -107,7 +107,8 @@ class Team:
     def begin(self, kind: str, spec: dict[str, Any]) -> nu.Nu:
         """Say what this flow is, once."""
         return ops.atomic_state(
-            Flow.kind.set(kind)
+            flow_made()
+            >> Flow.kind.set(kind)
             >> Flow.spec.set(spec)
             >> Flow.status.set("running")
             >> Flow.started.set(Flow.started.fallback(nustd.time.time()))
@@ -430,7 +431,7 @@ def launch_flow(
     """
     import nuspace
 
-    from .state import FLOW, job_cell
+    from .state import FLOW, flow_at, job_cell
 
     def made(called: nu.Ref, asked: nu.Ref, j: nu.Ref, folder: nu.Ref) -> nu.Nu:
         source = baked(kind, nu.Str(root), nu.Str(folder), nu.Str(called), asked)
@@ -440,6 +441,7 @@ def launch_flow(
                 backend="async", name=nu.Str(called), parent=plane, ui=False, made_by=FLOW, into=j
             ),
             ops.add_cell(nu.Str(j), source, cell_id=job_cell(nu.Str(j)), name="flow"),
+            ops.atomic_state(flow_at(nu.Str(j), flow_made())),
             nuspace.supervise(nu.Str(j)),
             *kept,
         )

@@ -97,8 +97,10 @@ class View(nustd.ui.Column):
 
 
 def paint():
+    # Nothing to draw before the first batch lands: the series is made by its first write.
     sample = snap(nu.sorted(Series.nums.sample(SAMPLE)))
-    return nu.let(sample, lambda points: View.chart.set(points))
+    drawn = nu.let(sample, lambda points: View.chart.set(points))
+    return nu.IfDo(snap(Series.nums.exists()), drawn)
 
 
 # One pass at a time: writes landing while one paints and waits merge into one more.
