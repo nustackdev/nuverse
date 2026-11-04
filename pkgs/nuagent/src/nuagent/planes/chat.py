@@ -30,8 +30,9 @@ import nustd.ui
 from nu.lang import ScalarQuery
 from nuagent.protocol import CONSTRUCT, NO_CODE, OK, RUNTIME
 from nuspace import ops
+from nuspace.ops.kernel import plane_live
 from nuspace.ops.utils import MintId
-from nuspace.shapes import Reroot, Space
+from nuspace.shapes import Reroot
 from nuspace.system.devices.web.shell import Shell
 from nuspace.system.devices.web.utils import CellRoot
 from nuspace.system.services import enable_react
@@ -88,7 +89,7 @@ TITLES = {
 
 
 def ensure(page: nu.StrArg) -> nu.Nu:
-    """The page's engine, its cell, its reaction and the agent settings, each made when missing.
+    """The page's engine, its cell, its lists, its reaction and the agent settings, each made when missing.
 
     Idempotent, and safe from two tabs at once: the engine and its cell
     have fixed ids, and the reaction is :func:`enable_react`'s, which is
@@ -106,8 +107,12 @@ def ensure(page: nu.StrArg) -> nu.Nu:
         snap(ops.cell_exists(cell).not_()),
         ops.add_cell(engine, SOURCE, cell_id=cell, name="engine"),
     )
+    # The conversation's lists, made with it: the page and the engine read them from the start.
+    lists = Chat.inbox.init(nu.List.create()) >> Chat.turns.init(nu.List.create())
+    lists = lists >> Chat.messages.init(nu.List.create())
+    kept = ops.atomic_state(ops.plane_state(engine, lists))
     reaction = enable_react(inbox_change(engine), engine, imports=IMPORTS)
-    return made >> settings.ensure() >> reaction
+    return made >> kept >> settings.ensure() >> reaction
 
 
 def say(engine: nu.StrArg, text: nu.StrArg) -> nu.Nu:
@@ -150,7 +155,7 @@ def stop(engine: nu.StrArg) -> nu.Nu:
     when a call will not let go). What it said so far stays.
     """
     handled = Chat.cursor.set(Chat.inbox.len()) >> Chat.status.set(STOPPED)
-    live = snap(nu.list(Space.kernel.planes_running[engine].runs))
+    live = snap(plane_live(engine))
     stopping = nu.ForEachDo(live, lambda run: ops.plane_stop(nu.Str(run)))
     return ops.atomic_state(ops.plane_state(engine, handled)) >> stopping
 
