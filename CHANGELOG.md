@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Test stores create their containers up front, the way a space does at open
 - Absent plane metadata and text values fall back before they are shown as text
 - Looking up a child plane or cell gives a default when none is found
 - Seed-once and fresh-session checks ask for an absent value with nu's NULL

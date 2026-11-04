@@ -30,6 +30,7 @@ from nuagent.planes.state import ERROR, IDLE, RUNNING, STOPPED, Chat, Run
 from nuagent.prompt import TASK, opening, surface
 from nuagent.protocol import OK, RUNTIME
 from nuspace import CellState, ops
+from nuspace.ops.kernel import plane_live
 from nuspace.ops.utils import atomic
 from nuspace.shapes import Reroot, Space
 from nuspace.system.devices.web.env import session_env
@@ -184,7 +185,9 @@ async def test_each_cell_loads_through_the_kernel_rewrites(store, name):
 @pytest_asyncio.fixture(loop_scope="module", scope="module")
 async def space(tmp_path_factory):
     path = str(tmp_path_factory.mktemp("chat") / "space")
-    await nu.arun(nu.With(store(path), body=ensure_system() >> ensure_settings()))
+    await nu.arun(
+        nu.With(store(path), body=ops.init_stores() >> ensure_system() >> ensure_settings())
+    )
     envs = {"session": kernel_envs.session}
     k = await opened("nuagent-chat", path=path, spares=2, envs=envs, init=init.PLANE)
     yield k
@@ -209,7 +212,7 @@ def kept(engine_id: str) -> nu.Nu:
 
 
 def live(plane: str) -> nu.Nu:
-    return nu.list(Space.kernel.planes_running[plane].runs)
+    return plane_live(plane)
 
 
 async def chat_page(space: Kernel, source: str | None = None) -> tuple[str, str]:

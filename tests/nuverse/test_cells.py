@@ -82,7 +82,9 @@ async def ctx():
     held = asyncio.create_task(
         nu.arun(nu.With(nustd.kv.memory_navigator(), body=_Hold(opened, done)))
     )
-    yield await opened
+    held_ctx = await opened
+    await nu.arun(ops.init_stores(), held_ctx)
+    yield held_ctx
     done.set()
     await held
 
