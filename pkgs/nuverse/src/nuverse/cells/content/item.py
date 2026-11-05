@@ -65,7 +65,7 @@ def _shown(held: nu.Nu) -> nu.Nu:
             return View.note.set(nu.Str("Cannot draw this item: ") + nu.str(err))
 
         once = View.item.erase() >> View.note.erase() >> nu.TryCatch(drawing, catch=failed)
-        return once >> nu.ReactForever(nuspace.States.contents[kind].on_change(), once)
+        return once >> nu.ReactEvery(nuspace.States.contents[kind].on_change(), once)
 
     return pointed(held, draw)
 

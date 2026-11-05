@@ -101,7 +101,7 @@ def out(plane):
         # A check now, then on every change to the pages or the facts, and every EVERY seconds regardless.
         turn = nu.let(checked(snap(read)), write)
         changes = [at(Base.docs.on_change()), at(Base.facts.on_change())]
-        return turn >> nu.ParallelAsync(*(nu.ReconcileReactive(snap(c), turn, every=EVERY) for c in changes))
+        return turn >> nu.ParallelAsync(*(nu.Reconcile(snap(c), turn, every=EVERY) for c in changes))
 
     return nu.let(snap(kit.base_of(plane)), lambda b: run(nu.Str(b)))
 """

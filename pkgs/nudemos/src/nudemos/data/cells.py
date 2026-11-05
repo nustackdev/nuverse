@@ -2,9 +2,9 @@
 
 Every cell is ``def out(plane)``: the page it runs on comes in, and
 :func:`~.kit.on_shop` lands the store at the root from there. A dashboard
-cell is one :func:`~nuspace.system.utils.redraws`: it follows the tables
-(``Shop.beat``) and the filters it reads, recomputes its view with
-:func:`~.kit.read`, and redraws only what reads differently.
+cell is one ``nu.Reconcile``: it follows the tables (``Shop.beat``) and
+the filters it reads, recomputes its view with :func:`~.kit.read`, and
+redraws on every wake.
 
 - :data:`BAR`: the stream's status in a line: on every dashboard.
 - :data:`FILTERS`: the shared range, channel and category. Change it on any page, every page follows.
@@ -24,7 +24,7 @@ import nu
 import nustd.time
 import nustd.ui
 from nuspace import ops
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.data import kit, views
 from nudemos.data.kit import Shop, at
 """
@@ -50,7 +50,7 @@ def out(plane):
         read = views.status(Shop.stream.fallback({}), kit.live(root, "stream"), Shop.index.extract(),
                             Shop.pace.fallback("Busy"), nustd.time.time())
         draw = lambda v: View.bar.dot.set(v["tone"], pulse=v["pulse"]) >> View.bar.line.set(v["line"])
-        return redraws([Shop.beat.on_change(), Shop.stream.on_change()], read, draw, every=1.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change(), Shop.stream.on_change()])), nu.let(snap(read), draw), every=1.0)
 
     return kit.on_shop(plane, follow)
 """)
@@ -84,8 +84,8 @@ def out(plane):
         # One filter for the whole space: set here, every page that reads it moves.
         save = ops.atomic_state(at(root, Shop.filters.set(asked)))
         return nu.ParallelAsync(
-            redraws([Shop.filters.on_change()], Shop.filters.fallback({}), shown),
-            *(nu.ReactForever(p.choice.on_change(), save) for p in (F.range, F.channel, F.category)),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.filters.on_change()])), nu.let(snap(Shop.filters.fallback({})), shown)),
+            *(nu.ReactEvery(p.choice.on_change(), save) for p in (F.range, F.channel, F.category)),
         )
 
     return kit.on_shop(plane, follow)
@@ -145,7 +145,7 @@ def draw(t):
 
 def out(plane):
     read = kit.read("kpis", tables=("lines", "people", "events"))
-    return kit.on_shop(plane, lambda root: redraws([Shop.beat.on_change()], read, draw))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change()])), nu.let(snap(read), draw)))
 """)
 
 
@@ -168,7 +168,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root):
         draw = lambda v: nu.IfDo(nu.Bool(v), View.both.today.set(v["today"]) >> View.both.month.set(v["month"]))
-        return redraws([Shop.beat.on_change()], kit.read("overview"), draw)
+        return nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change()])), nu.let(snap(kit.read("overview")), draw))
 
     return kit.on_shop(plane, build)
 """)
@@ -192,7 +192,7 @@ class View(nustd.ui.Column):
 
 def out(plane):
     def build(root):
-        return View.head.set("Orders as they land") >> redraws([Shop.feed.on_change()], Shop.feed.fallback([]), View.feed.set_rows)
+        return View.head.set("Orders as they land") >> nu.Reconcile(snap(nu.OnAny(*[Shop.feed.on_change()])), nu.let(snap(Shop.feed.fallback([])), View.feed.set_rows))
 
     return kit.on_shop(plane, build)
 """)

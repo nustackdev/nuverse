@@ -88,9 +88,9 @@ def placed():
 def out(plane):
     def follow(root):
         return placed() >> show(root) >> nu.ParallelAsync(
-            nu.ReactForever(View.go.save.on_click(), save(root)),
-            nu.ReactForever(View.go.over.on_click(), save(root) >> control.restart(root, nu.int(K.start))),
-            nu.ReactForever(View.images.show.on_change(), images(root)),
+            nu.ReactEvery(View.go.save.on_click(), save(root)),
+            nu.ReactEvery(View.go.over.on_click(), save(root) >> control.restart(root, nu.int(K.start))),
+            nu.ReactEvery(View.images.show.on_change(), images(root)),
         )
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
@@ -122,7 +122,7 @@ def said(stats, sync):
 def out(plane):
     def follow(root):
         read = said(at_root(root, Memes.stats.fallback({})), at_root(root, Memes.sync.fallback({})))
-        return redraws([at_root(root, Memes.beat.on_change())], read, View.state.set_value, every=5.0)
+        return nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), View.state.set_value), every=5.0)
 
     return View.head.set("What the sync says") >> nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)

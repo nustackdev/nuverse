@@ -43,8 +43,8 @@ def _edit(item: Date) -> nu.Nu:
     day = nu.Str(entry)
     keep = nu.IfDo(day == "", item.value.erase(), item.value.set(day))
     return entry.set(iso(item)) >> nu.ParallelAsync(
-        nu.ReactForever(entry.on_change(), keep),
-        nu.ReactForever(item.value.on_change(), entry.set(iso(item))),
+        nu.ReactEvery(entry.on_change(), keep),
+        nu.ReactEvery(item.value.on_change(), entry.set(iso(item))),
     )
 
 

@@ -78,7 +78,7 @@ import time
 
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -123,14 +123,14 @@ def draw(t):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: redraws(kit.changes(), pulse(kit.whole()), draw, every=20.0))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(pulse(kit.whole())), draw), every=20.0))
 """
 
 
 WEEK = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -143,7 +143,7 @@ def out(plane):
     # Reads the whole desk: sources, evidence, runs, the probe. Anything that lands there shows here.
     digest = nu.host(views.digest)
     return View.heading.set_label("This week on the desk") >> kit.on_desk(
-        plane, lambda base: redraws(kit.changes(), digest(kit.whole(), base), View.digest.set, every=30.0)
+        plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(digest(kit.whole(), base)), View.digest.set), every=30.0)
     )
 """
 
@@ -152,7 +152,7 @@ BOARD = r"""
 import nu
 import nustd.ui
 from nuspace import ops
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -181,14 +181,14 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: redraws(kit.changes("claims", "evidence", "runs", "models", "probes"), bars(kit.whole(), base), draw))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(snap(bars(kit.whole(), base)), draw)))
 """
 
 
 ACTIVITY = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -201,7 +201,7 @@ def out(plane):
     # Who did what on the desk, newest first: every line links to the page it happened on.
     feed = nu.host(views.activity)
     return View.heading.set_label("Lately") >> kit.on_desk(
-        plane, lambda base: redraws(kit.changes(), feed(kit.whole(), base), View.feed.set, every=30.0)
+        plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(feed(kit.whole(), base)), View.feed.set), every=30.0)
     )
 """
 
@@ -257,7 +257,7 @@ def out(plane):
 
     shown = nu.Sequential(*(f.set("") for f in (A.one.title, A.one.authors, A.two.year, A.two.venue, A.two.arxiv)))
     shown = shown >> A.two.by.set(data.TEAM[0]) >> A.two.add.set_label("Add to the list")
-    return shown >> kit.on_desk(plane, lambda base: nu.ReactForever(A.two.add.on_click(), add(base)))
+    return shown >> kit.on_desk(plane, lambda base: nu.ReactEvery(A.two.add.on_click(), add(base)))
 """
 
 
@@ -265,7 +265,7 @@ SHELF = r"""
 import nu
 import nuspace.ui
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 from nudemos.research.kit import Desk
 
@@ -302,9 +302,9 @@ def out(plane):
     def build(base):
         edit = lambda ev: nu.IfDo(nu.Str(ev["column"]) == "status", kit.set_status(base, nu.Str(ev["key"]), nu.Str(ev["value"])))
         return nu.ParallelAsync(
-            redraws(kit.changes("sources", "evidence"), rows(Desk.sources.extract(), Desk.evidence.extract()), T.set_rows),
-            nu.ReactForever(T.on_edit(), edit),
-            nu.ReactForever(T.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.source_page(base, nu.Str(ev["key"]))))),
+            nu.Reconcile(snap(nu.OnAny(*kit.changes("sources", "evidence"))), nu.let(snap(rows(Desk.sources.extract(), Desk.evidence.extract())), T.set_rows)),
+            nu.ReactEvery(T.on_edit(), edit),
+            nu.ReactEvery(T.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.source_page(base, nu.Str(ev["key"]))))),
         )
 
     return kit.on_desk(plane, build)
@@ -314,7 +314,7 @@ def out(plane):
 YEARS = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit
 from nudemos.research.kit import Desk
 
@@ -331,7 +331,7 @@ def by_year(sources):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: redraws(kit.changes("sources"), by_year(Desk.sources.extract()), View.chart.set))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes("sources"))), nu.let(snap(by_year(Desk.sources.extract())), View.chart.set)))
 """
 
 
@@ -344,7 +344,7 @@ READING = (("add", ADD_SOURCE), ("shelf", SHELF), ("years", YEARS))
 SOURCE_HEAD = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 from nudemos.research.kit import Desk
 
@@ -388,8 +388,8 @@ def out(plane):
     def build(base, key):
         src = Desk.sources[key]
         return nu.ParallelAsync(
-            redraws(kit.changes("sources"), head(src.fallback({})), draw),
-            nu.ReactForever(View.facts.status.on_change(), kit.set_status(base, key, nu.Str(View.facts.status))),
+            nu.Reconcile(snap(nu.OnAny(*kit.changes("sources"))), nu.let(snap(head(src.fallback({}))), draw)),
+            nu.ReactEvery(View.facts.status.on_change(), kit.set_status(base, key, nu.Str(View.facts.status))),
         )
 
     return kit.on_page(plane, build)
@@ -421,7 +421,7 @@ def out(plane):
             >> notes.set(notes_of(src.fallback({})))
             >> notes.set_editable(True)
             >> notes.set_placeholder("What it shows, what it does not, what to check. Markdown, kept as you type.")
-            >> nu.ReactForever(notes.on_change(), kit.patch(src, nu.Dict.of(notes=nu.Str(notes))))
+            >> nu.ReactEvery(notes.on_change(), kit.patch(src, nu.Dict.of(notes=nu.Str(notes))))
         )
 
     return kit.on_page(plane, build)
@@ -431,7 +431,7 @@ def out(plane):
 SOURCE_GIVES = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -452,16 +452,14 @@ def gives(d, key, base):
 
 def out(plane):
     text = nustd.ui.MarkdownRef("gives")
-    return kit.on_page(plane, lambda base, key: redraws(
-        kit.changes("claims", "evidence", "runs", "probes"), gives(kit.whole(), key, base), text.set
-    ))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(snap(nu.OnAny(*kit.changes("claims", "evidence", "runs", "probes"))), nu.let(snap(gives(kit.whole(), key, base)), text.set)))
 """
 
 
 SOURCE_LINK = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import data, kit
 from nudemos.research.kit import Desk
 
@@ -501,8 +499,8 @@ def out(plane):
         shown = (L.pick.claim.set("") >> L.pick.stance.set("for") >> L.pick.weight.set_value(2.0) >> L.say.note.set("")
                  >> L.say.by.set(data.TEAM[0]) >> L.say.add.set_label("Put it on the board"))
         return shown >> nu.ParallelAsync(
-            redraws(kit.changes("claims"), options(Desk.claims.extract()), L.pick.claim.set_options),
-            nu.ReactForever(L.say.add.on_click(), add),
+            nu.Reconcile(snap(nu.OnAny(*kit.changes("claims"))), nu.let(snap(options(Desk.claims.extract())), L.pick.claim.set_options)),
+            nu.ReactEvery(L.say.add.on_click(), add),
         )
 
     return kit.on_page(plane, build)
@@ -524,7 +522,7 @@ CLAIM_TABLE = r"""
 import nu
 import nuspace.ui
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 COLUMNS = [
@@ -552,8 +550,8 @@ def rows(d):
 
 def out(plane):
     def build(base):
-        opened = nu.ReactForever(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.claim_page(base, nu.Str(ev["key"])))))
-        return nu.ParallelAsync(redraws(kit.changes("claims", "evidence", "runs", "models", "probes"), rows(kit.whole()), View.table.set_rows), opened)
+        opened = nu.ReactEvery(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.claim_page(base, nu.Str(ev["key"])))))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(snap(rows(kit.whole())), View.table.set_rows)), opened)
 
     return kit.on_desk(plane, build)
 """
@@ -582,7 +580,7 @@ def out(plane):
         typed = kit.typed_claim(nu.Str(F.text), nu.Str(F.topic), data.TEAM[0])
         return nu.IfDo(nu.Str(F.text).strip() != "", kit.add_claim(base, typed) >> F.text.set("") >> F.topic.set(""))
 
-    return F.text.set("") >> F.topic.set("") >> F.add.set_label("Put on the board") >> kit.on_desk(plane, lambda base: nu.ReactForever(F.add.on_click(), add(base)))
+    return F.text.set("") >> F.topic.set("") >> F.add.set_label("Put on the board") >> kit.on_desk(plane, lambda base: nu.ReactEvery(F.add.on_click(), add(base)))
 """
 
 
@@ -595,7 +593,7 @@ CLAIMS = (("board", BOARD), ("table", CLAIM_TABLE), ("add", ADD_CLAIM))
 CLAIM_HEAD = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -630,14 +628,14 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: redraws(kit.changes("claims", "evidence", "runs", "models", "probes"), head(kit.whole(), key), draw))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(snap(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(snap(head(kit.whole(), key)), draw)))
 """
 
 
 CLAIM_HISTORY = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -652,14 +650,14 @@ def points(d, key):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: redraws(kit.changes("claims", "evidence", "runs", "models", "probes"), points(kit.whole(), key), View.chart.set))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(snap(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(snap(points(kit.whole(), key)), View.chart.set)))
 """
 
 
 CLAIM_EVIDENCE = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -698,7 +696,7 @@ def sides(d, key, base):
 
 def out(plane):
     draw = lambda v: View.pro.set(v["pro"]) >> View.con.set(v["con"])
-    return kit.on_page(plane, lambda base, key: redraws(kit.changes(), sides(kit.whole(), key, base), draw))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(sides(kit.whole(), key, base)), draw)))
 """
 
 
@@ -727,7 +725,7 @@ def out(plane):
             >> take.set(take_of(claim.fallback({})))
             >> take.set_editable(True)
             >> take.set_placeholder("Where we land, and what would change our mind. Markdown, kept as you type.")
-            >> nu.ReactForever(take.on_change(), kit.patch(claim, nu.Dict.of(take=nu.Str(take))))
+            >> nu.ReactEvery(take.on_change(), kit.patch(claim, nu.Dict.of(take=nu.Str(take))))
         )
 
     return kit.on_page(plane, build)
@@ -748,7 +746,7 @@ CLAIM = (
 MODEL_TABLE = r'''
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit
 from nudemos.research.kit import Desk
 
@@ -793,9 +791,9 @@ def edit(ev):
 
 def out(plane):
     base = plane.rsplit(".", 1)[0]
-    shown = redraws(kit.changes("models"), rows(Desk.models.extract()), View.table.set_rows)
+    shown = nu.Reconcile(snap(nu.OnAny(*kit.changes("models"))), nu.let(snap(rows(Desk.models.extract())), View.table.set_rows))
     return View.intro.set(INTRO.replace("CLAIM", f"/{base}.claim.overtrain")) >> kit.on_desk(
-        plane, lambda b: nu.ParallelAsync(shown, nu.ReactForever(View.table.on_edit(), edit))
+        plane, lambda b: nu.ParallelAsync(shown, nu.ReactEvery(View.table.on_edit(), edit))
     )
 '''
 
@@ -803,7 +801,7 @@ def out(plane):
 MODEL_CHART = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit
 from nudemos.research.kit import Desk
 
@@ -829,7 +827,7 @@ def points(models):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: redraws(kit.changes("models"), points(Desk.models.extract()), View.chart.set))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes("models"))), nu.let(snap(points(Desk.models.extract())), View.chart.set)))
 """
 
 
@@ -900,8 +898,8 @@ def out(plane):
             >> View.go.run.set_label("Run this arm") >> View.go.four.set_label("Run all four arms")
             >> View.go.note.set("Runs go on the leaderboard below as they start."))
     return View.about.set(ABOUT) >> said >> kit.on_desk(plane, lambda base: nu.ParallelAsync(
-        nu.ReactForever(View.go.run.on_click(), one(base)),
-        nu.ReactForever(View.go.four.on_click(), four(base)),
+        nu.ReactEvery(View.go.run.on_click(), one(base)),
+        nu.ReactEvery(View.go.four.on_click(), four(base)),
     ))
 '''
 
@@ -911,7 +909,7 @@ import nu
 import nuspace.ui
 import nustd.ui
 from nuspace import ops
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 from nudemos.research.kit import Desk
 
@@ -938,8 +936,8 @@ def out(plane):
     board = nu.host(views.leaderboard)
 
     def build(base):
-        opened = nu.ReactForever(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.run_page(base, nu.Str(ev["key"])))))
-        return nu.ParallelAsync(redraws(kit.changes("runs"), board(Desk.runs.extract()), View.table.set_rows, every=20.0), opened)
+        opened = nu.ReactEvery(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.run_page(base, nu.Str(ev["key"])))))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*kit.changes("runs"))), nu.let(snap(board(Desk.runs.extract())), View.table.set_rows), every=20.0), opened)
 
     return View.heading.set_label("Leaderboard") >> kit.on_desk(plane, build)
 """
@@ -948,7 +946,7 @@ def out(plane):
 GRID = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import evals, kit, views
 from nudemos.research.kit import Desk
 
@@ -977,7 +975,7 @@ def cells(runs):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: redraws(kit.changes("runs"), cells(Desk.runs.extract()), View.grid.set))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes("runs"))), nu.let(snap(cells(Desk.runs.extract())), View.grid.set)))
 """
 
 
@@ -990,7 +988,7 @@ EVALS = (("launch", LAUNCH), ("leaderboard", LEADERBOARD), ("grid", GRID))
 RUN_HEAD = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import evals, kit, views
 from nudemos.research.kit import Desk
 
@@ -1043,14 +1041,14 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: redraws(kit.changes("runs"), head(Desk.runs[key].fallback(None)), draw, every=10.0))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(snap(nu.OnAny(*kit.changes("runs"))), nu.let(snap(head(Desk.runs[key].fallback(None))), draw), every=10.0))
 """
 
 
 RUN_ANSWERS = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import evals, kit
 from nudemos.research.kit import Desk
 
@@ -1103,10 +1101,10 @@ def out(plane):
         run = Desk.runs[key].fallback(None)
         shown = lambda v: View.reply.asked.set(v["asked"]) >> View.reply.said.set(v["said"])
         # The latest answer as it lands; a row clicked shows that one instead, until the next lands.
-        picked = nu.ReactForever(View.table.on_row_click(), lambda ev: nu.let(reply(run, nu.Str(ev["key"])), shown))
+        picked = nu.ReactEvery(View.table.on_row_click(), lambda ev: nu.let(reply(run, nu.Str(ev["key"])), shown))
         return nu.ParallelAsync(
-            redraws(kit.changes("runs"), rows(run), View.table.set_rows),
-            redraws(kit.changes("runs"), reply(run, ""), shown),
+            nu.Reconcile(snap(nu.OnAny(*kit.changes("runs"))), nu.let(snap(rows(run)), View.table.set_rows)),
+            nu.Reconcile(snap(nu.OnAny(*kit.changes("runs"))), nu.let(snap(reply(run, "")), shown)),
             picked,
         )
 
@@ -1126,7 +1124,7 @@ import time
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import evals, job, kit, views
 from nudemos.research.kit import Desk
 
@@ -1185,9 +1183,9 @@ def out(plane):
     def build(base):
         shown = state(Desk.probe.fallback({}), Desk.probes.extract(), Desk.paused.fallback(False), nustd.time.time())
         return nu.ParallelAsync(
-            C.now.set_label("Probe now") >> C.paused.set(Desk.paused.fallback(False)) >> redraws(kit.changes("probe", "probes") + [Desk.paused.on_change()], shown, draw, every=1.0),
-            nu.ReactForever(C.now.on_click(), Desk.asked.set(Desk.asked.fallback(0) + 1)),
-            nu.ReactForever(C.paused.on_change(), Desk.paused.set(nu.ToBool(C.paused))),
+            C.now.set_label("Probe now") >> C.paused.set(Desk.paused.fallback(False)) >> nu.Reconcile(snap(nu.OnAny(*kit.changes("probe", "probes") + [Desk.paused.on_change()])), nu.let(snap(shown), draw), every=1.0),
+            nu.ReactEvery(C.now.on_click(), Desk.asked.set(Desk.asked.fallback(0) + 1)),
+            nu.ReactEvery(C.paused.on_change(), Desk.paused.set(nu.ToBool(C.paused))),
         )
 
     return View.about.set(ABOUT) >> kit.on_desk(plane, build)
@@ -1197,7 +1195,7 @@ def out(plane):
 PROBE_CHART = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit
 from nudemos.research.kit import Desk
 
@@ -1216,7 +1214,7 @@ def points(probes):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: redraws(kit.changes("probes"), points(Desk.probes.extract()), View.chart.set))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes("probes"))), nu.let(snap(points(Desk.probes.extract())), View.chart.set)))
 """
 
 
@@ -1225,7 +1223,7 @@ import time
 
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import evals, kit
 from nudemos.research.kit import Desk
 
@@ -1256,7 +1254,7 @@ def rows(probes):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: redraws(kit.changes("probes"), rows(Desk.probes.extract()), View.table.set_rows))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes("probes"))), nu.let(snap(rows(Desk.probes.extract())), View.table.set_rows)))
 """
 
 
@@ -1269,7 +1267,7 @@ WATCH = (("probe", PROBE_HEAD), ("chart", PROBE_CHART), ("feed", PROBE_FEED))
 ENTRIES = r"""
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.research import kit, views
 
 
@@ -1284,7 +1282,7 @@ def pages(d):
 
 def out(plane):
     text = nustd.ui.MarkdownRef("entries")
-    return kit.on_desk(plane, lambda base: redraws(kit.changes(), pages(kit.whole()), text.set, every=60.0))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(pages(kit.whole())), text.set), every=60.0))
 """
 
 
@@ -1322,7 +1320,7 @@ def out(plane):
     add = nu.IfDo(nu.Str(W.head.title).strip() != "", Desk.notebook.append(entry(nu.Str(W.head.title), nu.Str(W.text), nu.Str(W.head.by)))
                   >> W.head.title.set("") >> W.text.set(""))
     shown = W.head.title.set("") >> W.head.by.set(data.TEAM[2]) >> W.text.set("") >> W.head.add.set_label("Add the entry")
-    return shown >> kit.on_desk(plane, lambda base: nu.ReactForever(W.head.add.on_click(), add))
+    return shown >> kit.on_desk(plane, lambda base: nu.ReactEvery(W.head.add.on_click(), add))
 """
 
 

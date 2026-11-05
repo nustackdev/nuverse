@@ -22,7 +22,7 @@ import nustd.time
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 
 #: Seconds between ticks.
 EVERY = 1.0
@@ -48,7 +48,7 @@ def show(n):
 
 
 ticks = nu.ForeverDo(nu.DelayedDo(EVERY, ops.atomic_state(nu.let(nustd.time.time(), tick))))
-shows = redraws([Counter.value.on_change()], Counter.value.fallback(0), show)
+shows = nu.Reconcile(snap(nu.OnAny(*[Counter.value.on_change()])), nu.let(snap(Counter.value.fallback(0)), show))
 out = tile.set_label("Count") >> nu.ParallelAsync(ticks, shows)
 """
 

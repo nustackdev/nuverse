@@ -57,8 +57,8 @@ def _edit(item: Text) -> nu.Nu:
     """The item's option picked in the select, both ways."""
     value, entry = item.value, Box.entry.input
     return entry.set(value.fallback("")) >> nu.ParallelAsync(
-        nu.ReactForever(entry.on_change(), value.set(nu.ToStr(entry))),
-        nu.ReactForever(value.on_change(), entry.set(nu.str(value))),
+        nu.ReactEvery(entry.on_change(), value.set(nu.ToStr(entry))),
+        nu.ReactEvery(value.on_change(), entry.set(nu.str(value))),
     )
 
 
@@ -78,10 +78,10 @@ def out() -> nu.Nu:
         _edit,
         first=seed >> show_options(),
         also=(
-            nu.ReactForever(
+            nu.ReactEvery(
                 settings.options.on_change(), Choice.options.set(nu.List(settings.options))
             ),
-            nu.ReactForever(Choice.options.on_change(), show_options()),
+            nu.ReactEvery(Choice.options.on_change(), show_options()),
         ),
     )
 

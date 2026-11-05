@@ -180,7 +180,7 @@ class Team:
         done = self.finished(roles[0])
         for role in roles[1:]:
             done = done.and_(self.finished(role))
-        return nu.WaitReactive(snap(Flow.agents.on_change()), snap(done), every=1.5)
+        return nu.WaitUntil(snap(Flow.agents.on_change()), snap(done), every=1.5)
 
     def answer(self, role: str) -> nu.Nu:
         """``role``'s latest answer. Bare."""

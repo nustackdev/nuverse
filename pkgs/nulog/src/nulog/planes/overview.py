@@ -111,7 +111,7 @@ def live(s):
         both = nu.let(reads.streams(cap), lambda names: nu.let(reads.series(cap), lambda kinds: reads.newest(names, kinds)))
         return nu.let(both, lambda b: fmt.overview(nu.List(b)[0], nu.List(b)[1], nustd.time.time()))
 
-    return View.empty.erase() >> drawing(nu.ForeverDo(redraw(read(), draw) >> nu.Delay(s["every"])))
+    return View.empty.erase() >> nu.ForeverDo(nu.let(snap(read()), draw) >> nu.Delay(s["every"]))
 
 
 def out(plane):

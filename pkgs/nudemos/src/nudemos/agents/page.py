@@ -21,7 +21,7 @@ __all__ = ["PAGE", "SAY", "SKETCH", "STATUS", "TRANSCRIPT"]
 _IMPORTS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.agents import launch, views
 from nudemos.agents.state import Agent, at
 from nudemos.agents.views import with_job
@@ -66,7 +66,7 @@ def draw(h):
 
 def follow(job):
     moves = [at(job, Agent.n.on_change()), at(job, Agent.status.on_change())]
-    return redraws(moves, views.head(views.agent_view(job)), draw, every=2.0)
+    return nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(views.head(views.agent_view(job))), draw), every=2.0)
 
 
 def out(plane):
@@ -110,9 +110,9 @@ def follow(job):
     label = nu.Dict(views.head(views.agent_view(job)))["button"]
     placed = S.text.set("") >> S.send.set("Say") >> S.stop.set("Stop")
     return placed >> nu.ParallelAsync(
-        redraws([status.on_change()], label, button, every=3.0),
-        nu.ReactForever(S.send.on_click(), sent(job)),
-        nu.ReactForever(S.stop.on_click(), press(job)),
+        nu.Reconcile(snap(nu.OnAny(*[status.on_change()])), nu.let(snap(label), button), every=3.0),
+        nu.ReactEvery(S.send.on_click(), sent(job)),
+        nu.ReactEvery(S.stop.on_click(), press(job)),
     )
 
 
@@ -159,7 +159,7 @@ def follow(job):
         each = lambda d: nu.ForEachDo(nu.List(nu.Dict(d)["entries"]), entry) >> seen.set(nu.Dict(d)["seen"])
         behind = snap(at(job, Agent.n.fallback(0))) > i
         step = nu.IfDo(behind, nu.let(views.entries(new, seen), each))
-        return nu.ReconcileReactive(snap(at(job, Agent.n.on_change())), step, every=3.0)
+        return nu.Reconcile(snap(at(job, Agent.n.on_change())), step, every=3.0)
 
     return View.head.set("Transcript") >> nu.let({"i": 0, "titles": {}}, drawn)
 
@@ -184,7 +184,7 @@ def draw(elements):
 def follow(job):
     sketch = at(job, Agent.sketch)
     hint = View.hint.set("Sketch board: ask the agent to sketch something and it draws here.")
-    return hint >> redraws([sketch.on_change()], sketch.fallback([]), draw, every=10.0)
+    return hint >> nu.Reconcile(snap(nu.OnAny(*[sketch.on_change()])), nu.let(snap(sketch.fallback([])), draw), every=10.0)
 
 
 def out(plane):

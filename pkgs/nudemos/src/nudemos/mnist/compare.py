@@ -24,7 +24,7 @@ import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.shapes import Space
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.mnist import views
 from nudemos.mnist.state import Pick
 """
@@ -48,7 +48,7 @@ def out(plane):
     # On the MNIST plane, or on Compare under it: the runs hang from the root either way.
     def follow(root):
         runs = Space.planes[nu.Str(root)].children.on_change()
-        return redraws([runs], views.leader(views.board(nu.Str(root))), draw, every=2.0)
+        return nu.Reconcile(snap(nu.OnAny(*[runs])), nu.let(snap(views.leader(views.board(nu.Str(root)))), draw), every=2.0)
 
     made_by = Space.planes[plane].props.made_by.fallback("")
     root = snap(nu.If(made_by == "nudemos.mnist", plane, ops.parent(plane)))
@@ -89,9 +89,9 @@ def out(plane):
         runs = [Space.planes[nu.Str(root)].children.on_change(), Pick.pages.on_change()]
         read = views.rows(views.board(nu.Str(root)), nu.list(Pick.pages.fallback([])))
         return nu.ParallelAsync(
-            redraws(runs, read, t.set_rows, every=2.0),
-            nu.ReactForever(t.on_edit(), plot),
-            nu.ReactForever(t.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"]))),
+            nu.Reconcile(snap(nu.OnAny(*runs)), nu.let(snap(read), t.set_rows), every=2.0),
+            nu.ReactEvery(t.on_edit(), plot),
+            nu.ReactEvery(t.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"]))),
         )
 
     return nu.let(snap(ops.parent(plane)), follow)
@@ -120,7 +120,7 @@ def draw(d):
 def out(plane):
     def follow(root):
         read = views.overlay(views.series(nu.Str(root)), nu.list(Pick.pages.fallback([])))
-        return redraws([Pick.pages.on_change()], read, draw, every=2.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Pick.pages.on_change()])), nu.let(snap(read), draw), every=2.0)
 
     return nu.let(snap(ops.parent(plane)), follow)
 """)

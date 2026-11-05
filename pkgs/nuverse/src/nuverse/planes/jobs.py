@@ -48,7 +48,6 @@ import nustd.ui
 import nuspace
 from nuspace import ops
 from nuspace.system.services import init, supervisor
-from nuspace.system.utils import redraws
 
 
 class Jobs(nuspace.PlaneState):
@@ -136,7 +135,8 @@ changes = [
     nuspace.Space.kernel.planes_running.on_children_change(),
 ]
 out = nu.ParallelAsync(
-    redraws(changes, rows(), table), nu.ReactForever(Listing.table.on_row_click(), select)
+    nu.Reconcile(ops.snapshot(nu.OnAny(*changes)), nu.let(ops.snapshot(rows()), table)),
+    nu.ReactEvery(Listing.table.on_row_click(), select),
 )
 """
 
@@ -193,7 +193,7 @@ make = nu.let(name, lambda held: create(nu.Str(held)) >> Form.name.set(""))
 out = (
     Form.name.set("")
     >> Form.create.set("Create job")
-    >> nu.ReactForever(Form.create.on_click(), make)
+    >> nu.ReactEvery(Form.create.on_click(), make)
 )
 """
 )
@@ -206,7 +206,6 @@ import nustd.ui
 import nuspace
 from nuspace import ops
 from nuspace.system.services import init, supervisor
-from nuspace.system.utils import follows
 
 OFF = "off"
 
@@ -318,7 +317,7 @@ def delete(job):
             remove(job),
             armed.set(True) >> button.set("Click again to delete", variant="danger"),
         )
-        return nu.ReactForever(button.on_click(), click)
+        return nu.ReactEvery(button.on_click(), click)
 
     return nu.let(False, clicks)
 
@@ -331,10 +330,10 @@ def shown(job):
         View.empty.erase()
         >> draw(job)
         >> nu.ParallelAsync(
-            nu.ReactForever(d.save.on_click(), save),
-            nu.ReactForever(d.boot.on_change(), boot),
-            nu.ReactForever(d.restart.policy.choice.on_change(), restart(job)),
-            nu.ReactForever(d.restart.delay.on_change(), restart(job)),
+            nu.ReactEvery(d.save.on_click(), save),
+            nu.ReactEvery(d.boot.on_change(), boot),
+            nu.ReactEvery(d.restart.policy.choice.on_change(), restart(job)),
+            nu.ReactEvery(d.restart.delay.on_change(), restart(job)),
             delete(job),
         )
     )
@@ -349,7 +348,7 @@ def showing(job):
     return nu.IfDo(there, shown(job), hint())
 
 
-out = follows(Jobs.selected, showing)
+out = nu.ReconcileLatest(snap(nu.Str(Jobs.selected)), snap(Jobs.selected.on_change()), showing)
 """
 
 

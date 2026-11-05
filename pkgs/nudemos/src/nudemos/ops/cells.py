@@ -69,7 +69,7 @@ def out(plane):
 PULSE = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -102,7 +102,7 @@ def out(plane):
     def build(root):
         read = views.pulse(Ops.gw.fallback({}), Ops.release.fallback({}), nu.Dict(Ops.jobs.extract()).fallback({}),
                            nu.Dict(Ops.incidents.extract()).fallback({}), Ops.load.fallback({}))
-        return redraws([Ops.beat.on_change(), Ops.incidents.on_change()], read, draw, every=2.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change(), Ops.incidents.on_change()])), nu.let(snap(read), draw), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -112,7 +112,7 @@ LIVE = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -136,7 +136,7 @@ def out(plane):
             err=views.named("failing %", Ops.err.range(since, since + WINDOW + 5), 100.0),
         )
         draw = lambda v: View.both.traffic.set(v["rps"]) >> View.both.errors.set(v["err"])
-        return redraws([Ops.beat.on_change()], read, draw, every=2.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change()])), nu.let(snap(read), draw), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -145,7 +145,7 @@ def out(plane):
 FEED = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -160,7 +160,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root):
         read = views.feed_rows(Ops.events.fallback([]), root, 14)
-        return View.head.set("What happened, newest first") >> redraws([Ops.events.on_change()], read, View.feed.set_rows)
+        return View.head.set("What happened, newest first") >> nu.Reconcile(snap(nu.OnAny(*[Ops.events.on_change()])), nu.let(snap(read), View.feed.set_rows))
 
     return kit.on_ops(plane, build)
 """
@@ -177,7 +177,7 @@ import nu
 import nustd.time
 import nuspace.ui
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -201,9 +201,9 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root):
         rows = views.job_rows(nu.Dict(Ops.jobs.extract()).fallback({}), nustd.time.time())
-        opened = nu.ReactForever(View.jobs.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(nu.Str(root) + ".jobs." + nu.Str(ev["key"]))))
+        opened = nu.ReactEvery(View.jobs.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(nu.Str(root) + ".jobs." + nu.Str(ev["key"]))))
         intro = View.intro.set("Every job runs as a headless plane in its own process, kept up or scheduled by the supervisor. Click one for its runs, its log and its controls.")
-        return intro >> nu.ParallelAsync(redraws([Ops.jobs.on_change()], rows, View.jobs.set_rows, every=5.0), opened)
+        return intro >> nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Ops.jobs.on_change()])), nu.let(snap(rows), View.jobs.set_rows), every=5.0), opened)
 
     return kit.on_ops(plane, build)
 """
@@ -212,7 +212,7 @@ def out(plane):
 RECENT = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit
 from nudemos.ops.state import Ops
 
@@ -235,7 +235,7 @@ def bars(runs):
 
 def out(plane):
     def build(root):
-        return redraws([Ops.runs.on_change()], bars(nu.Dict(Ops.runs.extract()).fallback({})), View.took.set, every=10.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.runs.on_change()])), nu.let(snap(bars(nu.Dict(Ops.runs.extract()).fallback({}))), View.took.set), every=10.0)
 
     return kit.on_ops(plane, build)
 """
@@ -248,7 +248,7 @@ JOB_HEAD = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -286,10 +286,10 @@ def out(plane):
         flip = nu.IfDo(kit.paused(name), kit.resume(root, name), kit.pause(root, name))
         first = View.desc.set("") >> View.top.status.set("starting", tone="info") >> View.top.line.set("") >> View.controls.run.set("Run now", icon="play") >> View.controls.pause.set("Pause", variant="secondary", icon="pause") >> View.controls.restart.set("Restart", variant="secondary", icon="refresh-cw")
         return first >> nu.ParallelAsync(
-            redraws([Ops.jobs.on_change()], head, draw, every=1.0),
-            nu.ReactForever(View.controls.run.on_click(), kit.run_now(root, name)),
-            nu.ReactForever(View.controls.pause.on_click(), flip),
-            nu.ReactForever(View.controls.restart.on_click(), kit.restart(root, name)),
+            nu.Reconcile(snap(nu.OnAny(*[Ops.jobs.on_change()])), nu.let(snap(head), draw), every=1.0),
+            nu.ReactEvery(View.controls.run.on_click(), kit.run_now(root, name)),
+            nu.ReactEvery(View.controls.pause.on_click(), flip),
+            nu.ReactEvery(View.controls.restart.on_click(), kit.restart(root, name)),
         )
 
     return kit.on_subject(plane, "job", build)
@@ -300,7 +300,7 @@ JOB_RUNS = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -321,7 +321,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root, name):
         rows = views.job_runs(Ops.runs[name].fallback([]), Ops.jobs[name].fallback({}), nustd.time.time())
-        return View.head.set("Runs, newest first") >> redraws([Ops.runs[name].on_change(), Ops.jobs[name].on_change()], rows, View.runs.set_rows, every=5.0)
+        return View.head.set("Runs, newest first") >> nu.Reconcile(snap(nu.OnAny(*[Ops.runs[name].on_change(), Ops.jobs[name].on_change()])), nu.let(snap(rows), View.runs.set_rows), every=5.0)
 
     return kit.on_subject(plane, "job", build)
 """
@@ -330,7 +330,7 @@ def out(plane):
 JOB_LOG = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nulog.messages.ops import tail
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
@@ -347,7 +347,7 @@ def out(plane):
     def build(root, name):
         # Its own stream, newest 25 lines: a read the size of what is shown, however long the stream.
         rows = views.log_rows(kit.tail(name, 25), "debug", "", 25)
-        return View.head.set("Its log, live") >> redraws([Ops.counts.on_change()], rows, View.lines.set_rows, every=3.0)
+        return View.head.set("Its log, live") >> nu.Reconcile(snap(nu.OnAny(*[Ops.counts.on_change()])), nu.let(snap(rows), View.lines.set_rows), every=3.0)
 
     return kit.on_subject(plane, "job", build)
 """
@@ -362,7 +362,7 @@ JOB = (("head", JOB_HEAD), ("runs", JOB_RUNS), ("log", JOB_LOG))
 KNOB = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit
 from nudemos.ops.state import Ops
 
@@ -390,8 +390,8 @@ def out(plane):
         draw = lambda v: k.sent.set_value(v["sent"]) >> k.failed.set_value(v["failed"]) >> k.orders.set_value(v["orders"])
         moved = Ops.load.set(kit.merged(Ops.load.fallback({}), nu.Dict.of(users=nu.ToInt(k.users))))
         return k.users.set_value(nu.Float(Ops.load.fallback({})["users"])) >> nu.ParallelAsync(
-            redraws([Ops.load.on_change()], shown(Ops.load.fallback({})), draw, every=2.0),
-            nu.ReactForever(k.users.on_change(), kit.landed(root, moved)),
+            nu.Reconcile(snap(nu.OnAny(*[Ops.load.on_change()])), nu.let(snap(shown(Ops.load.fallback({}))), draw), every=2.0),
+            nu.ReactEvery(k.users.on_change(), kit.landed(root, moved)),
         )
 
     return kit.on_ops(plane, build)
@@ -402,7 +402,7 @@ TRAFFIC_CHARTS = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -430,7 +430,7 @@ def out(plane):
         )
         c = View.charts
         draw = lambda v: c.rps.set(v["load"]) >> c.latency.set(v["latency"]) >> c.memory.set(v["rss"])
-        return redraws([Ops.beat.on_change()], read, draw, every=2.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change()])), nu.let(snap(read), draw), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -439,7 +439,7 @@ def out(plane):
 ROUTES = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -466,7 +466,7 @@ def out(plane):
         gw = Ops.gw.fallback({})
         read = nu.Dict.of(rows=views.route_rows(gw), codes=nu.Dict(gw).get_item("codes", {}))
         draw = lambda v: View.both.routes.set_rows(v["rows"]) >> View.both.codes.set(v["codes"])
-        return redraws([Ops.beat.on_change()], read, draw, every=2.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change()])), nu.let(snap(read), draw), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -475,7 +475,7 @@ def out(plane):
 ACCESS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -490,7 +490,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root):
         rows = views.log_rows(kit.tail("gateway", 12), "debug", "", 12)
-        return View.head.set("The gateway's log, as it is written") >> redraws([Ops.beat.on_change()], rows, View.lines.set_rows, every=2.0)
+        return View.head.set("The gateway's log, as it is written") >> nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change()])), nu.let(snap(rows), View.lines.set_rows), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -506,7 +506,7 @@ EXPLORER = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.model import JOBS
 from nudemos.ops.state import Ops
@@ -551,8 +551,8 @@ def out(plane):
             return nu.let(views.log_rows(kit.tail(stream, n), level, needle, 80), drew)
 
         once = nu.let(nustd.time.time(), show)
-        follow = nu.ReconcileReactive(snap(Ops.counts.on_change()), nu.IfDo(nu.Bool(p.live), once) >> nu.Delay(1.0), every=5.0)
-        picked = [nu.ReactForever(ev, once) for ev in (p.stream.on_change(), p.level.on_change(), p.find.on_change())]
+        follow = nu.Reconcile(snap(Ops.counts.on_change()), nu.IfDo(nu.Bool(p.live), once) >> nu.Delay(1.0), every=5.0)
+        picked = [nu.ReactEvery(ev, once) for ev in (p.stream.on_change(), p.level.on_change(), p.find.on_change())]
         return p.stream.set("gateway") >> p.level.set("info") >> p.find.set("") >> p.live.set(True) >> View.said.set("Reading the stream") >> once >> nu.ParallelAsync(follow, *picked)
 
     return kit.on_ops(plane, build)
@@ -562,7 +562,7 @@ def out(plane):
 VOLUME = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit
 from nudemos.ops.state import Ops
 
@@ -577,7 +577,7 @@ def bars(counts):
 
 
 def out(plane):
-    return kit.on_ops(plane, lambda root: redraws([Ops.counts.on_change()], bars(Ops.counts.fallback({})), View.volume.set, every=5.0))
+    return kit.on_ops(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*[Ops.counts.on_change()])), nu.let(snap(bars(Ops.counts.fallback({}))), View.volume.set), every=5.0))
 """
 
 
@@ -590,7 +590,7 @@ LOGS = (("explorer", EXPLORER), ("volume", VOLUME))
 GAUGES = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -630,7 +630,7 @@ def out(plane):
         m = Ops.machine.fallback({})
         read = nu.Dict.of(m=m, t=views.machine_tiles(m))
         note = View.note.set("The machine this space runs on, read from the kernel every 2 seconds by the telemetry job.")
-        return note >> redraws([Ops.tick.on_change()], read, draw, every=4.0)
+        return note >> nu.Reconcile(snap(nu.OnAny(*[Ops.tick.on_change()])), nu.let(snap(read), draw), every=4.0)
 
     return kit.on_ops(plane, build)
 """
@@ -640,7 +640,7 @@ MACHINE_CHARTS = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -665,7 +665,7 @@ def out(plane):
             load=views.named("load", Ops.load1.range(since, end)),
         )
         draw = lambda v: View.charts.use.set(v["use"]) >> View.charts.load.set(v["load"])
-        return redraws([Ops.tick.on_change()], read, draw, every=4.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.tick.on_change()])), nu.let(snap(read), draw), every=4.0)
 
     return kit.on_ops(plane, build)
 """
@@ -674,7 +674,7 @@ def out(plane):
 PROCS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -696,7 +696,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root):
         rows = views.proc_rows(Ops.machine.fallback({}), nu.Dict(Ops.jobs.extract()).fallback({}))
-        return View.head.set("Every job's process") >> redraws([Ops.tick.on_change()], rows, View.procs.set_rows, every=4.0)
+        return View.head.set("Every job's process") >> nu.Reconcile(snap(nu.OnAny(*[Ops.tick.on_change()])), nu.let(snap(rows), View.procs.set_rows), every=4.0)
 
     return kit.on_ops(plane, build)
 """
@@ -711,7 +711,7 @@ MACHINE = (("gauges", GAUGES), ("charts", MACHINE_CHARTS), ("procs", PROCS))
 SHIP = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit
 from nudemos.ops.gateway import RELEASES
 from nudemos.ops.model import STABLE
@@ -754,9 +754,9 @@ def out(plane):
         draw = lambda v: View.live.live.set(v["label"], tone=v["tone"]) >> View.live.line.set(v["line"])
         buttons = s.deploy.set("Deploy", icon="upload") >> s.rollback.set(f"Roll back to {STABLE[-1]}", variant="secondary", icon="undo-2")
         return s.version.set("1.9.0") >> buttons >> nu.ParallelAsync(
-            redraws([Ops.gw.on_change(), Ops.jobs.on_change()], live(Ops.release.fallback({}), Ops.gw.fallback({}), nu.Dict(Ops.jobs.extract()).fallback({})), draw, every=2.0),
-            nu.ReactForever(s.deploy.on_click(), shipping),
-            nu.ReactForever(s.rollback.on_click(), back),
+            nu.Reconcile(snap(nu.OnAny(*[Ops.gw.on_change(), Ops.jobs.on_change()])), nu.let(snap(live(Ops.release.fallback({}), Ops.gw.fallback({}), nu.Dict(Ops.jobs.extract()).fallback({}))), draw), every=2.0),
+            nu.ReactEvery(s.deploy.on_click(), shipping),
+            nu.ReactEvery(s.rollback.on_click(), back),
         )
 
     return kit.on_ops(plane, build)
@@ -767,7 +767,7 @@ HISTORY = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -787,7 +787,7 @@ def out(plane):
     def build(root):
         read = nu.Dict.of(rows=views.deploy_rows(Ops.deploys.fallback([]), nustd.time.time()), notes=views.release_notes(nu.Str(Ops.release.fallback({})["version"])))
         draw = lambda v: View.both.history.set_rows(v["rows"]) >> View.both.notes.set(nu.Str("### Releases\\n\\n") + nu.Str(v["notes"]))
-        return redraws([Ops.deploys.on_change()], read, draw, every=30.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.deploys.on_change()])), nu.let(snap(read), draw), every=30.0)
 
     return kit.on_ops(plane, build)
 """
@@ -804,7 +804,7 @@ import nu
 import nustd.time
 import nuspace.ui
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -834,8 +834,8 @@ def out(plane):
     def build(root):
         rows = views.incident_rows(nu.Dict(Ops.incidents.extract()).fallback({}), nustd.time.time())
         draw = lambda r: View.incidents.set_rows(r) >> View.empty.set(said(r))
-        opened = nu.ReactForever(View.incidents.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(nu.Str(root) + ".incident." + nu.Str(ev["key"]))))
-        return nu.ParallelAsync(redraws([Ops.incidents.on_change()], rows, draw, every=10.0), opened)
+        opened = nu.ReactEvery(View.incidents.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(nu.Str(root) + ".incident." + nu.Str(ev["key"]))))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Ops.incidents.on_change()])), nu.let(snap(rows), draw), every=10.0), opened)
 
     return kit.on_ops(plane, build)
 """
@@ -844,7 +844,7 @@ def out(plane):
 PAGER = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -869,9 +869,7 @@ def rows(pager):
 
 def out(plane):
     def build(root):
-        return View.head.set("Who was paged") >> View.both.rota.set_rows(Ops.oncall.fallback([])) >> redraws(
-            [Ops.pager.on_change()], rows(Ops.pager.fallback([])), View.both.pages.set_rows
-        )
+        return View.head.set("Who was paged") >> View.both.rota.set_rows(Ops.oncall.fallback([])) >> nu.Reconcile(snap(nu.OnAny(*[Ops.pager.on_change()])), nu.let(snap(rows(Ops.pager.fallback([]))), View.both.pages.set_rows))
 
     return kit.on_ops(plane, build)
 """
@@ -884,7 +882,7 @@ INC_HEAD = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -930,10 +928,10 @@ def out(plane):
             >> View.say.text.set("") >> View.say.add.set("Add note", variant="secondary", icon="send")
         )
         return labels >> View.act.runbook.set(href=nu.Str("/") + root + ".runbooks", label="Open the runbook") >> nu.ParallelAsync(
-            redraws([Ops.incidents[iid].on_change()], read, draw, every=5.0),
-            nu.ReactForever(View.act.ack.on_click(), kit.settle_incident(root, iid, "acked")),
-            nu.ReactForever(View.act.resolve.on_click(), kit.settle_incident(root, iid, "resolved")),
-            nu.ReactForever(View.say.add.on_click(), note),
+            nu.Reconcile(snap(nu.OnAny(*[Ops.incidents[iid].on_change()])), nu.let(snap(read), draw), every=5.0),
+            nu.ReactEvery(View.act.ack.on_click(), kit.settle_incident(root, iid, "acked")),
+            nu.ReactEvery(View.act.resolve.on_click(), kit.settle_incident(root, iid, "resolved")),
+            nu.ReactEvery(View.say.add.on_click(), note),
         )
 
     return kit.on_subject(plane, "incident", build)
@@ -944,7 +942,7 @@ INC_AROUND = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -970,7 +968,7 @@ def out(plane):
         w = nu.List(window(Ops.incidents[iid].fallback({}), nustd.time.time()))
         read = nu.Dict.of(err=views.named("failing %", Ops.err.sample(400, nu.Int(w[0]), nu.Int(w[1])), 100.0), rss=views.named("gateway MB", Ops.gw_rss.sample(400, nu.Int(w[0]), nu.Int(w[1]))))
         draw = lambda v: View.charts.err.set(v["err"]) >> View.charts.rss.set(v["rss"])
-        return redraws([Ops.beat.on_change()], read, draw, every=3.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change()])), nu.let(snap(read), draw), every=3.0)
 
     return kit.on_subject(plane, "incident", build)
 """
@@ -987,7 +985,7 @@ import nu
 import nustd.http
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.model import STABLE
 from nudemos.ops.state import Ops
@@ -1064,11 +1062,11 @@ def out(plane):
             >> s.resolve.set("5. Resolve the incident", variant="secondary", icon="check")
         )
         return View.text.set(TEXT) >> labels >> nu.ParallelAsync(
-            nu.ReactForever(s.health.on_click(), health),
-            nu.ReactForever(s.errors.on_click(), errs),
-            nu.ReactForever(s.rollback.on_click(), back),
-            nu.ReactForever(s.verify.on_click(), verify),
-            nu.ReactForever(s.resolve.on_click(), resolve),
+            nu.ReactEvery(s.health.on_click(), health),
+            nu.ReactEvery(s.errors.on_click(), errs),
+            nu.ReactEvery(s.rollback.on_click(), back),
+            nu.ReactEvery(s.verify.on_click(), verify),
+            nu.ReactEvery(s.resolve.on_click(), resolve),
         )
 
     return kit.on_ops(plane, build)
@@ -1113,10 +1111,10 @@ def out(plane):
             >> c.digest.set("Write the digest now", variant="secondary", icon="file-text")
         )
         return View.text.set(TEXT) >> labels >> nu.ParallelAsync(
-            nu.ReactForever(c.backup.on_click(), run("backup", "Back up orders")),
-            nu.ReactForever(c.offsite.on_click(), run("offsite", "Send offsite")),
-            nu.ReactForever(c.links.on_click(), run("linkcheck", "Check help links")),
-            nu.ReactForever(c.digest.on_click(), run("digest", "Write the digest")),
+            nu.ReactEvery(c.backup.on_click(), run("backup", "Back up orders")),
+            nu.ReactEvery(c.offsite.on_click(), run("offsite", "Send offsite")),
+            nu.ReactEvery(c.links.on_click(), run("linkcheck", "Check help links")),
+            nu.ReactEvery(c.digest.on_click(), run("digest", "Write the digest")),
         )
 
     return kit.on_ops(plane, build)
@@ -1126,7 +1124,7 @@ def out(plane):
 STEPS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -1144,7 +1142,7 @@ def rows(steps):
 
 
 def out(plane):
-    return kit.on_ops(plane, lambda root: View.head.set("Steps run, newest first") >> redraws([Ops.steps.on_change()], rows(Ops.steps.fallback([])), View.steps.set_rows))
+    return kit.on_ops(plane, lambda root: View.head.set("Steps run, newest first") >> nu.Reconcile(snap(nu.OnAny(*[Ops.steps.on_change()])), nu.let(snap(rows(Ops.steps.fallback([]))), View.steps.set_rows)))
 """
 
 
@@ -1158,7 +1156,7 @@ RULE_BOARD = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -1192,7 +1190,7 @@ def out(plane):
             return kit.landed(root, rule.set(kit.merged(rule.fallback({}), nu.Dict.of(on=nu.ToBool(ev["value"])))))
 
         read = rows(nu.Dict(Ops.rules.extract()).fallback({}), nustd.time.time())
-        return View.intro.set(INTRO) >> nu.ParallelAsync(redraws([Ops.rules.on_change()], read, View.rules.set_rows, every=5.0), nu.ReactForever(View.rules.on_edit(), flip))
+        return View.intro.set(INTRO) >> nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Ops.rules.on_change()])), nu.let(snap(read), View.rules.set_rows), every=5.0), nu.ReactEvery(View.rules.on_edit(), flip))
 
     return kit.on_ops(plane, build)
 """
@@ -1239,7 +1237,7 @@ RULES = (("rules", RULE_BOARD), ("code", RULE_CODE))
 STATUS_NOW = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import Ops
 
@@ -1275,7 +1273,7 @@ def draw(parts):
 def out(plane):
     def build(root):
         read = views.components(Ops.gw.fallback({}), nu.Dict(Ops.jobs.extract()).fallback({}), Ops.release.fallback({}))
-        return redraws([Ops.beat.on_change(), Ops.jobs.on_change()], read, draw, every=3.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change(), Ops.jobs.on_change()])), nu.let(snap(read), draw), every=3.0)
 
     return kit.on_ops(plane, build)
 """
@@ -1285,7 +1283,7 @@ UPTIME = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.ops import kit
 from nudemos.ops.state import Ops
 
@@ -1326,7 +1324,7 @@ def out(plane):
     def build(root):
         now = nustd.time.time()
         since = nu.Int(nu.ToInt(now)) - 3600
-        return redraws([Ops.beat.on_change()], minutes(Ops.err.sample(2400, since, since + 3605), now), View.uptime.set, every=10.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Ops.beat.on_change()])), nu.let(snap(minutes(Ops.err.sample(2400, since, since + 3605), now)), View.uptime.set), every=10.0)
 
     return kit.on_ops(plane, build)
 """

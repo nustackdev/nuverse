@@ -22,7 +22,7 @@ import nu
 import nuspace.ui
 import nustd.ui
 from nuspace import ops
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.knowledge import kit, text, views
 from nudemos.knowledge.kit import Base
 """
@@ -57,8 +57,8 @@ def out(plane):
         hits = views.search(Base.docs.extract(), Base.facts.extract(), q, base)
         intro = views.welcome(Base.facts.extract(), base, kit.now())
         return View.find.q.set("") >> nu.ParallelAsync(
-            redraws([Base.facts.on_change()], intro, View.intro.set, every=600.0),
-            nu.ReactForever(View.find.q.on_change(), View.hits.set(hits)),
+            nu.Reconcile(snap(nu.OnAny(*[Base.facts.on_change()])), nu.let(snap(intro), View.intro.set), every=600.0),
+            nu.ReactEvery(View.find.q.on_change(), View.hits.set(hits)),
         )
 
     return kit.on_base(plane, build)
@@ -93,7 +93,7 @@ def draw(t):
 def out(plane):
     def build(base):
         read = views.tiles(Base.docs.extract(), Base.facts.extract(), Base.health.fallback({}), kit.now())
-        return redraws([Base.docs.on_change(), Base.facts.on_change(), Base.health.on_change()], read, draw, every=15.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change(), Base.facts.on_change(), Base.health.on_change()])), nu.let(snap(read), draw), every=15.0)
 
     return kit.on_base(plane, build)
 """)
@@ -124,7 +124,7 @@ def out(plane):
 
         add = nu.IfDo(typed != "", nu.let(views.capture(typed, Base.docs.extract(), kit.now()), made))
         # The first run brings in the base: the folders, every page, then the checker.
-        return kit.seed(base) >> nu.ReactForever(form.add.on_click(), add)
+        return kit.seed(base) >> nu.ReactEvery(form.add.on_click(), add)
 
     return form.title.set("") >> form.add.set_label("Capture") >> kit.on_base(plane, build)
 """)
@@ -160,8 +160,8 @@ def out(plane):
         rows = views.task_rows(Base.docs.extract(), kit.now(), "", 7, False)
         draw = lambda r: View.table.set_rows(views.first(r, 10)) >> View.more.set(views.more(r, 10, base))
         return nu.ParallelAsync(
-            redraws([Base.docs.on_change()], rows, draw, every=60.0),
-            nu.ReactForever(View.table.on_edit(), tick),
+            nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(rows), draw), every=60.0),
+            nu.ReactEvery(View.table.on_edit(), tick),
         )
 
     head = "### Due this week\\n\\nEvery task in every page, due in the next seven days or late. Tick one and its page changes."
@@ -179,7 +179,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(base):
         read = views.activity(Base.log.fallback([]), Base.docs.extract(), base, kit.now(), 12)
-        return redraws([Base.log.on_change()], read, View.feed.set, every=30.0)
+        return nu.Reconcile(snap(nu.OnAny(*[Base.log.on_change()])), nu.let(snap(read), View.feed.set), every=30.0)
 
     return View.head.set_label("What changed") >> kit.on_base(plane, build)
 """)
@@ -221,31 +221,21 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_doc(plane, lambda base, slug: redraws(
-        [Base.docs.on_change(), Base.health.on_change()],
-        views.doc_head(Base.docs.extract(), Base.health.fallback({}), slug, base, kit.now()),
-        draw, every=60.0,
-    ))
+    return kit.on_doc(plane, lambda base, slug: nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change(), Base.health.on_change()])), nu.let(snap(views.doc_head(Base.docs.extract(), Base.health.fallback({}), slug, base, kit.now())), draw), every=60.0))
 """)
 
 
 PAGE = cell(f"""\
 def out(plane):
     page = nustd.ui.MarkdownRef("page")
-    return kit.on_doc(plane, lambda base, slug: redraws(
-        {CHANGES},
-        views.page(Base.docs.extract(), Base.facts.extract(), slug, base, kit.now()),
-        page.set, every=60.0,
-    ))
+    return kit.on_doc(plane, lambda base, slug: nu.Reconcile(snap(nu.OnAny(*{CHANGES})), nu.let(snap(views.page(Base.docs.extract(), Base.facts.extract(), slug, base, kit.now())), page.set), every=60.0))
 """)
 
 
 LINKS = cell("""\
 def out(plane):
     links = nustd.ui.MarkdownRef("links")
-    return kit.on_doc(plane, lambda base, slug: redraws(
-        [Base.docs.on_change(), Base.facts.on_change()], views.doc_links(Base.docs.extract(), Base.facts.extract(), slug, base), links.set
-    ))
+    return kit.on_doc(plane, lambda base, slug: nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change(), Base.facts.on_change()])), nu.let(snap(views.doc_links(Base.docs.extract(), Base.facts.extract(), slug, base)), links.set)))
 """)
 
 
@@ -275,8 +265,8 @@ def out(plane):
             >> kit.touched(doc, slug, "edited") >> ops.rename_plane(plane, title)
         )
         return show >> e.save.set_label("Save page") >> e.hint.set(HINT) >> nu.ParallelAsync(
-            nu.ReactForever(e.save.on_click(), nu.IfDo(title != "", save)),
-            nu.ReactForever(doc.body.on_change(), e.source.set(doc.body.fallback(""))),
+            nu.ReactEvery(e.save.on_click(), nu.IfDo(title != "", save)),
+            nu.ReactEvery(doc.body.on_change(), e.source.set(doc.body.fallback(""))),
         )
 
     return kit.on_doc(plane, build)
@@ -304,9 +294,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_doc(plane, lambda base, slug: redraws(
-        [Base.docs.on_change()], views.project_view(Base.docs.extract(), slug, kit.now()), draw, every=60.0
-    ))
+    return kit.on_doc(plane, lambda base, slug: nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.project_view(Base.docs.extract(), slug, kit.now())), draw), every=60.0))
 """)
 
 
@@ -328,8 +316,8 @@ def out(plane):
         doc, d = Base.docs[slug], View.decide
         changed = nu.Str(d.status) != nu.Str(doc.status.fallback("open"))
         return d.note.set(NOTE) >> nu.ParallelAsync(
-            redraws([Base.docs.on_change()], doc.status.fallback("open"), d.status.set),
-            nu.ReactForever(d.status.on_change(), nu.IfDo(changed, kit.set_status(slug, nu.Str(d.status)))),
+            nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(doc.status.fallback("open")), d.status.set)),
+            nu.ReactEvery(d.status.on_change(), nu.IfDo(changed, kit.set_status(slug, nu.Str(d.status)))),
         )
 
     return kit.on_doc(plane, build)
@@ -369,9 +357,7 @@ def draw(v):
 def out(plane):
     def build(base, slug):
         name = Base.docs[slug].title.fallback("")
-        return View.head.face.set("", name=name) >> redraws(
-            [Base.docs.on_change()], views.person_view(Base.docs.extract(), slug, kit.now()), draw, every=60.0
-        )
+        return View.head.face.set("", name=name) >> nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.person_view(Base.docs.extract(), slug, kit.now())), draw), every=60.0)
 
     return kit.on_doc(plane, build)
 """)
@@ -405,7 +391,7 @@ class View(nustd.ui.Column):
 {extra}
 
 def opens(base):
-    return nu.ReactForever(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.doc_page(base, nu.Str(ev["key"])))))
+    return nu.ReactEvery(View.table.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(kit.doc_page(base, nu.Str(ev["key"])))))
 """
 
 
@@ -425,7 +411,7 @@ COLUMNS = [
 def out(plane):
     def build(base):
         rows = views.pages_rows(Base.docs.extract(), Base.health.fallback({}), "wiki", kit.now())
-        return nu.ParallelAsync(redraws([Base.docs.on_change(), Base.health.on_change()], rows, View.table.set_rows, every=60.0), opens(base))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change(), Base.health.on_change()])), nu.let(snap(rows), View.table.set_rows), every=60.0), opens(base))
 
     note = "How Larkspur works, one page per topic. A page untouched for too long is flagged by the checker."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -437,7 +423,7 @@ RECENT = cell("""\
 def out(plane):
     md = nustd.ui.MarkdownRef("recent")
     read = lambda base: nu.Str("### Recently edited\\n\\n") + views.page_query("recent", "8", Base.docs.extract(), Base.facts.extract(), base, kit.now())
-    return kit.on_base(plane, lambda base: redraws([Base.docs.on_change()], read(base), md.set, every=60.0))
+    return kit.on_base(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(read(base)), md.set), every=60.0))
 """)
 
 
@@ -463,7 +449,7 @@ def draw(v):
 def out(plane):
     def build(base):
         read = views.projects_view(Base.docs.extract(), kit.now())
-        return nu.ParallelAsync(redraws([Base.docs.on_change()], read, draw, every=60.0), opens(base))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(read), draw), every=60.0), opens(base))
 
     note = "Progress is counted from the tasks in each project page and in every page that links it."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -507,7 +493,7 @@ def out(plane):
             return kit.add_doc(base, slug, c["doc"], "wrote up") >> f.line.title.set("") >> View.history.push(nuspace.ui.href(kit.doc_page(base, slug)))
 
         new = views.meeting_new(nu.Str(f.line.title), nu.Str(f.line.project), nu.List(f.people), "", Base.docs.extract(), kit.now())
-        return f.line.project.set_options(projects(Base.docs.extract())) >> nu.ReactForever(f.write.on_click(), nu.let(new, made))
+        return f.line.project.set_options(projects(Base.docs.extract())) >> nu.ReactEvery(f.write.on_click(), nu.let(new, made))
 
     return f.line.title.set("") >> f.people.set([]) >> f.write.set_label("Write the note") >> f.hint.set(HINT) >> kit.on_base(plane, build)
 """)
@@ -529,7 +515,7 @@ COLUMNS = [
 def out(plane):
     def build(base):
         rows = views.meetings_rows(Base.docs.extract(), kit.now())
-        return nu.ParallelAsync(redraws([Base.docs.on_change()], rows, View.table.set_rows), opens(base))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(rows), View.table.set_rows)), opens(base))
 
     return View.head.set_label("Every meeting, newest first") >> View.note.set("") >> kit.on_base(plane, build)
 """
@@ -559,7 +545,7 @@ def edit(ev):
 def out(plane):
     def build(base):
         rows = views.decisions(Base.docs.extract(), kit.now())
-        return nu.ParallelAsync(redraws([Base.docs.on_change()], rows, View.table.set_rows, every=60.0), nu.ReactForever(View.table.on_edit(), edit))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(rows), View.table.set_rows), every=60.0), nu.ReactEvery(View.table.on_edit(), edit))
 
     note = "Change a status here and the decision's page, Home, the digest and every open-decisions table follow."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -593,9 +579,7 @@ def draw(rows):
 
 def out(plane):
     intro = View.intro.set("Seven of us. Each person's page lists what they own and what is on them, live.")
-    return intro >> kit.on_base(plane, lambda base: redraws(
-        [Base.docs.on_change()], views.people_cards(Base.docs.extract(), kit.now(), base), draw, every=60.0
-    ))
+    return intro >> kit.on_base(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.people_cards(Base.docs.extract(), kit.now(), base)), draw), every=60.0))
 """)
 
 
@@ -613,7 +597,7 @@ COLUMNS = [
 
 def out(plane):
     def build(base):
-        return nu.ParallelAsync(redraws([Base.docs.on_change()], views.notes_rows(Base.docs.extract(), kit.now()), View.table.set_rows, every=60.0), opens(base))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.notes_rows(Base.docs.extract(), kit.now())), View.table.set_rows), every=60.0), opens(base))
 
     note = "My second brain: reading notes, half thoughts, captures from Home, and notebooks brought in from elsewhere."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -646,10 +630,10 @@ def out(plane):
         rows = views.task_rows(Base.docs.extract(), kit.now(), nu.Str(f.who), -1, nu.Bool(f.done))
         again = nu.let(rows, View.table.set_rows)
         return nu.ParallelAsync(
-            redraws([Base.docs.on_change()], rows, View.table.set_rows, every=60.0),
-            nu.ReactForever(f.who.on_change(), again),
-            nu.ReactForever(f.done.on_change(), again),
-            nu.ReactForever(View.table.on_edit(), tick),
+            nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(rows), View.table.set_rows), every=60.0),
+            nu.ReactEvery(f.who.on_change(), again),
+            nu.ReactEvery(f.done.on_change(), again),
+            nu.ReactEvery(View.table.on_edit(), tick),
         )
 
     note = "Tasks live in the pages they are written in. This is a query over all of them."
@@ -668,7 +652,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_base(plane, lambda base: redraws([Base.docs.on_change()], views.tasks_chart(Base.docs.extract(), kit.now()), draw, every=60.0))
+    return kit.on_base(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.tasks_chart(Base.docs.extract(), kit.now())), draw), every=60.0))
 """)
 
 
@@ -698,7 +682,7 @@ def edit(ev):
 def out(plane):
     def build(base):
         rows = views.facts_rows(Base.docs.extract(), Base.facts.extract(), kit.now())
-        return nu.ParallelAsync(redraws(CHANGES, rows, View.table.set_rows, every=60.0), nu.ReactForever(View.table.on_edit(), edit))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*CHANGES)), nu.let(snap(rows), View.table.set_rows), every=60.0), nu.ReactEvery(View.table.on_edit(), edit))
 
     note = "Each fact is written once and cited on pages as {{key}}. Change a value here and every page citing it follows."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -710,7 +694,7 @@ FACT_USES = cell(f"""\
 def out(plane):
     md = nustd.ui.MarkdownRef("uses")
     read = lambda base: nu.Str("### Where each fact is cited\\n\\n") + views.fact_uses(Base.docs.extract(), Base.facts.extract(), base)
-    return kit.on_base(plane, lambda base: redraws({CHANGES}, read(base), md.set))
+    return kit.on_base(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*{CHANGES})), nu.let(snap(read(base)), md.set)))
 """)
 
 
@@ -729,7 +713,7 @@ class View(nustd.ui.Column):
 
 def out(plane):
     note = "The words we use. How many pages use each is counted from the pages as they are now."
-    return View.note.set(note) >> kit.on_base(plane, lambda base: redraws([Base.docs.on_change()], views.glossary_rows(Base.docs.extract()), View.table.set_rows))
+    return View.note.set(note) >> kit.on_base(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.glossary_rows(Base.docs.extract())), View.table.set_rows)))
 """)
 
 
@@ -749,11 +733,11 @@ def out(plane):
     def build(base):
         docs = Base.docs.extract()
         draw = lambda v: View.both.chart.set(option=v)
-        side = redraws([Base.docs.on_change()], views.graph_side(docs, base), View.both.side.set)
+        side = nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.graph_side(docs, base)), View.both.side.set))
         # A node opens its page; an edge or the legend names no page, and does nothing.
         go = lambda s: nu.IfDo(nu.Str(s) != "", View.history.push(nuspace.ui.href(kit.doc_page(base, nu.Str(s)))))
-        opened = nu.ReactForever(View.both.chart.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev).get_item("name", "")), Base.docs.extract()), go))
-        return nu.ParallelAsync(redraws([Base.docs.on_change()], views.graph_option(docs, base), draw), side, opened)
+        opened = nu.ReactEvery(View.both.chart.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev).get_item("name", "")), Base.docs.extract()), go))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(views.graph_option(docs, base)), draw)), side, opened)
 
     note = "Every page and every link, drawn from the pages as they are. Hover to see a page's neighbours, click to open it."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -769,7 +753,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(base):
         read = views.digest(Base.docs.extract(), Base.facts.extract(), Base.log.fallback([]), base, kit.now())
-        return redraws({CHANGES} + [Base.log.on_change(), Base.health.on_change()], read, View.digest.set, every=60.0)
+        return nu.Reconcile(snap(nu.OnAny(*{CHANGES} + [Base.log.on_change(), Base.health.on_change()])), nu.let(snap(read), View.digest.set), every=60.0)
 
     note = "Nobody writes this page. It is written from the base, and rewrites itself as the week moves."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -832,9 +816,9 @@ def out(plane):
         read = views.health_view(Base.health.fallback({}), kit.live(base, "checker"), Base.docs.extract(), kit.now())
         opened = lambda ev: View.history.push(nuspace.ui.href(kit.doc_page(base, doc_of(ev["key"]))))
         return nu.ParallelAsync(
-            redraws([Base.health.on_change()], read, draw, every=5.0),
-            nu.ReactForever(View.act.reviewed.on_click(), kit.reviewed(stale(Base.health.fallback({})))),
-            nu.ReactForever(View.table.on_row_click(), opened),
+            nu.Reconcile(snap(nu.OnAny(*[Base.health.on_change()])), nu.let(snap(read), draw), every=5.0),
+            nu.ReactEvery(View.act.reviewed.on_click(), kit.reviewed(stale(Base.health.fallback({})))),
+            nu.ReactEvery(View.table.on_row_click(), opened),
         )
 
     hint = "The checker runs in its own process: on every change, and every 20 seconds. Click an issue to open its page."
@@ -880,8 +864,8 @@ def out(plane):
         read = views.imports_view(Base.imports.fallback({}), kit.live(base, "importer"), kit.now())
         start = kit.start_import(base, nu.Str(p.source))
         return nu.ParallelAsync(
-            redraws([Base.imports.on_change()], read, draw, every=10.0),
-            nu.ReactForever(p.go.on_click(), start),
+            nu.Reconcile(snap(nu.OnAny(*[Base.imports.on_change()])), nu.let(snap(read), draw), every=10.0),
+            nu.ReactEvery(p.go.on_click(), start),
         )
 
     return View.note.set(NOTE) >> p.source.set_options(sources()) >> p.source.set("lab-notebook") >> p.go.set_label("Import") >> kit.on_base(plane, build)
@@ -939,14 +923,14 @@ def out(plane):
             )
 
         def tried(ref, question):
-            return nu.ReactForever(ref.on_click(), b.q.set(question) >> ask(question))
+            return nu.ReactEvery(ref.on_click(), b.q.set(question) >> ask(question))
 
         typed = nu.Str(b.q).strip()
         draw = lambda v: View.answer.set(v["answer"]) >> View.line.set(v["line"]) >> View.before.set(v["before"])
         read = shown(Base.asks.fallback([]), Base.docs.extract(), Base.facts.extract(), base, kit.now())
         body = nu.ParallelAsync(
-            redraws([Base.asks.on_change(), Base.docs.on_change()], read, draw, every=30.0),
-            nu.ReactForever(b.go.on_click(), nu.IfDo(typed != "", ask(typed))),
+            nu.Reconcile(snap(nu.OnAny(*[Base.asks.on_change(), Base.docs.on_change()])), nu.let(snap(read), draw), every=30.0),
+            nu.ReactEvery(b.go.on_click(), nu.IfDo(typed != "", ask(typed))),
             tried(t.a, TRIES[0]), tried(t.b, TRIES[1]), tried(t.c, TRIES[2]),
         )
         return nu.With(nustd.cc.bind(Asker, **OPTIONS), body=body)
@@ -981,7 +965,7 @@ def rows(docs, folder, now):
 
 def out(plane):
     def build(base, folder):
-        return nu.ParallelAsync(redraws([Base.docs.on_change()], rows(Base.docs.extract(), folder, kit.now()), View.table.set_rows), opens(base))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[Base.docs.on_change()])), nu.let(snap(rows(Base.docs.extract(), folder, kit.now())), View.table.set_rows)), opens(base))
 
     return View.head.set_label("In this notebook") >> View.note.set("") >> kit.on_doc(plane, build)
 """

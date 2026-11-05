@@ -47,7 +47,7 @@ def on_token(plane, body):
 
 def following(root, mint, draw, every=2.0):
     moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.images.on_change())]
-    return redraws(moves, view_of(root, mint), draw, every=every)
+    return nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(view_of(root, mint)), draw), every=every)
 """
 
 
@@ -165,7 +165,7 @@ def paint(root, mint):
 def out(plane):
     def build(root, mint):
         beat = snap(at_root(root, Memes.beat.on_change()))
-        return nu.ReconcileReactive(beat, paint(root, mint) >> nu.Delay(EVERY), every=10.0)
+        return nu.Reconcile(beat, paint(root, mint) >> nu.Delay(EVERY), every=10.0)
 
     return on_token(plane, build)
 """)

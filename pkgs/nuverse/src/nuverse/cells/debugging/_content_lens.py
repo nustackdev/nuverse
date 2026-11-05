@@ -202,10 +202,10 @@ def browse(level: str, scope_id: nu.StrArg) -> nu.Nu:
         return ops.snapshot(shown >> item.erase() >> nu.IfDo(steps.len() >= 2, drawn(steps)))
 
     def live(cursor: nu.Nu, pending: nu.Nu) -> nu.Nu:
-        moved = nu.ReactForever(
+        moved = nu.ReactEvery(
             lens.on_nav(), cursor.set(nu.Attr(NAV)) >> paint(cursor), changed_key=NAV
         )
-        written = nu.ReactForever(
+        written = nu.ReactEvery(
             nustd.kv.Snapshot(States.contents.on_change(), scope=States),
             nu.Debounce(REPAINT_DELAY, paint(cursor), pending=pending),
         )
@@ -235,7 +235,7 @@ def picked(
     lens_on_pick = nu.ReactLatest(
         pick.on_change(), nu.let(nu.Str(pick), lambda at: browse(level, nu.Str(at))), initial=True
     )
-    relisted = nu.ReactForever(ops.snapshot(moved), listed)
+    relisted = nu.ReactEvery(ops.snapshot(moved), listed)
     return listed >> pick.set(first) >> nu.ParallelAsync(lens_on_pick, relisted)
 
 

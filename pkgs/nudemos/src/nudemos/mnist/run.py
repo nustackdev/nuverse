@@ -24,7 +24,7 @@ import nu
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.mnist import views
 from nudemos.mnist.state import Run
 from nudemos.mnist.views import at, with_job
@@ -68,7 +68,7 @@ def draw(s):
 
 def follow(job):
     moves = [at(job, Run.step.on_change()), at(job, Run.status.on_change())]
-    return redraws(moves, views.summary(views.run_view(job)), draw, every=3.0)
+    return nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(views.summary(views.run_view(job))), draw), every=3.0)
 
 
 def out(plane):
@@ -130,10 +130,10 @@ def follow(job):
     # Slots show in the order first written: slider, then its value, then the button.
     placed = S.lr.set(-3.0) >> S.shown.set("lr") >> S.stop.set("Stop")
     return placed >> nu.ParallelAsync(
-        redraws([lr.on_change()], lr.fallback(0.0), show),
-        redraws([status.on_change()], status.fallback(""), button),
-        nu.ReactForever(S.lr.on_change(), steer),
-        nu.ReactForever(S.stop.on_click(), press(job)),
+        nu.Reconcile(snap(nu.OnAny(*[lr.on_change()])), nu.let(snap(lr.fallback(0.0)), show)),
+        nu.Reconcile(snap(nu.OnAny(*[status.on_change()])), nu.let(snap(status.fallback("")), button)),
+        nu.ReactEvery(S.lr.on_change(), steer),
+        nu.ReactEvery(S.stop.on_click(), press(job)),
     )
 
 
@@ -168,7 +168,7 @@ def paint(job):
 
 def follow(job):
     # One pass at a time: steps landing while it paints merge into one more.
-    return nu.ReconcileReactive(snap(at(job, Run.step.on_change())), paint(job) >> nu.Delay(EVERY), every=5.0)
+    return nu.Reconcile(snap(at(job, Run.step.on_change())), paint(job) >> nu.Delay(EVERY), every=5.0)
 
 
 def out(plane):
@@ -213,7 +213,7 @@ def draw(v):
 def follow(job):
     # Each look the job takes moves ``looked``: the digits and what it reads in them.
     read = views.cards(at(job, Run.digits.fallback([])), at(job, Run.preds.fallback([])))
-    return redraws([at(job, Run.looked.on_change())], read, draw)
+    return nu.Reconcile(snap(nu.OnAny(*[at(job, Run.looked.on_change())])), nu.let(snap(read), draw))
 
 
 def out(plane):
@@ -262,7 +262,7 @@ def paint(job):
 def follow(job):
     # The job bins the layers on each look it takes.
     looked = snap(at(job, Run.looked.on_change()))
-    return nu.ReconcileReactive(looked, paint(job) >> nu.Delay(EVERY), every=10.0)
+    return nu.Reconcile(looked, paint(job) >> nu.Delay(EVERY), every=10.0)
 
 
 def out(plane):

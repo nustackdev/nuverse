@@ -249,7 +249,7 @@ def desk(term):
 def wait():
     # Level wait: woken by Probe now, re-checked every few seconds for the clock and the pause.
     now = due(Desk.probe.fallback({}), Desk.asked.fallback(0), Desk.paused.fallback(False), nustd.time.time())
-    return nu.WaitReactive(snap(desk(Desk.asked.on_change())), snap(desk(now)), every=3.0)
+    return nu.WaitUntil(snap(desk(Desk.asked.on_change())), snap(desk(now)), every=3.0)
 
 
 def ask():

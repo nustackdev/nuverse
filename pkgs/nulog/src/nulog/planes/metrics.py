@@ -91,12 +91,12 @@ def names():
         moved = lambda k: nu.IfDo(nu.Str(k) != Pick.series, Pick.series.set(nu.Str(k)) >> P.series.choice.set(nu.Str(k)) >> paint())
         return P.series.choice.set_options(fmt.options(got)) >> nu.let(kept, moved)
 
-    return redraw(reads.series(), show)
+    return nu.let(snap(reads.series()), show)
 
 
 def picked():
     def on(field, keep):
-        return nu.ReactForever(field.choice.on_change(), keep >> paint())
+        return nu.ReactEvery(field.choice.on_change(), keep >> paint())
 
     return [
         on(P.series, Pick.series.set(nu.Str(P.series.choice))),
@@ -113,7 +113,7 @@ def live(s):
     # Drawn afresh: the main view was erased while the store was away.
     fresh = View.empty.erase() >> Pick.points.set(None) >> Pick.tiles.set(None)
     loops = [
-        drawing(nu.ForeverDo(names() >> nu.Delay(NAMES_EVERY))),
+        nu.ForeverDo(names() >> nu.Delay(NAMES_EVERY)),
         nu.ForeverDo(paint() >> nu.Delay(s["every"])),
     ]
     return fresh >> nu.ParallelAsync(*loops, *picked())

@@ -59,7 +59,7 @@ def draw(v):
 def out(plane):
     def follow(root):
         read = shaped(at_root(root, Memes.stats.fallback({})), nustd.time.time())
-        return redraws([at_root(root, Memes.beat.on_change())], read, draw, every=2.0)
+        return nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), draw), every=2.0)
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -128,8 +128,8 @@ def out(plane):
     def follow(root):
         # One pass at a time, at most every few seconds: a point lands every five.
         beat = snap(at_root(root, Memes.beat.on_change()))
-        painted = nu.ReconcileReactive(beat, paint(root) >> nu.Delay(EVERY), every=10.0)
-        picked = nu.ReactForever(View.head.window.on_change(), Pick.window.set(nu.ToInt(View.head.window)) >> paint(root))
+        painted = nu.Reconcile(beat, paint(root) >> nu.Delay(EVERY), every=10.0)
+        picked = nu.ReactEvery(View.head.window.on_change(), Pick.window.set(nu.ToInt(View.head.window)) >> paint(root))
         head = View.head.title.set("Over time") >> View.head.window.set_options(WINDOWS) >> View.head.window.set("1800")
         return head >> nu.Frame(Pick, nu.ParallelAsync(painted, picked), window=1800)
 
@@ -155,7 +155,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def follow(root):
         read = views.error_rows(at_root(root, Memes.errors.fallback([])), nustd.time.time())
-        return redraws([at_root(root, Memes.beat.on_change())], read, View.errors.set_rows, every=5.0)
+        return nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), View.errors.set_rows), every=5.0)
 
     note = "Every failed call backs the sync off: 1s, doubling to 30s, back to none on the next block read. Rate limits, timeouts and refused connections all land here."
     return View.head.set("Errors, newest first") >> View.note.set(note) >> nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))

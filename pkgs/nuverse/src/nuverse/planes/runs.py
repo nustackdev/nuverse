@@ -45,7 +45,6 @@ import nu
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
 from nuverse.planes.runs import lives
 
 
@@ -72,7 +71,7 @@ def draw():
     return nu.let(ops.snapshot(counts()), tiles)
 
 
-out = redraws(lives(), counts(), tiles)
+out = nu.Reconcile(ops.snapshot(nu.OnAny(*lives())), nu.let(ops.snapshot(counts()), tiles))
 """
 
 
@@ -82,7 +81,6 @@ import nustd.time
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
 from nuverse.planes.runs import age, lives
 
 
@@ -111,7 +109,9 @@ def draw():
     return nu.let(ops.snapshot(rows()), table)
 
 
-out = redraws(lives(), rows(), table, every=60.0)
+out = nu.Reconcile(
+    ops.snapshot(nu.OnAny(*lives())), nu.let(ops.snapshot(rows()), table), every=60.0
+)
 """
 
 
@@ -121,7 +121,6 @@ import nustd.time
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
 from nuverse.planes.runs import age, lives
 
 
@@ -156,7 +155,9 @@ def draw():
     return nu.let(ops.snapshot(rows()), table)
 
 
-out = redraws(lives(), rows(), table, every=60.0)
+out = nu.Reconcile(
+    ops.snapshot(nu.OnAny(*lives())), nu.let(ops.snapshot(rows()), table), every=60.0
+)
 """
 
 

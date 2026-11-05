@@ -42,8 +42,8 @@ def _edit(item: Text) -> nu.Nu:
     """The item's text in the input, both ways."""
     value, entry = item.value, Box.entry.input
     return entry.set(value.fallback("")) >> nu.ParallelAsync(
-        nu.ReactForever(entry.on_change(), value.set(nu.ToStr(entry))),
-        nu.ReactForever(value.on_change(), entry.set(nu.str(value))),
+        nu.ReactEvery(entry.on_change(), value.set(nu.ToStr(entry))),
+        nu.ReactEvery(value.on_change(), entry.set(nu.str(value))),
     )
 
 

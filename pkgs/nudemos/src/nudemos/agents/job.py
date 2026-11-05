@@ -118,7 +118,7 @@ def turn():
             >> Agent.prompts.set(Agent.prompts.fallback(0) + 1)
         )
         streamed = nu.ForEachDo(Claude.say(msg), heard)
-        stopped = nu.WaitReactive(snap(Agent.stop.on_change()), snap(Agent.stop.fallback(False)), every=2.0)
+        stopped = nu.WaitUntil(snap(Agent.stop.on_change()), snap(Agent.stop.fallback(False)), every=2.0)
         cut = ops.atomic_state(Agent.cut.set(True) >> Agent.status.set("stopped") >> Agent.doing.set(""))
         failed = lambda err: (
             logged(nu.Dict.of(type="error", text=nu.Str(err)))
@@ -138,7 +138,7 @@ def waiting():
     rest = ops.atomic_state(Agent.status.set("idle") >> Agent.doing.set(""))
     stale = nustd.time.time() - Agent.beat.fallback(0.0) > IDLE
     woken = snap((Agent.inbox.fallback([]).len() > 0).or_(Agent.stop.fallback(False)).or_(stale))
-    return rest >> nu.WaitReactive(snap(Agent.inbox.on_change()), woken, every=2.0)
+    return rest >> nu.WaitUntil(snap(Agent.inbox.on_change()), woken, every=2.0)
 
 
 def loop():

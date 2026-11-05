@@ -23,7 +23,7 @@ import nuspace
 import nustd.kv
 import nustd.ui
 from nuspace import ops
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 
 
 if TYPE_CHECKING:
@@ -157,9 +157,10 @@ def out() -> nu.Nu:
         >> Config.key_env.set(nu.Str(form.key_env.input).strip())
     )
     slots = (Config.backend, Config.model, Config.endpoint, Config.key_env)
+    changes = [slot.on_change() for slot in slots]
     return form.save.set("Save") >> nu.ParallelAsync(
-        redraws([slot.on_change() for slot in slots], _values(), show),
-        nu.ReactForever(form.save.on_click(), ops.atomic_state(typed)),
+        nu.Reconcile(snap(nu.OnAny(*changes)), nu.let(snap(_values()), show)),
+        nu.ReactEvery(form.save.on_click(), ops.atomic_state(typed)),
     )
 
 

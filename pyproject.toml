@@ -24,6 +24,7 @@ constraint-dependencies = [
 members = ["pkgs/*"]
 
 [tool.uv.sources]
+virtuals-py = { path = "../virtuals", editable = true }
 nuverse = { workspace = true }
 nudemos = { workspace = true }
 nuagent = { workspace = true }

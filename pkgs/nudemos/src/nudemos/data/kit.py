@@ -155,7 +155,7 @@ def on_shop(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
 
     def landed(root: nu.ObjectRef) -> nu.Nu:
         r = nu.Str(root)
-        ready = nu.WaitReactive(
+        ready = nu.WaitUntil(
             snap(at(r, Shop.ready.on_change())), snap(at(r, Shop.ready.fallback(False)))
         )
         return ready >> ops.bracketed(at(r, build(r)))
@@ -242,7 +242,7 @@ def loaded(which: tuple[str, ...]) -> tuple[nu.Nu, nu.Nu]:
 
 
 def read(name: str, *args: object, tables: tuple[str, ...] = ("lines", "people")) -> nu.Nu:
-    """``calc.<name>`` over the tables, as a term. Over :class:`Shop`, unbracketed (``redraws`` snaps it)."""
+    """``calc.<name>`` over the tables, as a term. Over :class:`Shop`, unbracketed (the cell snaps it)."""
     index, got = loaded(tables)
     return shaped(name, list(tables), index, got, nu.List.of(*args))
 

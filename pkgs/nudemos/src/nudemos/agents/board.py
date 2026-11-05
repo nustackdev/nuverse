@@ -143,8 +143,8 @@ def out(plane):
         return View.notice.set(views.MISSING) >> nu.ForeverDo(nu.Delay(3600.0))
     root = nu.Str(plane)
     return defaults() >> nu.ParallelAsync(
-        nu.ReactForever(View.go.start.on_click(), started(root)),
-        nu.ReactForever(View.go.demo.on_click(), demo(root)),
+        nu.ReactEvery(View.go.start.on_click(), started(root)),
+        nu.ReactEvery(View.go.demo.on_click(), demo(root)),
     )
 """
 
@@ -153,7 +153,7 @@ BOARD = """\
 import nu
 import nustd.ui
 from nuspace.shapes import Space
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.agents import views
 
 
@@ -185,7 +185,5 @@ def draw(cards):
 
 def out(plane):
     kids = Space.planes[plane].children.on_change()
-    return View.head.set("All agents") >> View.empty.set("No agents yet") >> redraws(
-        [kids], views.cards(views.board(plane)), draw, every=1.0
-    )
+    return View.head.set("All agents") >> View.empty.set("No agents yet") >> nu.Reconcile(snap(nu.OnAny(*[kids])), nu.let(snap(views.cards(views.board(plane))), draw), every=1.0)
 """

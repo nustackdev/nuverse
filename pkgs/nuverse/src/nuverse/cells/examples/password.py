@@ -78,19 +78,19 @@ def out() -> nu.Nu:
         >> Box.options.digits.set(digits)
         >> Box.options.symbols.set(symbols)
         >> nu.ParallelAsync(
-            nu.ReactForever(Box.options.generate.on_click(), draw),
-            nu.ReactForever(Box.length.on_change(), keep(Pass.length, nu.ToInt(Box.length))),
-            nu.ReactForever(
+            nu.ReactEvery(Box.options.generate.on_click(), draw),
+            nu.ReactEvery(Box.length.on_change(), keep(Pass.length, nu.ToInt(Box.length))),
+            nu.ReactEvery(
                 Box.options.upper.on_change(), keep(Pass.upper, nu.ToBool(Box.options.upper))
             ),
-            nu.ReactForever(
+            nu.ReactEvery(
                 Box.options.digits.on_change(), keep(Pass.digits, nu.ToBool(Box.options.digits))
             ),
-            nu.ReactForever(
+            nu.ReactEvery(
                 Box.options.symbols.on_change(), keep(Pass.symbols, nu.ToBool(Box.options.symbols))
             ),
             # Every tab shows the password the store holds.
-            nu.ReactForever(Pass.password.on_change(), Box.password.set(nu.str(Pass.password))),
+            nu.ReactEvery(Pass.password.on_change(), Box.password.set(nu.str(Pass.password))),
         )
     )
 

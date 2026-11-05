@@ -65,7 +65,7 @@ def out(plane):
 STATS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -102,7 +102,7 @@ def draw(t):
 
 
 def out(plane):
-    return kit.on_catalog(plane, lambda base: redraws([Catalog.films.on_change()], tally(Catalog.films.extract()), draw))
+    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(tally(Catalog.films.extract())), draw)))
 """
 
 
@@ -131,7 +131,7 @@ def out(plane):
 
     # The first run brings in the opening films, each with its page, then the people.
     return form.title.set("") >> form.add.set_label("Add film") >> kit.on_catalog(
-        plane, lambda base: kit.seed(base) >> nu.ReactForever(form.add.on_click(), add(base))
+        plane, lambda base: kit.seed(base) >> nu.ReactEvery(form.add.on_click(), add(base))
     )
 """
 
@@ -139,7 +139,7 @@ def out(plane):
 FILMS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -178,8 +178,8 @@ def edit(ev):
 def out(plane):
     table = View.table
     return kit.on_catalog(plane, lambda base: nu.ParallelAsync(
-        redraws([Catalog.films.on_change()], rows(Catalog.films.extract()), table.set_rows),
-        nu.ReactForever(table.on_edit(), edit),
+        nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(rows(Catalog.films.extract())), table.set_rows)),
+        nu.ReactEvery(table.on_edit(), edit),
     ))
 """
 
@@ -187,7 +187,7 @@ def out(plane):
 WALL = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -210,9 +210,7 @@ def tiles(films, base):
 def out(plane):
     def build(base):
         draw = lambda t: kit.wall(View.wall, t)
-        return View.heading.set_label("The wall, our favourites first") >> redraws(
-            [Catalog.films.on_change()], tiles(Catalog.films.extract(), base), draw
-        )
+        return View.heading.set_label("The wall, our favourites first") >> nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(tiles(Catalog.films.extract(), base)), draw))
 
     return kit.on_catalog(plane, build)
 """
@@ -227,7 +225,7 @@ ROOT = (("welcome", WELCOME), ("stats", STATS), ("add", ADD), ("films", FILMS), 
 POSTER = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -267,16 +265,14 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, "film", lambda base, key: redraws(
-        [Catalog.films.on_change()], front(Catalog.films.extract(), key, base), draw
-    ))
+    return kit.on_page(plane, "film", lambda base, key: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(front(Catalog.films.extract(), key, base)), draw)))
 """
 
 
 OURS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -303,9 +299,9 @@ def out(plane):
         shown = nu.Dict.of(rating=film.rating.fallback(0.0), watched=film.watched.fallback(False), rank=rank(Catalog.films.extract(), key))
         draw = lambda v: ours.rating.set_value(v["rating"]) >> ours.watched.set(v["watched"]) >> ours.rank.set_value(v["rank"])
         return nu.ParallelAsync(
-            redraws([Catalog.films.on_change()], shown, draw),
-            nu.ReactForever(ours.rating.on_change(), film.rating.set(nu.ToFloat(ours.rating))),
-            nu.ReactForever(ours.watched.on_change(), film.watched.set(nu.ToBool(ours.watched))),
+            nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(shown), draw)),
+            nu.ReactEvery(ours.rating.on_change(), film.rating.set(nu.ToFloat(ours.rating))),
+            nu.ReactEvery(ours.watched.on_change(), film.watched.set(nu.ToBool(ours.watched))),
         )
 
     return kit.on_page(plane, "film", build)
@@ -333,8 +329,8 @@ def out(plane):
             >> notes.set_editable(True)
             >> notes.set_placeholder("What we thought. Markdown, kept as you type.")
             >> nu.ParallelAsync(
-                nu.ReactForever(notes.on_change(), kept.set(nu.Str(notes))),
-                nu.ReactForever(kept.on_change(), notes.set(nu.str(kept))),
+                nu.ReactEvery(notes.on_change(), kept.set(nu.Str(notes))),
+                nu.ReactEvery(kept.on_change(), notes.set(nu.str(kept))),
             )
         )
 
@@ -345,7 +341,7 @@ def out(plane):
 CONNECTED = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -367,9 +363,7 @@ def connected(films, key, base):
 
 def out(plane):
     web = nustd.ui.MarkdownRef("connected")
-    return kit.on_page(plane, "film", lambda base, key: redraws(
-        [Catalog.films.on_change()], connected(Catalog.films.extract(), key, base), web.set
-    ))
+    return kit.on_page(plane, "film", lambda base, key: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(connected(Catalog.films.extract(), key, base)), web.set)))
 """
 
 
@@ -411,7 +405,7 @@ def out(plane):
         )
         # Saved facts can credit someone new, who gets a page under People, and the genre picks the icon.
         icon = ops.set_plane_meta(plane, nu.Dict.of(icon=kit.icon_of(nu.List(e.genres))))
-        return show >> e.save.set_label("Save facts") >> nu.ReactForever(e.save.on_click(), save >> icon >> kit.ensure_people(base))
+        return show >> e.save.set_label("Save facts") >> nu.ReactEvery(e.save.on_click(), save >> icon >> kit.ensure_people(base))
 
     return kit.on_page(plane, "film", build)
 """
@@ -432,7 +426,7 @@ FILM = (
 PROFILE = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -470,9 +464,7 @@ def out(plane):
     def build(base, name):
         head = View.head
         draw = lambda v: head.who.role.set(v["role"]) >> kit.wall(View.films, v["tiles"])
-        return head.face.set_name(name) >> redraws(
-            [Catalog.films.on_change()], profile(Catalog.films.extract(), name, base), draw
-        )
+        return head.face.set_name(name) >> nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(profile(Catalog.films.extract(), name, base)), draw))
 
     return kit.on_page(plane, "person", build)
 """
@@ -481,7 +473,7 @@ def out(plane):
 CIRCLE = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -509,9 +501,7 @@ def circle(films, name, base):
 
 def out(plane):
     draw = lambda v: View.both.circle.set(v["md"]) >> View.both.ratings.set(v["bars"])
-    return kit.on_page(plane, "person", lambda base, name: redraws(
-        [Catalog.films.on_change()], circle(Catalog.films.extract(), name, base), draw
-    ))
+    return kit.on_page(plane, "person", lambda base, name: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(circle(Catalog.films.extract(), name, base)), draw)))
 """
 
 
@@ -524,7 +514,7 @@ PERSON = (("profile", PROFILE), ("circle", CIRCLE))
 PEOPLE_GRID = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -562,9 +552,7 @@ def draw(rows):
 
 def out(plane):
     intro = View.intro.set("Every director, and everyone who appears in two films or more. The web grows as films are added.")
-    return intro >> kit.on_catalog(plane, lambda base: redraws(
-        [Catalog.films.on_change()], faces(Catalog.films.extract(), base), draw
-    ))
+    return intro >> kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(faces(Catalog.films.extract(), base)), draw)))
 """
 
 
@@ -574,7 +562,7 @@ PEOPLE = (("people", PEOPLE_GRID),)
 CHART = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -599,16 +587,14 @@ def points(films):
 
 
 def out(plane):
-    return kit.on_catalog(plane, lambda base: redraws(
-        [Catalog.films.on_change()], points(Catalog.films.extract()), View.chart.set
-    ))
+    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(points(Catalog.films.extract())), View.chart.set)))
 """
 
 
 DECADES = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -625,9 +611,7 @@ def decades(films, base):
 
 def out(plane):
     text = nustd.ui.MarkdownRef("decades")
-    return kit.on_catalog(plane, lambda base: redraws(
-        [Catalog.films.on_change()], decades(Catalog.films.extract(), base), text.set
-    ))
+    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(decades(Catalog.films.extract(), base)), text.set)))
 """
 
 
@@ -637,7 +621,7 @@ TIMELINE = (("chart", CHART), ("decades", DECADES))
 FLOWS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nudemos.movies import kit
 from nudemos.movies.kit import Catalog
 
@@ -657,9 +641,7 @@ def flows(films):
 
 
 def out(plane):
-    return kit.on_catalog(plane, lambda base: redraws(
-        [Catalog.films.on_change()], flows(Catalog.films.extract()), View.flows.set
-    ))
+    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(flows(Catalog.films.extract())), View.flows.set)))
 """
 
 

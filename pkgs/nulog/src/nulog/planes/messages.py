@@ -132,7 +132,7 @@ def names():
         moved = lambda k: nu.IfDo(nu.Str(k) != Pick.stream, Pick.stream.set(nu.Str(k)) >> P.stream.choice.set(nu.Str(k)) >> paint())
         return P.stream.choice.set_options(fmt.options(got)) >> nu.let(kept, moved)
 
-    return redraw(reads.streams(), show)
+    return nu.let(snap(reads.streams()), show)
 
 
 def opened(e):
@@ -143,7 +143,7 @@ def opened(e):
 
 def picked():
     def on(field, keep):
-        return nu.ReactForever(field.choice.on_change(), keep >> paint())
+        return nu.ReactEvery(field.choice.on_change(), keep >> paint())
 
     count = fmt.bounded(P.count.choice, Pick.count, consts.MIN_COUNT, consts.MAX_COUNT)
     return [
@@ -152,9 +152,9 @@ def picked():
         on(P.count, Pick.count.set(nu.int(count))),
         on(P.level, Pick.level.set(nu.Str(P.level.choice))),
         on(P.text, Pick.text.set(nu.Str(P.text.choice))),
-        nu.ReactForever(M.table.on_row_click(), lambda ev: nu.let(fmt.entry(Pick.read, ev["key"]), opened)),
+        nu.ReactEvery(M.table.on_row_click(), lambda ev: nu.let(fmt.entry(Pick.read, ev["key"]), opened)),
         # Closed in the tab (Esc, the backdrop, the button): the drawer stays open until told.
-        nu.ReactForever(M.entry.on_change(), M.entry.set_open(False)),
+        nu.ReactEvery(M.entry.on_change(), M.entry.set_open(False)),
     ]
 
 
@@ -167,7 +167,7 @@ def live(s):
     # Drawn afresh: the main view was erased while the store was away.
     fresh = View.empty.erase() >> Pick.rows.set(None) >> Pick.tiles.set(None) >> Pick.read.set([])
     loops = [
-        drawing(nu.ForeverDo(names() >> nu.Delay(NAMES_EVERY))),
+        nu.ForeverDo(names() >> nu.Delay(NAMES_EVERY)),
         nu.ForeverDo(paint() >> nu.Delay(s["every"])),
     ]
     return fresh >> nu.ParallelAsync(*loops, *picked())

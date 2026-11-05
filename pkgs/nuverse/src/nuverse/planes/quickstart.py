@@ -25,7 +25,7 @@ import nu
 import nustd.ui
 from nuspace import PlaneSpec, ops
 from nuspace.shapes import Space
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 
 
 __all__ = [
@@ -60,7 +60,6 @@ import nu
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import park
 from nuverse.planes import quickstart
 
 LEAD = "Everything here is a cell: a tiny program that holds data, runs logic and draws itself. This page is cells too."
@@ -97,7 +96,7 @@ def show(raw):
 def out():
     raw = ops.snapshot(nuspace.Space.state.info.path.fallback(""))
     drawn = View.lead.init() >> View.where.init() >> View.again.init() >> View.then.init()
-    return drawn >> nu.let(raw, show) >> park()
+    return drawn >> nu.let(raw, show)
 """
 
 
@@ -107,7 +106,7 @@ import nustd.kv
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nuverse.planes import quickstart
 
 
@@ -133,8 +132,11 @@ def keep(v):
 
 
 def out(plane):
-    moved = nu.ReactForever(slider.on_change(), nu.let(nu.float(slider), keep) >> quickstart.moved())
-    follow = redraws([Page.level.on_change()], Page.level.fallback(quickstart.START), slider.set_value)
+    moved = nu.ReactEvery(slider.on_change(), nu.let(nu.float(slider), keep) >> quickstart.moved())
+    follow = nu.Reconcile(
+        snap(nu.OnAny(Page.level.on_change())),
+        nu.let(snap(Page.level.fallback(quickstart.START)), slider.set_value),
+    )
     return quickstart.counting(
         View.turn.actions.hide() >> View.turn.init()
         >> quickstart.welcome_back(View.turn, snap(Page.level.fallback(quickstart.START)))
@@ -150,7 +152,7 @@ import nu
 import nustd.kv
 import nustd.ui
 import nuspace
-from nuspace.system.utils import redraws
+from nuspace.system.utils import snap
 from nuverse.planes import quickstart
 
 
@@ -177,7 +179,9 @@ def draw(level):
 
 
 def out():
-    follow = redraws([Page.level.on_change()], Page.level.fallback(quickstart.START), draw)
+    follow = nu.Reconcile(
+        snap(nu.OnAny(Page.level.on_change())), nu.let(snap(Page.level.fallback(quickstart.START)), draw)
+    )
     return R.init() >> quickstart.tips(LIMIT) >> follow
 """
 
@@ -187,7 +191,6 @@ import nu
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import park
 from nuverse.planes import quickstart
 
 
@@ -222,7 +225,7 @@ def show(raw):
 
 def out():
     raw = ops.snapshot(nuspace.Space.state.info.path.fallback(""))
-    return A.init() >> nu.let(raw, show) >> park()
+    return A.init() >> nu.let(raw, show)
 """
 
 
@@ -326,13 +329,13 @@ def make_page(plane):
 
 
 def out(plane):
-    arms = [nu.ReactForever(W.actions.on_click(), make_page(plane))]
+    arms = [nu.ReactEvery(W.actions.on_click(), make_page(plane))]
     if HAS_DEMOS:
         from nudemos import agents, movies, recipes
         arms += [
-            nu.ReactForever(W.movies.go.on_click(), open_made("nudemos.movies", movies.PLANE)),
-            nu.ReactForever(W.agents.go.on_click(), open_made("nudemos.agents", agents.PLANE)),
-            nu.ReactForever(W.recipes.go.on_click(), open_made("nudemos.recipes", recipes.PLANE)),
+            nu.ReactEvery(W.movies.go.on_click(), open_made("nudemos.movies", movies.PLANE)),
+            nu.ReactEvery(W.agents.go.on_click(), open_made("nudemos.agents", agents.PLANE)),
+            nu.ReactEvery(W.recipes.go.on_click(), open_made("nudemos.recipes", recipes.PLANE)),
         ]
     raw = ops.snapshot(nuspace.Space.state.info.path.fallback(""))
     return W.init() >> nu.let(raw, fill_rows) >> nu.ParallelAsync(*arms)
@@ -409,13 +412,15 @@ def put_back(plane: nu.StrArg, button: nustd.ui.Ref) -> nu.Nu:
 
     def found(cid: nu.ObjectRef) -> nu.Nu:
         meter = nu.Str(cid)
-        shown = redraws(
-            [Space.cells[meter].prog.on_change()],
-            ops.prog(meter) != METER,
-            lambda off: nu.IfDo(nu.Bool(off), button.display(), button.hide()),
+        shown = nu.Reconcile(
+            snap(nu.OnAny(Space.cells[meter].prog.on_change())),
+            nu.let(
+                snap(ops.prog(meter) != METER),
+                lambda off: nu.IfDo(nu.Bool(off), button.display(), button.hide()),
+            ),
         )
         back = ops.set_prog(meter, METER) >> ops.track("quickstart_put_back")
-        return nu.ParallelAsync(shown, nu.ReactForever(button.on_click(), back))
+        return nu.ParallelAsync(shown, nu.ReactEvery(button.on_click(), back))
 
     return nu.let(snap(ops.cell_named(plane, "meter")), found)
 

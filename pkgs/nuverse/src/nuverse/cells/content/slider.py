@@ -55,8 +55,8 @@ def _edit(item: Number) -> nu.Nu:
     """The item's number on the slider, both ways."""
     value, entry = item.value, Box.entry.input
     return entry.set_value(value.fallback(0.0)) >> nu.ParallelAsync(
-        nu.ReactForever(entry.on_change(), value.set(nu.ToFloat(entry))),
-        nu.ReactForever(value.on_change(), entry.set_value(value)),
+        nu.ReactEvery(entry.on_change(), value.set(nu.ToFloat(entry))),
+        nu.ReactEvery(value.on_change(), entry.set_value(value)),
     )
 
 

@@ -36,7 +36,7 @@ from nuspace.shapes import Reroot
 from nuspace.system.devices.web.shell import Shell
 from nuspace.system.devices.web.utils import CellRoot
 from nuspace.system.services import enable_react
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 
 from . import settings
 from .engine import IMPORTS, MADE_BY, SOURCE, engine_cell, engine_of, inbox_change
@@ -347,8 +347,9 @@ def said(page: nu.StrArg, at: nu.IntArg) -> nu.Nu:
         return text >> trace.set(title=_title(steps, s["done"])) >> nu.ForEachDo(steps, turn)
 
     moves = [Chat.inbox.on_change(), Chat.turns.on_change(), Chat.cursor.on_change()]
-    return redraws(
-        [ops.plane_state(engine, m) for m in moves], ops.plane_state(engine, _trace(at)), draw
+    changes = [ops.plane_state(engine, m) for m in moves]
+    return nu.Reconcile(
+        snap(nu.OnAny(*changes)), nu.let(snap(ops.plane_state(engine, _trace(at))), draw)
     )
 
 
@@ -419,8 +420,12 @@ def composer(page: nu.StrArg) -> nu.Nu:
         ensure(page)
         >> placed
         >> nu.ParallelAsync(
-            redraws(on, ops.plane_state(engine, _shown()), draw, every=5.0),
-            nu.ReactForever(actions.send.on_click(), nu.let(nu.Str(box).strip(), sent)),
-            nu.ReactForever(actions.stop.on_click(), stop(engine)),
+            nu.Reconcile(
+                snap(nu.OnAny(*on)),
+                nu.let(snap(ops.plane_state(engine, _shown())), draw),
+                every=5.0,
+            ),
+            nu.ReactEvery(actions.send.on_click(), nu.let(nu.Str(box).strip(), sent)),
+            nu.ReactEvery(actions.stop.on_click(), stop(engine)),
         )
     )

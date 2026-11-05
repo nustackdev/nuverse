@@ -131,8 +131,8 @@ def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
         row, item_id = line(found), nu.Str(found)
         shut = nu.IfDo(Open.opened.fallback("") == item_id, Open.opened.set(""))
         return nu.ParallelAsync(
-            nu.ReactForever(row.open.on_click(), Open.opened.set(item_id)),
-            nu.ReactForever(row.remove.on_click(), items[item_id].erase() >> shut),
+            nu.ReactEvery(row.open.on_click(), Open.opened.set(item_id)),
+            nu.ReactEvery(row.remove.on_click(), items[item_id].erase() >> shut),
         )
 
     def listed(got: nu.Nu) -> nu.Nu:
@@ -143,15 +143,15 @@ def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
         item = kind.at(scope, item_id)
         view = opened.view.erase() >> landed(kind.render(item), opened.view)
         there = ops.snapshot(items.contains(item_id))
-        shown = opened.title.set(item_id) >> view >> nu.ReactForever(items.on_change(), view)
+        shown = opened.title.set(item_id) >> view >> nu.ReactEvery(items.on_change(), view)
         return opened.erase() >> nu.IfDo((item_id != "").and_(there), shown)
 
     return nu.ParallelAsync(
         # Items made or removed: the lines again, each with its buttons.
         nu.ReactLatest(items.on_children_change(), nu.let(ids, listed), initial=True),
         # An item edited: its hit again, the lines kept.
-        nu.ReactForever(items.on_change(), nu.let(ids, hits)),
-        nu.ReactForever(Listing.head.add.on_click(), kind.new(scope, into=Open.opened)),
+        nu.ReactEvery(items.on_change(), nu.let(ids, hits)),
+        nu.ReactEvery(Listing.head.add.on_click(), kind.new(scope, into=Open.opened)),
         nu.ReactLatest(
             Open.opened.on_change(),
             nu.let(ops.snapshot(Open.opened.fallback("")), detail),

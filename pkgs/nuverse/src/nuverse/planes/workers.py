@@ -19,7 +19,6 @@ import nu
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
 
 
 def count(workers, backend):
@@ -40,7 +39,10 @@ def draw():
     return nu.let(ops.snapshot(ops.workers()), tiles)
 
 
-out = redraws([nuspace.Space.kernel.workers_running.on_children_change()], ops.workers(), tiles)
+out = nu.Reconcile(
+    ops.snapshot(nu.OnAny(nuspace.Space.kernel.workers_running.on_children_change())),
+    nu.let(ops.snapshot(ops.workers()), tiles),
+)
 """
 
 
@@ -50,7 +52,6 @@ import nustd.time
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
 from nuverse.planes.runs import age, lives
 
 
@@ -82,7 +83,9 @@ def draw():
     return nu.let(ops.snapshot(rows()), table)
 
 
-out = redraws(lives(), rows(), table, every=60.0)
+out = nu.Reconcile(
+    ops.snapshot(nu.OnAny(*lives())), nu.let(ops.snapshot(rows()), table), every=60.0
+)
 """
 
 

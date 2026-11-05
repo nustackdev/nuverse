@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Move the demos and planes onto nu's new reactive flows, one Reconcile per redraw
 - Release nuverse 0.3.6, nulog 0.2.3, nuagent 0.2.4, nudemos 0.1.5 on nu 0.7.0 and nuspace 0.6.3
 - Content listings and the content lens show no items for an empty scope
 - Demo planes create their state up front, so first reads find it

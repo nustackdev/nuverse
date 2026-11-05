@@ -189,8 +189,8 @@ def where(
     show = nu.Sequential(*(_field(ui, f).set(given(f)) for f in fields))
     asked = nu.Dict.of(**{f: nu.Str(nu.ToStr(_field(ui, f))).strip() for f in fields})
     keep = Target.target.set(asked)
-    reactions = [nu.ReactForever(_field(ui, f).on_change(), keep) for f in fields]
-    return show, [*reactions, nu.ReactForever(Target.target.on_change(), show)]
+    reactions = [nu.ReactEvery(_field(ui, f).on_change(), keep) for f in fields]
+    return show, [*reactions, nu.ReactEvery(Target.target.on_change(), show)]
 
 
 def named(entry: nu.Nu, name: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
@@ -203,8 +203,8 @@ def named(entry: nu.Nu, name: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
     show = entry.set_label(called.fallback("")) >> name.set(called.fallback(""))
     renamed = ops.rename_cell(ops.Here.cell, nu.Str(name))
     return show, [
-        nu.ReactForever(name.on_change(), renamed),
-        nu.ReactForever(called.on_change(), show),
+        nu.ReactEvery(name.on_change(), renamed),
+        nu.ReactEvery(called.on_change(), show),
     ]
 
 
@@ -255,8 +255,8 @@ def bounded(
     for name in held:
         typed = getattr(settings, name)
         reactions += [
-            nu.ReactForever(typed.on_change(), getattr(state, name).set(nu.ToFloat(typed))),
-            nu.ReactForever(getattr(state, name).on_change(), show(name)),
+            nu.ReactEvery(typed.on_change(), getattr(state, name).set(nu.ToFloat(typed))),
+            nu.ReactEvery(getattr(state, name).on_change(), show(name)),
         ]
     return nu.Sequential(*(show(name) for name in held)), reactions
 

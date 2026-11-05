@@ -107,7 +107,7 @@ def _candidates(kind: type[Content[Any]]) -> nu.Nu:
 
     def acts(entry: nu.Nu) -> nu.Nu:
         i, address = nu.List(entry)[0], nu.List(nu.List(entry)[1])[0]
-        return nu.ReactForever(row(i).pick.on_click(), Link.address.set(address))
+        return nu.ReactEvery(row(i).pick.on_click(), Link.address.set(address))
 
     def listed(found: nu.Nu) -> nu.Nu:
         entries = nu.List(found).iter().enumerate().to_list()
@@ -161,7 +161,7 @@ def out() -> nu.Nu:
         >> nu.ParallelAsync(
             nu.ReactLatest(Target.target.on_change(), nu.let(held, _shown), initial=True),
             nu.ReactLatest(Link.address.on_change(), _picked(), initial=True),
-            nu.ReactForever(View.picked.unpick.on_click(), Link.address.erase()),
+            nu.ReactEvery(View.picked.unpick.on_click(), Link.address.erase()),
             *reactions,
         )
     )

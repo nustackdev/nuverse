@@ -41,8 +41,8 @@ def _edit(item: Flag) -> nu.Nu:
     """The item's on or off in the switch, both ways."""
     value, entry = item.value, Box.entry.input
     return entry.set(value.fallback(False)) >> nu.ParallelAsync(
-        nu.ReactForever(entry.on_change(), value.set(nu.ToBool(entry))),
-        nu.ReactForever(value.on_change(), entry.set(value)),
+        nu.ReactEvery(entry.on_change(), value.set(nu.ToBool(entry))),
+        nu.ReactEvery(value.on_change(), entry.set(value)),
     )
 
 

@@ -18,7 +18,6 @@ import nu
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
 
 
 def made(p):
@@ -60,7 +59,10 @@ def draw():
 
 
 # A plane's own fields: made, removed, renamed, its cells written (version).
-out = redraws([nuspace.Space.planes.on_descendants_change("*", "*")], tagged(), table)
+out = nu.Reconcile(
+    ops.snapshot(nu.OnAny(nuspace.Space.planes.on_descendants_change("*", "*"))),
+    nu.let(ops.snapshot(tagged()), table),
+)
 """
 
 
@@ -69,7 +71,6 @@ import nu
 import nustd.ui
 import nuspace
 from nuspace import ops
-from nuspace.system.utils import redraws
 
 
 def prop(p, name):
@@ -98,7 +99,10 @@ def draw():
 
 
 # A plane's own fields: made, removed, renamed, its cells written (version).
-out = redraws([nuspace.Space.planes.on_descendants_change("*", "*")], rows(), table)
+out = nu.Reconcile(
+    ops.snapshot(nu.OnAny(nuspace.Space.planes.on_descendants_change("*", "*"))),
+    nu.let(ops.snapshot(rows()), table),
+)
 """
 
 

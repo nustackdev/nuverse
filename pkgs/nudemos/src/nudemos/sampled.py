@@ -104,7 +104,7 @@ def paint():
 
 
 # One pass at a time: writes landing while one paints and waits merge into one more.
-out = nu.ReconcileReactive(snap(Series.cursor.on_change()), paint() >> nu.Delay(EVERY), every=5.0)
+out = nu.Reconcile(snap(Series.cursor.on_change()), paint() >> nu.Delay(EVERY), every=5.0)
 """
 
 

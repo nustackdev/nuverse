@@ -3,7 +3,7 @@
 Every cell is ``def out(plane)``: the plane it runs on comes in, and
 :func:`~.state.root_of` finds the Memes root from there, where the sync
 writes. The cells follow ``Memes.beat``, which moves once per commit of the
-sync, and redraw only what reads differently.
+sync, and redraw on every wake.
 
 - :data:`BAR`: the sync's status, where it is, and Start or Stop, with a notice while it
   runs behind the chain. On every plane.
@@ -24,7 +24,7 @@ import nu
 import nustd.time
 import nustd.ui
 from nuspace import ops
-from nuspace.system.utils import drawing, redraw, redraws, snap
+from nuspace.system.utils import snap
 from nudemos.memes import control, views
 from nudemos.memes.book import RATE
 from nudemos.memes.state import Control, Memes, at_root, root_of
@@ -79,8 +79,8 @@ def out(plane):
     def follow(root):
         moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.stop.on_change())]
         return nu.ParallelAsync(
-            redraws(moves, read(root), draw, every=1.0),
-            nu.ReactForever(View.bar.toggle.on_click(), press(root)),
+            nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(read(root)), draw), every=1.0),
+            nu.ReactEvery(View.bar.toggle.on_click(), press(root)),
         )
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
@@ -117,7 +117,7 @@ def draw(t):
 def out(plane):
     def follow(root):
         read = views.tiles(at_root(root, Memes.stats.fallback({})))
-        return redraws([at_root(root, Memes.beat.on_change())], read, draw)
+        return nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), draw))
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -155,7 +155,7 @@ def out(plane):
     def follow(root):
         # One pass at a time: blocks landing while it paints merge into one more.
         beat = snap(at_root(root, Memes.beat.on_change()))
-        return nu.ReconcileReactive(beat, paint(root) >> nu.Delay(EVERY), every=5.0)
+        return nu.Reconcile(beat, paint(root) >> nu.Delay(EVERY), every=5.0)
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -253,7 +253,7 @@ def draw(cards):
 def opener(root, i):
     mints = nu.List(Shown.mints)
     go = control.open_token(root, nu.Str(mints[i]), View.history)
-    return nu.ReactForever(getattr(View.cards, f"c{i}").body.open.on_click(), nu.IfDo(mints.len() > i, go))
+    return nu.ReactEvery(getattr(View.cards, f"c{i}").body.open.on_click(), nu.IfDo(mints.len() > i, go))
 
 
 def out(plane):
@@ -262,7 +262,7 @@ def out(plane):
         images = at_root(root, Control.images.fallback(False))
         read = views.launch_cards(at_root(root, Memes.launches.fallback([])), nustd.time.time(), N, images)
         moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.images.on_change())]
-        shown = redraws(moves, read, draw, every=5.0)
+        shown = nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(read), draw), every=5.0)
         opens = [opener(root, i) for i in range(N)]
         return View.head.set("New launches") >> nu.Frame(Shown, nu.ParallelAsync(shown, *opens), mints=[])
 

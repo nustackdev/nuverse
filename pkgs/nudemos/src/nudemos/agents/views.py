@@ -88,7 +88,7 @@ CUT = 4000
 def with_job(plane: nu.StrArg, body: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     """``body(job)`` once the agent page ``plane`` has its job: the launch makes it right after the page."""
     found = snap(job_of(plane) != "")
-    wait = nu.WaitReactive(snap(Space.planes[plane].children.on_change()), found, every=2.0)
+    wait = nu.WaitUntil(snap(Space.planes[plane].children.on_change()), found, every=2.0)
     return wait >> nu.let(snap(job_of(plane)), lambda job: body(nu.Str(job)))
 
 

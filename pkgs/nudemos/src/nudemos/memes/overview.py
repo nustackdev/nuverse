@@ -80,21 +80,21 @@ def out(plane):
 
     def follow(root):
         read = views.token_rows(at_root(root, Memes.board.fallback({})), Pick.sort, nustd.time.time())
-        draw = redraw(read, t.set_rows)
-        shown = nu.ReconcileReactive(snap(at_root(root, Memes.beat.on_change())), draw, every=2.0)
+        draw = nu.let(snap(read), t.set_rows)
+        shown = nu.Reconcile(snap(at_root(root, Memes.beat.on_change())), draw, every=2.0)
 
         def order(sort):
             # A new order: the picker, the header's arrows and the rows, at once.
             s = nu.Str(sort)
             return Pick.sort.set(s) >> View.head.sort.set(s) >> t.set_sort(column_of(s), "desc") >> draw
 
-        picked = nu.ReactForever(View.head.sort.on_change(), order(nu.Str(View.head.sort)))
-        clicked = nu.ReactForever(t.on_sort(), lambda ev: nu.let(by_column(ev["sort_column"]), lambda s: nu.IfDo(nu.Str(s) != "", order(s))))
-        opened = nu.ReactForever(t.on_row_click(), lambda ev: control.open_token(root, nu.Str(ev["key"]), View.history))
+        picked = nu.ReactEvery(View.head.sort.on_change(), order(nu.Str(View.head.sort)))
+        clicked = nu.ReactEvery(t.on_sort(), lambda ev: nu.let(by_column(ev["sort_column"]), lambda s: nu.IfDo(nu.Str(s) != "", order(s))))
+        opened = nu.ReactEvery(t.on_row_click(), lambda ev: control.open_token(root, nu.Str(ev["key"]), View.history))
         body = nu.ParallelAsync(shown, picked, clicked, opened)
         # A slot shows once it is first written: the title, then the picker.
         head = View.head.title.set("Tokens") >> View.head.sort.set_options(ORDERS) >> View.head.sort.set("new")
-        return head >> nu.Frame(Pick, drawing(body), sort="new")
+        return head >> nu.Frame(Pick, body, sort="new")
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -125,8 +125,8 @@ def mint_of(key):
 def out(plane):
     def follow(root):
         read = views.tape_rows(at_root(root, Memes.tape.fallback([])), nustd.time.time())
-        rows = redraws([at_root(root, Memes.beat.on_change())], read, View.tape.set_rows, every=2.0)
-        opened = nu.ReactForever(
+        rows = nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), View.tape.set_rows), every=2.0)
+        opened = nu.ReactEvery(
             View.tape.on_row_click(),
             lambda ev: control.open_token(root, mint_of(ev["key"]), View.history),
         )

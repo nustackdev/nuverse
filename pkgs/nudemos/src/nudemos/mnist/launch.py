@@ -120,8 +120,8 @@ def defaults():
 def out(plane):
     def clicks(root):
         return nu.ParallelAsync(
-            nu.ReactForever(View.go.launch.on_click(), runs(nu.Str(root), "one")),
-            nu.ReactForever(View.go.sweep.on_click(), runs(nu.Str(root), "sweep")),
+            nu.ReactEvery(View.go.launch.on_click(), runs(nu.Str(root), "one")),
+            nu.ReactEvery(View.go.sweep.on_click(), runs(nu.Str(root), "sweep")),
         )
 
     if not READY:
@@ -136,7 +136,7 @@ import nuspace.ui
 import nustd.ui
 from nuspace import ops
 from nuspace.shapes import Space
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.mnist import views
 
 COLUMNS = [{"key": "run", "label": "Run"}, "status", "lr", "progress", {"key": "best", "label": "Best test"}]
@@ -151,8 +151,8 @@ class View(nustd.ui.Column):
 def out(plane):
     def follow(root):
         runs = Space.planes[nu.Str(root)].children.on_change()
-        opened = nu.ReactForever(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"])))
-        return nu.ParallelAsync(redraws([runs], views.rows(views.board(nu.Str(root))), View.runs.set_rows, every=2.0), opened)
+        opened = nu.ReactEvery(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"])))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[runs])), nu.let(snap(views.rows(views.board(nu.Str(root)))), View.runs.set_rows), every=2.0), opened)
 
     return View.head.set("Runs, newest first") >> nu.let(snap(ops.parent(plane)), follow)
 """

@@ -54,7 +54,7 @@ def out(plane: nu.StrArg, cell: nu.StrArg, shape: type, at: Callable[[nu.Nu], nu
     )
     lens_on_pick = nu.ReactLatest(pick.on_change(), browse, initial=True)
     # Cells added or removed on the plane: list them again.
-    cells_moved = nu.ReactForever(
+    cells_moved = nu.ReactEvery(
         read(nuspace.Space.planes[plane].cells.on_children_change()),
         pick.set_options(options),
     )

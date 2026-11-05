@@ -85,7 +85,7 @@ def placed():
 
 def out(plane):
     def follow(root):
-        return placed() >> show(root) >> nu.ReactForever(View.go.save.on_click(), save(root))
+        return placed() >> show(root) >> nu.ReactEvery(View.go.save.on_click(), save(root))
 
     return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)

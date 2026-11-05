@@ -32,10 +32,10 @@ def _edit(item: Text) -> nu.Nu:
         >> nu.ParallelAsync(
             # This tab typed: keep it. Every other tab, and every program
             # reading the text, hears it through the store.
-            nu.ReactForever(body.on_change(), text.set(nu.Str(body))),
+            nu.ReactEvery(body.on_change(), text.set(nu.Str(body))),
             # Somebody else typed, or a program set it: show it. The echo
             # back to the author is a no-op, the text is already what it says.
-            nu.ReactForever(text.on_change(), body.set(nu.str(text))),
+            nu.ReactEvery(text.on_change(), body.set(nu.str(text))),
         )
     )
 

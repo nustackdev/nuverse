@@ -24,7 +24,7 @@ import nustd.kv
 import nustd.time
 from nuspace import ops
 from nuspace.shapes import Space
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 
 from . import checks, color
 from . import spec as specs
@@ -123,7 +123,10 @@ def spec() -> nu.Nu:
 def drawn(plane: str, view_ref: nu.Nu, doc: Callable[[nu.Nu], nu.Nu]) -> nu.Nu:
     """A frame drawing the spec: ``view_ref`` gets ``doc(view)``, again whenever the spec or the preview theme moves."""
     return on_system(
-        plane, lambda base: redraws(follows(), seen(), lambda v: view_ref.set_html(doc(v)))
+        plane,
+        lambda base: nu.Reconcile(
+            snap(nu.OnAny(*follows())), nu.let(snap(seen()), lambda v: view_ref.set_html(doc(v)))
+        ),
     )
 
 

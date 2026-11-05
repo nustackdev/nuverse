@@ -77,7 +77,7 @@ def draw(v):
 
 def out(plane):
     read = kit.read("revenue", Shop.filters.fallback({}))
-    return kit.on_shop(plane, lambda root: redraws(kit.changes(), read, draw))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(read), draw)))
 """
 )
 
@@ -102,7 +102,7 @@ class View(nustd.ui.Column):
 def out(plane):
     read = kit.read("revenue", Shop.filters.fallback({}))
     draw = lambda v: nu.IfDo(nu.Bool(v), View.sheet.set_rows(v["months"]))
-    return View.head.set("Month by month") >> kit.on_shop(plane, lambda root: redraws(kit.changes(), read, draw))
+    return View.head.set("Month by month") >> kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(read), draw)))
 """)
 
 
@@ -145,8 +145,8 @@ def out(plane):
         asked = nu.Dict.of(range=nu.Str(F.range.choice), source=nu.Str(F.source.choice), device=nu.Str(F.device.choice))
         save = ops.atomic_state(at(root, Shop.traffic.set(asked)))
         return nu.ParallelAsync(
-            redraws([Shop.traffic.on_change()], Shop.traffic.fallback({}), shown),
-            *(nu.ReactForever(p.choice.on_change(), save) for p in (F.range, F.source, F.device)),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.traffic.on_change()])), nu.let(snap(Shop.traffic.fallback({})), shown)),
+            *(nu.ReactEvery(p.choice.on_change(), save) for p in (F.range, F.source, F.device)),
         )
 
     return kit.on_shop(plane, follow)
@@ -195,7 +195,7 @@ def draw(v):
 
 def out(plane):
     read = kit.read("funnel", Shop.traffic.fallback({}), tables=("events",))
-    return kit.on_shop(plane, lambda root: redraws([Shop.beat.on_change(), Shop.traffic.on_change()], read, draw))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change(), Shop.traffic.on_change()])), nu.let(snap(read), draw)))
 """)
 
 
@@ -252,9 +252,9 @@ def out(plane):
         save = ops.atomic_state(at(root, Shop.cohort.set(nu.Str(View.metric.choice))))
         read = kit.read("cohorts", Shop.cohort.fallback("Retention"))
         return nu.ParallelAsync(
-            redraws([Shop.cohort.on_change()], Shop.cohort.fallback("Retention"), View.metric.choice.set),
-            redraws([Shop.beat.on_change(), Shop.cohort.on_change()], read, draw, every=60.0),
-            nu.ReactForever(View.metric.choice.on_change(), save),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.cohort.on_change()])), nu.let(snap(Shop.cohort.fallback("Retention")), View.metric.choice.set)),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change(), Shop.cohort.on_change()])), nu.let(snap(read), draw), every=60.0),
+            nu.ReactEvery(View.metric.choice.on_change(), save),
         )
 
     return kit.on_shop(plane, build)
@@ -314,7 +314,7 @@ def out(plane):
             return kit.open_customer(root, cid, name, plane, View.history)
 
         read = kit.read("customers", Shop.filters.fallback({}))
-        return nu.ParallelAsync(redraws(kit.changes(), read, draw), nu.ReactForever(View.table.on_row_click(), opened))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(read), draw)), nu.ReactEvery(View.table.on_row_click(), opened))
 
     return kit.on_shop(plane, build)
 """)
@@ -374,7 +374,7 @@ def draw(v):
 def out(plane):
     def build(root):
         read = kit.read("customer", nu.ToInt(kit.subject(plane)))
-        return redraws([Shop.beat.on_change()], read, lambda v: nu.IfDo(nu.Bool(v), draw(v)))
+        return nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change()])), nu.let(snap(read), lambda v: nu.IfDo(nu.Bool(v), draw(v))))
 
     return kit.on_shop(plane, build)
 """
@@ -399,7 +399,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(root):
         read = kit.read("customer", nu.ToInt(kit.subject(plane)))
-        return redraws([Shop.beat.on_change()], read, lambda v: nu.IfDo(nu.Bool(v), View.orders.set_rows(v["rows"])))
+        return nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change()])), nu.let(snap(read), lambda v: nu.IfDo(nu.Bool(v), View.orders.set_rows(v["rows"]))))
 
     return View.head.set("Every order, newest first") >> kit.on_shop(plane, build)
 """)
@@ -449,7 +449,7 @@ def out(plane):
         read = kit.read("products", Shop.products.extract(), Shop.filters.fallback({}))
         draw = lambda rows: nu.IfDo(nu.Bool(rows), View.sheet.set_rows(rows) >> View.revenue.set(bars(rows)))
         follows = [Shop.beat.on_change(), Shop.filters.on_change(), Shop.products.on_change()]
-        return nu.ParallelAsync(redraws(follows, read, draw), nu.ReactForever(View.sheet.on_edit(), lambda ev: edit(root, ev)))
+        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*follows)), nu.let(snap(read), draw)), nu.ReactEvery(View.sheet.on_edit(), lambda ev: edit(root, ev)))
 
     note = "The prices here are what the store sells at: change one and the next orders are sold at it. Stock goes down as they land."
     return View.note.set(note) >> kit.on_shop(plane, build)
@@ -496,9 +496,9 @@ def out(plane):
         save = ops.atomic_state(at(root, Shop.plan.set(asked)))
         reset = ops.atomic_state(at(root, Shop.plan.set(kit.PLAN)))
         return nu.ParallelAsync(
-            redraws([Shop.plan.on_change()], Shop.plan.fallback(kit.PLAN), shown),
-            *(nu.ReactForever(getattr(K, k).on_change(), save) for k in KEYS),
-            nu.ReactForever(View.go.reset.on_click(), reset),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.plan.on_change()])), nu.let(snap(Shop.plan.fallback(kit.PLAN)), shown)),
+            *(nu.ReactEvery(getattr(K, k).on_change(), save) for k in KEYS),
+            nu.ReactEvery(View.go.reset.on_click(), reset),
         )
 
     return kit.on_shop(plane, build)
@@ -536,7 +536,7 @@ def draw(v):
 def out(plane):
     read = kit.read("forecast", Shop.plan.fallback(kit.PLAN), Shop.products.extract())
     follows = [Shop.beat.on_change(), Shop.plan.on_change(), Shop.products.on_change()]
-    return kit.on_shop(plane, lambda root: redraws(follows, read, draw, every=60.0))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*follows)), nu.let(snap(read), draw), every=60.0))
 """
 )
 
@@ -562,7 +562,7 @@ def out(plane):
     read = kit.read("forecast", Shop.plan.fallback(kit.PLAN), Shop.products.extract())
     draw = lambda v: nu.IfDo(nu.Bool(v), View.table.set_rows(v["rows"]))
     return View.head.set("The plan, month by month") >> kit.on_shop(
-        plane, lambda root: redraws([Shop.beat.on_change(), Shop.plan.on_change(), Shop.products.on_change()], read, draw, every=60.0)
+        plane, lambda root: nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change(), Shop.plan.on_change(), Shop.products.on_change()])), nu.let(snap(read), draw), every=60.0)
     )
 """)
 
@@ -598,7 +598,7 @@ def draw(m):
 
 
 def out(plane):
-    return kit.on_shop(plane, lambda root: redraws(kit.changes(), kit.metric(value, {fmt!r}), draw))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*kit.changes())), nu.let(snap(kit.metric(value, {fmt!r})), draw)))
 """
     )
 
@@ -736,8 +736,8 @@ def out(plane):
         asked = nu.Dict.of(**{k: nu.Str(getattr(Q, k).choice) for k in OPTIONS})
         save = ops.atomic_state(at(root, Shop.query.set(asked)))
         return nu.ParallelAsync(
-            redraws([Shop.query.on_change()], Shop.query.fallback(kit.QUERY), shown),
-            *(nu.ReactForever(getattr(Q, k).choice.on_change(), save) for k in OPTIONS),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.query.on_change()])), nu.let(snap(Shop.query.fallback(kit.QUERY)), shown)),
+            *(nu.ReactEvery(getattr(Q, k).choice.on_change(), save) for k in OPTIONS),
         )
 
     return kit.on_shop(plane, follow)
@@ -787,7 +787,7 @@ def draw(v):
 
 def out(plane):
     read = kit.read("events", Shop.query.fallback(kit.QUERY), tables=("events",))
-    return kit.on_shop(plane, lambda root: redraws([Shop.beat.on_change(), Shop.query.on_change()], read, draw))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change(), Shop.query.on_change()])), nu.let(snap(read), draw)))
 """)
 
 
@@ -840,10 +840,10 @@ def out(plane):
         draw = lambda v: View.watch.dot.set(v["tone"], pulse=v["pulse"]) >> View.watch.line.set(v["line"]) >> View.waiting.set(v["waiting"])
         drop = lambda kind: imports.drop(snap(inbox), kind)
         return nu.ParallelAsync(
-            redraws([Shop.importer.on_change(), Shop.imports.on_change()], status, draw, every=1.0),
-            nu.ReactForever(View.drop.wholesale.on_click(), drop("wholesale")),
-            nu.ReactForever(View.drop.marketplace.on_click(), drop("marketplace")),
-            nu.ReactForever(View.drop.popup.on_click(), drop("popup")),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.importer.on_change(), Shop.imports.on_change()])), nu.let(snap(status), draw), every=1.0),
+            nu.ReactEvery(View.drop.wholesale.on_click(), drop("wholesale")),
+            nu.ReactEvery(View.drop.marketplace.on_click(), drop("marketplace")),
+            nu.ReactEvery(View.drop.popup.on_click(), drop("popup")),
         )
 
     D = View.drop
@@ -881,7 +881,7 @@ def out(plane):
     def build(root):
         read = imports.log(Shop.imports.fallback([]))
         draw = lambda v: View.log.set_rows(v["rows"]) >> View.latest.set(v["latest"])
-        return redraws([Shop.imports.on_change()], read, draw)
+        return nu.Reconcile(snap(nu.OnAny(*[Shop.imports.on_change()])), nu.let(snap(read), draw))
 
     return View.head.set("Loaded so far") >> kit.on_shop(plane, build)
 """)
@@ -927,11 +927,11 @@ def out(plane):
         pace = ops.atomic_state(at(root, Shop.pace.set(nu.Str(C.pace.choice))))
         sold = views.recent(Shop.sold.sample(200, begin=views.since(600)))
         return nu.ParallelAsync(
-            redraws([Shop.pace.on_change()], Shop.pace.fallback("Busy"), C.pace.choice.set),
-            redraws([Shop.stop.on_change()], running, button),
-            redraws([Shop.beat.on_change()], sold, View.sold.set, every=5.0),
-            nu.ReactForever(C.pace.choice.on_change(), pace),
-            nu.ReactForever(C.toggle.on_click(), toggle),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.pace.on_change()])), nu.let(snap(Shop.pace.fallback("Busy")), C.pace.choice.set)),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.stop.on_change()])), nu.let(snap(running), button)),
+            nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change()])), nu.let(snap(sold), View.sold.set), every=5.0),
+            nu.ReactEvery(C.pace.choice.on_change(), pace),
+            nu.ReactEvery(C.toggle.on_click(), toggle),
         )
 
     return kit.on_shop(plane, build)
@@ -973,7 +973,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_shop(plane, lambda root: redraws([Shop.beat.on_change()], views.sources(Shop.index.extract()), draw, every=2.0))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(snap(nu.OnAny(*[Shop.beat.on_change()])), nu.let(snap(views.sources(Shop.index.extract())), draw), every=2.0))
 """)
 
 

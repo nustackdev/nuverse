@@ -33,7 +33,7 @@ import nu
 import nustd.ui
 from nuspace import ops
 from nuspace.shapes import Space
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.mnist import views
 from nudemos.mnist.interactions import Classify, Holds, MnistDigit, Use
 from nudemos.mnist.reader import Reader
@@ -213,13 +213,13 @@ def placed():
 
 def body(root):
     runs = Space.planes[nu.Str(root)].children.on_change()
-    pad = [nu.ReactForever(W.pad.sketch.on_change(), drew())] if SKETCH else []
+    pad = [nu.ReactEvery(W.pad.sketch.on_change(), drew())] if SKETCH else []
     return placed() >> took([], -1) >> nu.ParallelAsync(
-        redraws([runs], views.choices(views.shelf(nu.Str(root))), options, every=3.0),
-        nu.ReactForever(P.run.choice.on_change(), chose()),
-        nu.ReactForever(P.model.choice.on_change(), Shown.kind.set(nu.Str(P.model.choice)) >> settle()),
-        nu.ReactForever(W.pad.tools.sample.on_click(), sampled()),
-        nu.ReactForever(W.pad.tools.test.on_click(), tested()),
+        nu.Reconcile(snap(nu.OnAny(*[runs])), nu.let(snap(views.choices(views.shelf(nu.Str(root)))), options), every=3.0),
+        nu.ReactEvery(P.run.choice.on_change(), chose()),
+        nu.ReactEvery(P.model.choice.on_change(), Shown.kind.set(nu.Str(P.model.choice)) >> settle()),
+        nu.ReactEvery(W.pad.tools.sample.on_click(), sampled()),
+        nu.ReactEvery(W.pad.tools.test.on_click(), tested()),
         nu.ForeverDo(nu.Delay(EVERY) >> settle()),
         *pad,
     )

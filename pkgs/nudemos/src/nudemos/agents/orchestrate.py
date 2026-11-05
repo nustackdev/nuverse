@@ -156,7 +156,7 @@ import nu
 import nustd.ui
 from nuspace import ops
 from nuspace.shapes import Space
-from nuspace.system.utils import redraws, snap
+from nuspace.system.utils import snap
 from nudemos.agents import orchestrate, views
 from nudemos.agents.claude import READY
 from nudemos.agents.flows import KINDS, launch_flow
@@ -230,9 +230,9 @@ def out(plane):
     kids = Space.planes[plane].children.on_change()
     runs = orchestrate.shown(orchestrate.flows_view(plane))
     return placed >> nu.ParallelAsync(
-        nu.ReactForever(View.ask.run.on_click(), started(plane)),
-        nu.ReactForever(View.more.add.on_click(), added(plane)),
-        redraws([kids], runs, lambda rs: nu.ForEachDo(nu.List(rs), card), every=1.5),
+        nu.ReactEvery(View.ask.run.on_click(), started(plane)),
+        nu.ReactEvery(View.more.add.on_click(), added(plane)),
+        nu.Reconcile(snap(nu.OnAny(*[kids])), nu.let(snap(runs), lambda rs: nu.ForEachDo(nu.List(rs), card)), every=1.5),
     )
 """
 

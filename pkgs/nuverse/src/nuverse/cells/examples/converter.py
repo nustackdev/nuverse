@@ -128,14 +128,12 @@ def out() -> nu.Nu:
     return ops.bracketed(
         show()
         >> nu.ParallelAsync(
-            nu.ReactForever(Box.kind.on_change(), rekind()),
-            nu.ReactForever(Box.left.unit.on_change(), Convert.left.set(nu.ToStr(Box.left.unit))),
-            nu.ReactForever(
-                Box.right.unit.on_change(), Convert.right.set(nu.ToStr(Box.right.unit))
-            ),
-            nu.ReactForever(Box.left.amount.on_change(), typed(Box.left, left)),
-            nu.ReactForever(Box.right.amount.on_change(), typed(Box.right, right)),
-            *(nu.ReactForever(slot.on_change(), show()) for slot in stored),
+            nu.ReactEvery(Box.kind.on_change(), rekind()),
+            nu.ReactEvery(Box.left.unit.on_change(), Convert.left.set(nu.ToStr(Box.left.unit))),
+            nu.ReactEvery(Box.right.unit.on_change(), Convert.right.set(nu.ToStr(Box.right.unit))),
+            nu.ReactEvery(Box.left.amount.on_change(), typed(Box.left, left)),
+            nu.ReactEvery(Box.right.amount.on_change(), typed(Box.right, right)),
+            *(nu.ReactEvery(slot.on_change(), show()) for slot in stored),
         )
     )
 

@@ -22,7 +22,7 @@ import nu
 import nustd.time
 import nustd.ui
 from nuspace import ops
-from nuspace.system.utils import drawing, redraw, snap
+from nuspace.system.utils import snap
 from nulog.planes.state import Config, at_root, child, following, root_of, saved, config, with_store
 from nulog.planes import consts, fmt, reads
 """
@@ -62,7 +62,7 @@ def live(s):
         counts = nu.List(reads.streams()).len(), nu.List(reads.series()).len()
         return fmt.status(fmt.look(s["path"]), *counts, s["every"])
 
-    return drawing(nu.ForeverDo(redraw(read(), draw) >> nu.Delay(s["every"])))
+    return nu.ForeverDo(nu.let(snap(read()), draw) >> nu.Delay(s["every"]))
 
 
 def link(plane, root):

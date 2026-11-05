@@ -26,7 +26,7 @@ import nuspace
 import nustd.kv
 from nuspace import ops
 from nuspace.shapes import Space
-from nuspace.system.utils import park, snap
+from nuspace.system.utils import snap
 
 from . import consts, fmt
 from .store import Opened
@@ -128,10 +128,10 @@ def following(root: nu.StrArg, body: Callable[[nu.Dict], nu.Nu]) -> nu.Nu:
     def turn(held: nu.ObjectRef) -> nu.Nu:
         now = nu.Dict(held)
         moves = snap(at_root(root, Config.saved.on_change()))
-        moved = nu.WaitReactive(
+        moved = nu.WaitUntil(
             moves, nu.Int(snap(at_root(root, Config.saved.fallback(0)))) != now["saved"]
         )
-        return nu.Race(body(now) >> park(), moved)
+        return nu.Race(body(now) >> nu.Park(), moved)
 
     return nu.ForeverDo(nu.let(snap(config(root)), turn))
 
