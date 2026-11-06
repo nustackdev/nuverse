@@ -1,8 +1,9 @@
 """A text editor cell: one editable markdown surface over a Text item, kept live both ways.
 
-Registered as ``nuverse.text``, the Cell nuspace's document editing works
-on: typing into an empty line starts one, and its cells are the plane's text
-cells, written like a document. So it draws the surface alone, no Config:
+Registered as ``nuverse.text``, a ``prose`` Cell and that class's default:
+typing on a plane's input line starts one, and its cells are written like a
+document. The class holds it to one markdown document and a markdown value,
+so it draws the surface alone, no Config:
 it edits the cell's own ``value``, a
 :class:`~nuverse.contents.text.TextContent` item, unless a program points
 it elsewhere through its :class:`~._editing.Target`.
@@ -28,7 +29,6 @@ def _edit(item: Text) -> nu.Nu:
     return (
         body.set(text.fallback(""))
         >> body.set_editable(True)
-        >> body.set_placeholder("Write, or press / for cells")
         >> nu.ParallelAsync(
             # This tab typed: keep it. Every other tab, and every program
             # reading the text, hears it through the store.
@@ -53,4 +53,6 @@ CELL = CellSpec(
     description="Text a person reads and edits, markdown kept as text content.",
     group="Content",
     icon="type",
+    classes=("prose",),
+    default_for=("prose",),
 )
