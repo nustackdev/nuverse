@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nuagent 0.2.5 on nuspace 0.6.4
 - A chat opened again answers messages its engine missed while it was not listening
 - Release nuverse 0.3.7, nulog 0.2.4, nudemos 0.1.6 on nu 0.7.1 and nuspace 0.6.4
 - Move the demos and planes onto nu's new reactive flows, one Reconcile per redraw
