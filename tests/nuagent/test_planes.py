@@ -227,7 +227,26 @@ async def chat_page(space: Kernel, source: str | None = None) -> tuple[str, str]
         made = ops.add_plane(eid, backend="async", parent=page, made_by=engine.MADE_BY)
         await space.run(made >> ops.add_cell(eid, source, cell_id=f"{eid}_cell"))
     await space.run(chat.ensure(page))
+    await bound(space, eid)
     return page, eid
+
+
+async def bound(space: Kernel, eid: str) -> None:
+    """Wait until the engine's reaction listens: its cell run live, its subscription bound."""
+    cid = await space.read(reactions.reaction_of(engine.inbox_change(eid), eid))
+
+    def listening(row: dict) -> bool:
+        runs = [c for c in row.get("cells", []) if c["cell"] == cid]
+        return (
+            bool(runs)
+            and runs[-1].get("started_at") is not None
+            and runs[-1].get("terminated_at") is None
+        )
+
+    rid = await space.until(reactions.live_run(), bool, SLOW)
+    await space.until(ops.run(rid), listening, SLOW)
+    # The cell run is live a moment before its subscription binds.
+    await asyncio.sleep(0.3)
 
 
 async def handled(space: Kernel, eid: str, n: int) -> dict:

@@ -35,11 +35,11 @@ from nuspace.ops.utils import MintId
 from nuspace.shapes import Reroot
 from nuspace.system.devices.web.shell import Shell
 from nuspace.system.devices.web.utils import CellRoot
-from nuspace.system.services import enable_react
+from nuspace.system.services import enable_react, up_plane
 from nuspace.system.utils import snap
 
 from . import settings
-from .engine import IMPORTS, MADE_BY, SOURCE, engine_cell, engine_of, inbox_change
+from .engine import IMPORTS, MADE_BY, SOURCE, engine_cell, engine_of, inbox_change, pending
 from .ext import said_prog
 from .state import ERROR, IDLE, RUNNING, STOPPED, THINKING, Chat
 
@@ -112,7 +112,12 @@ def ensure(page: nu.StrArg) -> nu.Nu:
     lists = lists >> Chat.messages.init(nu.List.create())
     kept = ops.atomic_state(ops.plane_state(engine, lists))
     reaction = enable_react(inbox_change(engine), engine, imports=IMPORTS)
-    return made >> kept >> settings.ensure() >> reaction
+    # A reaction fires on changes only: messages sent while the space was
+    # closed, or before it bound, wait for a run started here.
+    idle = nu.List(snap(plane_live(engine))).len() == 0
+    waiting = nu.Bool(snap(ops.plane_state(engine, pending())))
+    caught_up = nu.IfDo(nu.And(idle, waiting), up_plane(engine))
+    return made >> kept >> settings.ensure() >> reaction >> caught_up
 
 
 def say(engine: nu.StrArg, text: nu.StrArg) -> nu.Nu:
