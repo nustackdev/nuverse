@@ -35,6 +35,8 @@ import nustd.kv
 from nulog.messages.shapes import MessageStream
 from nuspace import Space
 
+from . import KEY
+
 
 __all__ = [
     "INCIDENT",
@@ -56,9 +58,6 @@ __all__ = [
 
 #: ``spec`` of a job's page, a job's headless plane, an incident's page; ``ROOT`` names the demo.
 ROOT, JOB_PAGE, WORKER, INCIDENT = "ops", "ops_job", "ops_worker", "ops_incident"
-
-#: The root's key: one Ops per space.
-KEY = "nudemos_ops"
 
 #: The root's id, one index read. NULL while the space has no Ops.
 ROOT_ID = Space.indexes.plane_keys[KEY]

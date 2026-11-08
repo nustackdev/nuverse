@@ -28,10 +28,14 @@ from __future__ import annotations
 from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells
-from .state import KEY
 
 
-__all__ = ["PLANE"]
+__all__ = ["KEY", "PLANE"]
+
+
+#: The root's key: one Ops per space. Kept here, not in :mod:`.state`, so
+#: loading the extension does not import nulog (the ``ops`` extra).
+KEY = "nudemos_ops"
 
 
 PLANE = PlaneSpec(

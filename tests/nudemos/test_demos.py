@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 import zlib
 from typing import TYPE_CHECKING
 
@@ -127,6 +129,24 @@ def test_discovery_finds_the_tour_and_the_demos():
         "nudemos.ops",
         "nudemos.recipes",
     ]
+
+
+def test_the_extension_loads_without_its_extras():
+    # Each demo's heavy libraries are extras: the extension, every spec and its
+    # key, loads without them, so a bare install still lists every demo.
+    blocked = ("numpy", "nulog", "torch", "torchvision", "PIL")
+    script = (
+        "import sys\n"
+        f"for name in {blocked!r}:\n"
+        "    sys.modules[name] = None\n"
+        "import nudemos\n"
+        "print(len(nudemos.extension().planes))\n"
+    )
+    done = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "13"
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.name)

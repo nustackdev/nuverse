@@ -20,10 +20,14 @@ from __future__ import annotations
 from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells, pages
-from .kit import KEY
 
 
-__all__ = ["PLANE"]
+__all__ = ["KEY", "PLANE"]
+
+
+#: The root's key: one Owlbridge per space. Kept here, not in :mod:`.kit`,
+#: so loading the extension does not import numpy (the ``data`` extra).
+KEY = "nudemos_data"
 
 
 PLANE = PlaneSpec(

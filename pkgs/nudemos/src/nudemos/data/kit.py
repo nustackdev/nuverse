@@ -36,7 +36,7 @@ from nuspace.specs import PlaneSpec, WebOptions
 from nuspace.utils import MintId
 
 from .. import headless
-from . import calc, gen
+from . import KEY, calc, gen
 from .shop import PRODUCTS
 
 
@@ -64,9 +64,6 @@ __all__ = [
 
 #: ``spec`` of the jobs and of the customer pages.
 JOB, CUSTOMER = "data_job", "data_customer"
-
-#: The root's key: one Owlbridge per space.
-KEY = "nudemos_data"
 
 #: The root's id, one index read. NULL while the space has no Owlbridge.
 ROOT_ID = Space.indexes.plane_keys[KEY]
