@@ -6,10 +6,11 @@ What number input and slider cells keep, one item each.
 from __future__ import annotations
 
 import nu
-import nuspace
 import nustd.kv
 import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
+from nuspace.shapes.content import Content
+from nuspace.specs import ContentSpec
 
 
 __all__ = ["CONTENT", "Number", "NumberContent", "NumberHit", "NumberView", "Shown"]
@@ -41,7 +42,7 @@ class NumberHit(nustd.ui.Row):
     text = nustd.ui.TextRef.slot()
 
 
-class NumberContent(nuspace.Content[Number], name="Number"):
+class NumberContent(Content[Number], name="Number"):
     """The number kind: matched within bounds, drawn as a person writes it."""
 
     @classmethod
@@ -76,4 +77,4 @@ class NumberContent(nuspace.Content[Number], name="Number"):
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Number``.
-CONTENT = nuspace.ContentSpec(NumberContent, description="A number, found within bounds.")
+CONTENT = ContentSpec(NumberContent, description="A number, found within bounds.")

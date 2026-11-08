@@ -8,10 +8,11 @@ from __future__ import annotations
 import re
 
 import nu
-import nuspace
 import nustd.kv
 import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
+from nuspace.shapes.content import Content
+from nuspace.specs import ContentSpec
 
 
 __all__ = [
@@ -67,7 +68,7 @@ class TextHit(nustd.ui.Row):
     text = nustd.ui.TextRef.slot()
 
 
-class TextContent(nuspace.Content[Text], name="Text"):
+class TextContent(Content[Text], name="Text"):
     """The text kind: matched by whole words, drawn as markdown."""
 
     @classmethod
@@ -96,4 +97,4 @@ class TextContent(nuspace.Content[Text], name="Text"):
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Text``.
-CONTENT = nuspace.ContentSpec(TextContent, description="A string, found by its words.")
+CONTENT = ContentSpec(TextContent, description="A string, found by its words.")

@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING
 
 import nu
 import nuspace
-import nustd.kv
 import nustd.ui
 import nustd.ui.lens
-from nuspace import CellSpec, ops
+from nuspace.specs import CellSpec
+
+from ._options import cell_options, cell_page
 
 
 if TYPE_CHECKING:
@@ -34,19 +35,13 @@ def out(plane: nu.StrArg, cell: nu.StrArg, shape: type, at: Callable[[nu.Nu], nu
     """
     pick = nustd.ui.SelectRef("cell")
     lens = nustd.ui.lens.LensRef("lens")
-
-    def read(term: nu.Nu) -> nu.Nu:
-        return nustd.kv.Snapshot(term, scope=nuspace.Space)
+    cells = nuspace.Space.planes[plane].cells
 
     # The plane's cells in order, labelled by name, or by id when unnamed.
-    def option(row: nu.Nu) -> nu.Nu:
-        label = nu.If(row["name"] != "", row["name"], row["id"])
-        return nu.Dict.of(value=row["id"], label=label)
-
-    options = read(ops.cell_rows(plane).iter().map(option).to_list())
-    # The first cell that is not this one, or this one when it is alone.
-    others = ops.cells(plane).iter().filter(lambda c: c != cell).first(default=cell)
-    first = read(nu.Str(others))
+    options = nuspace.atomic(cell_options(plane))
+    # The first listed cell that is not this one, or this one when it is alone.
+    others = cell_page(plane).iter().filter(lambda c: c != cell).first(default=cell)
+    first = nuspace.atomic(nu.Str(others))
 
     # browse never finishes: each pick cancels it and starts it on the new cell.
     browse = nu.let(
@@ -55,8 +50,7 @@ def out(plane: nu.StrArg, cell: nu.StrArg, shape: type, at: Callable[[nu.Nu], nu
     lens_on_pick = nu.ReactLatest(pick.on_change(), browse, initial=True)
     # Cells added or removed on the plane: list them again.
     cells_moved = nu.ReactEvery(
-        read(nuspace.Space.planes[plane].cells.on_children_change()),
-        pick.set_options(options),
+        nuspace.atomic(cells.on_children_change()), pick.set_options(options)
     )
     return (
         pick.set_options(options) >> pick.set(first) >> nu.ParallelAsync(lens_on_pick, cells_moved)
@@ -67,15 +61,15 @@ _SOURCE = f'''\
 """A lens on one cell of this plane, picked from a dropdown. Point the shape and the prefix elsewhere to browse something else of it."""
 
 import nuspace
-from nuspace import ops
+from nuspace.places import Here
 from {__name__} import out as lens
 
 
 # The shape: what the lens expects to find. The prefix, given the picked
 # cell's id: where in the store it lives. Here, the picked cell.
 out = lens(
-    ops.Here.plane,
-    ops.Here.cell,
+    Here.plane,
+    Here.cell,
     nuspace.shapes.Cell,
     lambda picked: nuspace.Space.cells[picked],
 )

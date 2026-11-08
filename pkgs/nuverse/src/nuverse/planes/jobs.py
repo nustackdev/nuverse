@@ -1,12 +1,14 @@
 """The ``jobs`` Plane: headless planes, made, listed and set up from one place.
 
-A job is a plane with ``props.ui`` and ``props.system`` both false: nothing
-draws it, and its one cell ``main`` holds its code, its id the job's with
-``_main`` after it, so it is unique across the space and never looked up. The jobs this Plane makes
-hang under it, ``made_by`` ``nuverse.jobs``. A headless plane another Plane made is
-that Plane's, eg the one a chat talks through, and not a job.
+A job is a plane made from :data:`JOB` under this Plane: no web row, so
+nothing draws it, and one cell ``main`` holding its code. The job keeps its
+cell's id in its own plane state under that name
+(:class:`~nuspace.specs.SpecCells`), so the cells here find it with one
+read. The jobs this Plane lists are the ones it made, kept in its state as
+it makes them (:class:`Jobs`), one page of them: never a scan of its
+children or of the space.
 
-Three cells, meeting in the plane's shared state (``Jobs.selected``):
+Three cells, meeting in the plane's shared state (:class:`Jobs`):
 
 - ``jobs``: every job, drawn again when a job, its boot, restart or run
   changes. A row click selects it.
@@ -18,10 +20,28 @@ Three cells, meeting in the plane's shared state (``Jobs.selected``):
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+import nu
+import nustd.kv
+from nuspace.specs import PlaneSpec, WebOptions
 
 
-__all__ = ["DETAIL", "MAIN", "NEW", "PLANE", "TABLE"]
+__all__ = ["DETAIL", "JOB", "MAIN", "MAX_JOBS", "NEW", "PLANE", "TABLE", "Jobs"]
+
+
+#: How many jobs the table lists: the oldest ones, one page.
+MAX_JOBS = 200
+
+
+class Jobs(nu.Shape):
+    """The Jobs plane's state, shared by its cells, declared once here.
+
+    ``made``: the jobs it made, oldest first, written by ``new`` when it
+    makes one and dropped by ``job`` when it deletes one. ``selected``: the
+    job ``job`` shows, ``""`` for none.
+    """
+
+    made = nustd.kv.LogDictRef.slot(bool)
+    selected = nustd.kv.StrRef.slot()
 
 
 #: What a new job's main cell starts as: one key in its own state, then done.
@@ -29,29 +49,39 @@ MAIN = """\
 import nu
 import nustd.kv
 import nuspace
-from nuspace import ops
 
 
-class Note(nuspace.CellState):
+class Note(nu.Shape):
     hello = nustd.kv.StrRef.slot()
 
 
-# Bare state: the kernel lands it under this cell, whichever it is.
-out = ops.atomic_state(Note.hello.set(nu.Str("world")))
+# This cell's own state.
+out = nuspace.atomic(nuspace.here(Note).hello.set("world"))
 """
+
+
+#: What a job is made from: a headless plane with its one cell. Not offered
+#: by ``+``: only this Plane makes jobs. Named with the package in front, as
+#: it records on the planes it makes.
+JOB = PlaneSpec(
+    "nuverse.job",
+    "New job",
+    description="A headless plane that runs code.",
+    cells=(("main", MAIN),),
+    backend="mp",
+)
 
 
 TABLE = """\
 import nu
-import nustd.kv
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuspace.system.services import init, supervisor
+from nuspace.places import Here
+from nuspace.system import init, supervisor
+from nuverse.planes.jobs import MAX_JOBS, Jobs
 
 
-class Jobs(nuspace.PlaneState):
-    selected = nustd.kv.StrRef.slot()
+JOBS = nuspace.at.plane.state(Jobs)
 
 
 class Listing(nustd.ui.Column):
@@ -61,45 +91,35 @@ class Listing(nustd.ui.Column):
 
 
 def jobs():
-    def headless(p):
-        props = nuspace.Space.planes[nu.Str(p)].props
-        maker = props.made_by.fallback("")
-        mine = (maker == "").or_(maker == "nuverse.jobs")
-        return props.ui.fallback(False).not_().and_(props.system.fallback(False).not_()).and_(mine)
-
-    return ops.planes().iter().filter(headless).to_list()
-
-
-def running():
-    # The planes with a live run, off the live index.
-    return nu.list(nuspace.Space.kernel.planes_running.keys())
+    # The jobs this plane made, kept in its state: one page, oldest first, a gone one left out.
+    made = JOBS.made
+    page = nu.list(nu.If(made.exists(), nu.list(made.keys(limit=MAX_JOBS)), []))
+    return page.iter().filter(lambda p: nuspace.plane.exists(nu.Str(p))).to_list()
 
 
 def restart(pid):
-    policy = supervisor.policy_of(pid)
-    delay = supervisor.delay_of(pid)
+    held = supervisor.supervised()[pid]
+    policy = nu.Str(held.policy.fallback(""))
     label = nu.Str(
         nu.Switch(policy, {"always": "always", "on-failure": "on failure"}, default="off")
     )
-    timed = (policy != "").and_(delay >= 0.0)
-    return nu.If(timed, label + ", " + nu.format(delay, "g") + "s", label)
+    # No fixed delay is the backoff.
+    timed = (policy != "").and_(held.delay.exists())
+    return nu.If(timed, label + ", " + nu.format(held.delay, "g") + "s", label)
 
 
 def rows():
-    def listed(booted, live):
-        def row(at):
-            j = nu.Str(at)
-            return nu.List.of(
-                nuspace.Space.planes[j].name.fallback(j),
-                j,
-                nu.If(nu.List(booted).contains(j), "yes", "no"),
-                restart(j),
-                nu.If(nu.List(live).contains(j), "yes", "no"),
-            )
+    def row(at):
+        j = nu.Str(at)
+        return nu.List.of(
+            nuspace.plane.title(j),
+            j,
+            nu.If(init.boot_list().contains(j), "yes", "no"),
+            restart(j),
+            nu.If(nuspace.plane_run.any_live(j), "yes", "no"),
+        )
 
-        return jobs().iter().map(row).to_list()
-
-    return nu.let(init.booted(), lambda booted: nu.let(running(), lambda live: listed(booted, live)))
+    return jobs().iter().map(row).to_list()
 
 
 def table(shown):
@@ -108,60 +128,43 @@ def table(shown):
 
 
 def draw():
-    return nu.let(ops.snapshot(rows()), table)
+    return nu.let(nuspace.atomic(rows()), table)
 
 
 def select(click):
     at = nu.int(click["row_index"])
 
     def pick(ids):
-        return nu.IfDo(nu.List(ids).len() > at, Jobs.selected.set(nu.str(nu.List(ids)[at])))
+        return nu.IfDo(nu.List(ids).len() > at, JOBS.selected.set(nu.str(nu.List(ids)[at])))
 
-    # The rows are the jobs in creation order: the same read finds the one clicked.
-    return nu.IfDo(
-        click.contains("row_index"),
-        nustd.kv.Transaction(
-            nustd.kv.Snapshot(nu.let(jobs(), pick), scope=nuspace.Space),
-            scope=nuspace.States,
-        ),
-    )
+    # The rows are the jobs in order: the same read finds the one clicked.
+    return nu.IfDo(click.contains("row_index"), nuspace.atomic(nu.let(jobs(), pick)))
 
 
-# A job made, removed or renamed, booted, supervised, or up or down.
+# A job made or deleted here, one removed or moved elsewhere, booted, supervised, or up or down.
 changes = [
-    nuspace.Space.planes.on_descendants_change("*", "*"),
-    nuspace.States.cells[init.CELL].on_change(),
-    nuspace.States.cells[supervisor.CELL].on_change(),
-    nuspace.Space.kernel.planes_running.on_children_change(),
+    JOBS.made.on_children_change(),
+    nuspace.plane.on_children_change(Here.plane),
+    init.boot_list().on_change(),
+    supervisor.supervised().on_change(),
+    nuspace.plane_run.on_live_change(),
 ]
 out = nu.ParallelAsync(
-    nu.Reconcile(ops.snapshot(nu.OnAny(*changes)), nu.let(ops.snapshot(rows()), table)),
+    nu.Reconcile(nuspace.atomic(nu.OnAny(*changes)), draw()),
     nu.ReactEvery(Listing.table.on_row_click(), select),
 )
 """
 
 
-NEW = (
-    """\
+NEW = """\
 import nu
-import nustd.kv
 import nustd.ui
 import nuspace
-from nuspace import ops
-
-#: What a new job's main cell starts as.
-STARTER = """
-    + repr(MAIN)
-    + """
+from nuspace.places import Here
+from nuverse.planes.jobs import JOB, Jobs
 
 
-class Jobs(nuspace.PlaneState):
-    selected = nustd.kv.StrRef.slot()
-
-
-def main(job):
-    # A job's one cell: its id is the job's with "_main" after it.
-    return nu.Str(job) + "_main"
+JOBS = nuspace.at.plane.state(Jobs)
 
 
 class Form(nustd.ui.Row):
@@ -170,17 +173,12 @@ class Form(nustd.ui.Row):
 
 
 def create(name):
-    # Under the plane running this cell: the Jobs plane.
-    here = ops.Here.plane
-
+    # Under the plane running this cell: the Jobs plane. Its own commits, then listed and picked.
     def make(made):
         job = nu.Str(made)
         return (
-            ops.add_plane(
-                backend="mp", name=name, parent=here, ui=False, made_by="nuverse.jobs", into=made
-            )
-            >> ops.add_cell(job, STARTER, cell_id=main(job), name="main")
-            >> nustd.kv.Transaction(Jobs.selected.set(job), scope=nuspace.States)
+            nuspace.specs.add_plane(JOB, parent=Here.plane, name=name, into=made)
+            >> nuspace.atomic(JOBS.made.set_item(job, True) >> JOBS.selected.set(job))
         )
 
     return nu.let("", make)
@@ -196,16 +194,16 @@ out = (
     >> nu.ReactEvery(Form.create.on_click(), make)
 )
 """
-)
 
 
 DETAIL = """\
 import nu
-import nustd.kv
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuspace.system.services import init, supervisor
+from nuspace.ops.interactions import Fabrics
+from nuspace.specs import SpecCells
+from nuspace.system import init, supervisor
+from nuverse.planes.jobs import Jobs
 
 OFF = "off"
 
@@ -216,13 +214,12 @@ POLICIES = [
 ]
 
 
-class Jobs(nuspace.PlaneState):
-    selected = nustd.kv.StrRef.slot()
+JOBS = nuspace.at.plane.state(Jobs)
 
 
 def main(job):
-    # A job's one cell: its id is the job's with "_main" after it.
-    return nu.Str(job) + "_main"
+    # A job's one cell, by the name its spec gave it, in the job's own plane state.
+    return nu.Str(nuspace.at.plane(id=job).state(SpecCells).ids["main"])
 
 
 class Policy(nustd.ui.Field):
@@ -260,50 +257,59 @@ class Asked(nu.Shape):
     delay = nu.FloatRef.slot()
 
 
-def snap(term):
-    return ops.snapshot(term)
-
-
 def draw(job):
     d = View.detail
-    policy = supervisor.policy_of(job)
-    delay = supervisor.delay_of(job)
-    return snap(
-        d.title.set(nuspace.Space.planes[job].name.fallback(job))
-        >> d.editor.set(ops.prog(main(job)))
+    held = supervisor.supervised()[job]
+    policy = nu.Str(held.policy.fallback(""))
+    return nuspace.atomic(
+        d.title.set(nuspace.plane.title(job))
+        >> d.editor.set(nu.str(nuspace.Space.cells[main(job)].prog.fallback("")))
         >> d.save.set("Save")
-        >> d.boot.set(init.booted().contains(job))
+        >> d.boot.set(init.boot_list().contains(job))
         >> d.restart.policy.choice.set(nu.If(policy == "", OFF, policy))
-        >> d.restart.delay.set(nu.If(delay >= 0.0, delay, 0.0))
+        >> d.restart.delay.set(nu.float(held.delay.fallback(0.0)))
         >> d.delete.set("Delete job", variant="danger")
     )
 
 
 def restart(job):
     # Plane level: the supervisor keeps the job running, off stops its run.
+    # Set as asked whether or not it was supervised: the wanted state is what counts.
     choice, delay = Asked.choice, Asked.delay
     apply = nu.IfDo(
         choice == OFF,
-        supervisor.unsupervise(job),
+        supervisor.unsupervise(job, missing_ok=True),
         nu.IfDo(
             delay > 0.0,
-            supervisor.supervise(job, choice, delay=delay),
-            supervisor.supervise(job, choice),
+            supervisor.supervise(job, policy=choice, delay=delay, exists_ok=True),
+            supervisor.supervise(job, policy=choice, exists_ok=True),
         ),
     )
     asked = View.detail.restart
     return nu.Frame(
-        Asked, apply, choice=nu.Str(asked.policy.choice), delay=nu.float(asked.delay)
+        Asked, nuspace.atomic(apply), choice=nu.Str(asked.policy.choice), delay=nu.float(asked.delay)
     )
 
 
+def save(job, source):
+    # The fabrics worked out before the commit, so no build runs inside it.
+    def commit(cell, used):
+        return nuspace.atomic(nuspace.cell.set_prog(cell, source, fabrics=used))
+
+    def written(cid):
+        cell = nu.Str(cid)
+        return nu.let(Fabrics(source, job, cell), lambda used: commit(cell, used))
+
+    return nu.let(nuspace.atomic(main(job)), written)
+
+
 def remove(job):
-    # remove_plane kills the job's live runs.
+    # Off the boot list and the supervisor first, then the plane: removing it ends its live runs.
+    off = supervisor.unsupervise(job, missing_ok=True) >> init.unboot(job, missing_ok=True)
     return (
-        supervisor.unsupervise(job)
-        >> init.unboot(job)
-        >> ops.remove_plane(job)
-        >> nustd.kv.Transaction(Jobs.selected.set(""), scope=nuspace.States)
+        nuspace.atomic(off)
+        >> nuspace.atomic(nuspace.plane.remove(job))
+        >> nuspace.atomic(JOBS.made.del_item(job, missing_ok=True) >> JOBS.selected.set(""))
     )
 
 
@@ -324,14 +330,14 @@ def delete(job):
 
 def shown(job):
     d = View.detail
-    save = nu.let(nu.Str(d.editor), lambda source: ops.set_prog(main(job), source))
-    boot = nu.IfDo(nu.bool(d.boot), init.boot(job), init.unboot(job))
+    edited = nu.let(nu.Str(d.editor), lambda source: save(job, nu.Str(source)))
+    on = nu.IfDo(nu.bool(d.boot), init.boot(job, exists_ok=True), init.unboot(job, missing_ok=True))
     return (
         View.empty.erase()
         >> draw(job)
         >> nu.ParallelAsync(
-            nu.ReactEvery(d.save.on_click(), save),
-            nu.ReactEvery(d.boot.on_change(), boot),
+            nu.ReactEvery(d.save.on_click(), edited),
+            nu.ReactEvery(d.boot.on_change(), nuspace.atomic(on)),
             nu.ReactEvery(d.restart.policy.choice.on_change(), restart(job)),
             nu.ReactEvery(d.restart.delay.on_change(), restart(job)),
             delete(job),
@@ -344,11 +350,12 @@ def hint():
 
 
 def showing(job):
-    there = (nu.Str(job) != "").and_(snap(ops.plane_exists(job)))
+    there = (nu.Str(job) != "").and_(nuspace.atomic(nuspace.plane.exists(job)))
     return nu.IfDo(there, shown(job), hint())
 
 
-out = nu.ReconcileLatest(snap(nu.Str(Jobs.selected)), snap(Jobs.selected.on_change()), showing)
+selected = nuspace.atomic(nu.Str(JOBS.selected.fallback("")))
+out = nu.ReconcileLatest(selected, nuspace.atomic(JOBS.selected.on_change()), showing)
 """
 
 
@@ -357,8 +364,8 @@ PLANE = PlaneSpec(
     "Jobs",
     icon="briefcase",
     description="Headless planes that run code: make them, boot them, restart them.",
-    meta={"editable": True, "full_width": False},
     cells=(("jobs", TABLE), ("new", NEW), ("job", DETAIL)),
     group="System",
+    web=WebOptions(editable=True, full_width=False),
     backend="async",
 )

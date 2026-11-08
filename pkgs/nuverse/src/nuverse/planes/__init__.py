@@ -1,6 +1,6 @@
 """The Planes ``+`` creates, one module each.
 
-Every module defines ``PLANE``, a :class:`~nuspace.PlaneSpec`: data, seeded as is
+Every module defines ``PLANE``, a :class:`~nuspace.specs.PlaneSpec`: data, seeded as is
 when created.
 
 Nothing here imports a plane. A plane's cells import from their own module,

@@ -6,10 +6,11 @@ What switch and checkbox cells keep, one item each.
 from __future__ import annotations
 
 import nu
-import nuspace
 import nustd.kv
 import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
+from nuspace.shapes.content import Content
+from nuspace.specs import ContentSpec
 
 
 __all__ = ["CONTENT", "Flag", "FlagContent", "FlagHit", "FlagView"]
@@ -39,7 +40,7 @@ def _badge(item: Flag) -> tuple[nu.Nu, nu.Nu]:
     return nu.If(on, "on", "off"), nu.If(on, "ok", "neutral")
 
 
-class FlagContent(nuspace.Content[Flag], name="Flag"):
+class FlagContent(Content[Flag], name="Flag"):
     """The flag kind: matched by on or off, drawn as a badge."""
 
     @classmethod
@@ -68,4 +69,4 @@ class FlagContent(nuspace.Content[Flag], name="Flag"):
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Flag``.
-CONTENT = nuspace.ContentSpec(FlagContent, description="An on or off.")
+CONTENT = ContentSpec(FlagContent, description="An on or off.")

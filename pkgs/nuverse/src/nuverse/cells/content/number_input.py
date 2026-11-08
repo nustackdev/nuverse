@@ -13,7 +13,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import CellSpec
+from nuspace.specs import CellSpec
 
 from ...contents.number import Number, NumberContent
 from .. import source
@@ -23,7 +23,7 @@ from ._editing import SECTIONS, Where, bounded, editor
 __all__ = ["CELL", "Bounds", "out"]
 
 
-class Bounds(nuspace.CellState):
+class Bounds(nu.Shape):
     """A number input's state: the bounds and step its number is edited within."""
 
     min = nustd.kv.FloatRef.slot()
@@ -63,7 +63,7 @@ def _edit(item: Number) -> nu.Nu:
 
 def out() -> nu.Nu:
     """The number input and its Config, for as long as the cell runs."""
-    show, reactions = bounded(Bounds, Box.entry.input, Box.config.settings)
+    show, reactions = bounded(nuspace.here(Bounds), Box.entry.input, Box.config.settings)
     return editor(NumberContent, Box, _edit, first=show, also=reactions)
 
 

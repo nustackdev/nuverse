@@ -1,16 +1,15 @@
-"""What the content lenses share: one scope's items, browsed as kind, then item id, then the item.
+"""What the content lenses share: one scope's items, browsed as kind, then content key, then the item.
 
 A content lens (:mod:`.space_content_lens`, :mod:`.plane_content_lens`,
 :mod:`.cell_content_lens`) shows the items of one scope as cascading
-columns. The first column is every kind holding items in the scope, found
-by walking the kinds present in ``States.contents`` and keeping those whose
-``Kind.items(scope)`` is not empty. The second is the picked kind's item
-ids. From the third on, the picked item raw, its stored fields browsed as
-any lens browses storage. Below the columns, the same item drawn with its
-kind's ``render``.
+columns. The first column is every installed kind holding items in the
+scope. The second is the picked kind's content keys, one page. From the
+third on, the picked item raw, its stored fields browsed as any lens
+browses storage. Below the columns, the same item drawn with its kind's
+``render``.
 
-Read only. It repaints on any write to the contents, so what is shown is
-what is stored.
+Read only. It repaints on any write to the scope's items, so what is shown
+is what is stored.
 """
 
 from __future__ import annotations
@@ -18,24 +17,26 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import nu
+import nuspace
 import nustd.kv
 import nustd.ui
 import nustd.ui.lens
 from nu.lang import Cardinality
-from nuspace import States, ops
-from nuspace.content import Drawing
-from nuspace.ext import content_spec
+from nuspace.shapes.content import CELL, PLANE, entries
+from nuspace.specs import content_specs, kind_name
 from nustd.ui.lens.columns import LensFailed
+
+from ..content._editing import drawing
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from nuspace.content import Content
-    from nuspace.ext import ContentSpec
+    from nuspace.shapes.content import Content
+    from nuspace.specs import ContentSpec
 
 
-__all__ = ["ContentColumns", "Item", "View", "browse", "content_columns", "option", "picked"]
+__all__ = ["ContentColumns", "Item", "View", "browse", "content_columns", "picked"]
 
 
 #: Where a lens arm parks the cursor the browser sent. One lens per cell.
@@ -64,15 +65,9 @@ class View(nustd.ui.Column):
     item = Item.slot(gap=2)
 
 
-def _specs(names: Sequence[object]) -> dict[str, ContentSpec]:
-    """The installed specs of the kinds named in the store, by name, sorted. One not installed is left out."""
-    found = {}
-    for name in sorted(str(n) for n in names):
-        try:
-            found[name] = content_spec(name)
-        except LookupError:
-            continue
-    return found
+def _specs() -> dict[str, ContentSpec]:
+    """The installed kinds' specs, by registered name, sorted."""
+    return dict(sorted(content_specs().items()))
 
 
 def _column(kind: str, rows: nu.Nu, max_rows: int) -> nu.Nu:
@@ -92,17 +87,16 @@ def _door(key: nu.Nu, kind: str, preview: str = "") -> nu.Nu:
     return nu.Dict.of(key=key, kind=kind, preview=preview, navigable=True, vtype="")
 
 
-def _ids(kind: type[Content[Any]], scope: tuple[str, str]) -> nu.List:
-    """The ids of ``kind``'s items in ``scope``, ``[]`` for a scope no item of it landed in yet."""
-    items = kind.items(scope)
-    return nu.list(nu.If(items.exists(), nu.list(items.keys()), []))
+def _keys(kind: type[Content[Any]], scope: tuple[str, str], limit: int) -> nu.List:
+    """One page of the content keys of ``kind``'s items in ``scope``, ``[]`` for a scope with none."""
+    return nu.List(entries(kind, *scope).keys(limit=limit))
 
 
 def _kinds_column(specs: dict[str, ContentSpec], scope: tuple[str, str], max_rows: int) -> nu.Nu:
     """The kinds holding items in ``scope``, one row each, its spec's label as preview."""
 
     def held(name: str, spec: ContentSpec) -> nu.Nu:
-        count = nu.Len(_ids(spec.kind, scope))
+        count = nu.Len(_keys(spec.kind, scope, 1))
         return nu.List.of(count, _door(nu.Str(name), "mapping", spec.label))
 
     pairs = nu.List.of(*(held(name, spec) for name, spec in specs.items()))
@@ -115,37 +109,47 @@ def _kinds_column(specs: dict[str, ContentSpec], scope: tuple[str, str], max_row
     return _column("mapping", rows, max_rows)
 
 
-def _ids_column(kind: type[Content[Any]], scope: tuple[str, str], max_rows: int) -> nu.Nu:
-    """The ids of ``kind``'s items in ``scope``, one row each."""
-    ids = _ids(kind, scope)
+def _keys_column(kind: type[Content[Any]], scope: tuple[str, str], max_rows: int) -> nu.Nu:
+    """The content keys of ``kind``'s items in ``scope``, one page, one row each."""
+    keys = _keys(kind, scope, max_rows)
     return _column(
-        "mapping", ids.iter().map(lambda at: _door(nu.ToStr(at), "shape")).to_list(), max_rows
+        "mapping", keys.iter().map(lambda at: _door(nu.ToStr(at), "shape")).to_list(), max_rows
     )
 
 
+def _raw(kind: type[Content[Any]], level: str, scope_id: str, key: str) -> nu.Nu:
+    """The item's own ref, under which the kind's fields are stored: what a lens browses from."""
+    name = kind_name(kind)
+    if level == CELL:
+        held = nuspace.State.content_cells[name].cells[scope_id].entries
+    elif level == PLANE:
+        held = nuspace.State.content_planes[name].planes[scope_id].entries
+    else:
+        held = nuspace.State.content_space[name].entries
+    return held[key]
+
+
 def content_columns(
-    names: Sequence[object],
     level: str,
     scope_id: str,
     cursor: Sequence[object] | None,
     max_rows: int = MAX_ROWS,
 ) -> nu.Nu:
-    """Every column for ``cursor``: kinds, then item ids, then the item raw, root first.
+    """Every column for ``cursor``: kinds, then content keys, then the item raw, root first.
 
-    Built in python once the cursor and the kinds are known, so a kind can
-    be reached by its own API (``items``, ``at``, ``schema``). The item's
-    columns are a lens's own (:func:`nustd.ui.lens.column_terms`), its
-    fields read where the item lives.
+    Built in python once the cursor is known, so a kind is reached through
+    its class (its items at the scope, its schema). The item's columns are a
+    lens's own (:func:`nustd.ui.lens.column_terms`), its fields read where
+    the item lives.
 
     Args:
-        names: The kind names present in ``States.contents``.
         level: The scope's level.
         scope_id: The scope's id, ``""`` for the space.
-        cursor: The browser's cursor: a kind name, an item id, then a path in the item.
+        cursor: The browser's cursor: a kind name, a content key, then a path in the item.
         max_rows: How many rows one column ships.
     """
     scope = (level, str(scope_id))
-    specs = _specs(names)
+    specs = _specs()
     steps = tuple(str(s) for s in (cursor or ()))
     cols = [_kinds_column(specs, scope, max_rows)]
     if steps:
@@ -153,18 +157,18 @@ def content_columns(
         if spec is None:
             cols.append(LensFailed(f"{steps[0]}: no content kind of that name"))
         else:
-            cols.append(_ids_column(spec.kind, scope, max_rows))
+            cols.append(_keys_column(spec.kind, scope, max_rows))
     head = nu.List.of(*cols)
     if len(steps) < 2 or steps[0] not in specs:
         return head
     kind = specs[steps[0]].kind
     item = nustd.ui.lens.column_terms(
-        kind.schema(), steps[2:], prefix=kind.at(scope, steps[1]), max_rows=max_rows
+        kind.schema(), steps[2:], prefix=_raw(kind, *scope, steps[1]), max_rows=max_rows
     )
     return nu.List.of(head, item).iter().flatten().to_list()
 
 
-#: :func:`content_columns` as an atom, so the kinds, the scope and the cursor can be run time values.
+#: :func:`content_columns` as an atom, so the scope and the cursor can be run time values.
 ContentColumns = nu.host(content_columns, name="ContentColumns")
 
 
@@ -172,41 +176,48 @@ def browse(level: str, scope_id: nu.StrArg) -> nu.Nu:
     """One scope's items as columns, and the item at the cursor drawn, for as long as it is shown.
 
     Never finishes: it repaints on every move of the cursor and, a burst
-    waited out, on every write to the contents.
+    waited out, on every write to the scope's items of any installed kind.
 
     Args:
-        level: The scope's level, one of ``nuspace.content.LEVELS``.
+        level: The scope's level, one of ``nuspace.shapes.content.LEVELS``.
         scope_id: The scope's id, ``""`` for the space.
     """
     lens, item = View.lens, View.item
 
     def columns(steps: nu.Nu) -> nu.Nu:
-        built = ContentColumns(nu.list(States.contents.keys()), level, scope_id, steps)
+        built = ContentColumns(level, scope_id, steps)
         return nu.TryCatch(
             nu.Eval(built, promise={"cardinality": Cardinality.SCALAR}),
             catch=lambda error: nu.List.of(LensFailed(nu.ToStr(error))),
         )
 
     def drawn(steps: nu.Nu) -> nu.Nu:
-        kind, item_id = nu.Str(nu.GetItem(steps, nu.Int(0))), nu.Str(nu.GetItem(steps, nu.Int(1)))
-        drawing = nu.Eval(Drawing(kind, level, scope_id, item_id, item.drawn))
+        kind, key = nu.Str(nu.GetItem(steps, nu.Int(0))), nu.Str(nu.GetItem(steps, nu.Int(1)))
+        drawn = drawing(kind, level, scope_id, key, item.drawn)
 
         def failed(error: nu.Nu) -> nu.Nu:
             return item.note.set(nu.Str("Cannot draw this item: ") + nu.str(error))
 
-        return item.heading.set(nu.Str("Rendered ") + item_id) >> nu.TryCatch(drawing, catch=failed)
+        return item.heading.set(nu.Str("Rendered ") + key) >> nu.TryCatch(drawn, catch=failed)
 
     def paint(cursor: nu.Nu) -> nu.Nu:
         steps = nu.list(cursor)
         shown = lens.set_columns(steps, columns(steps))
-        return ops.snapshot(shown >> item.erase() >> nu.IfDo(steps.len() >= 2, drawn(steps)))
+        # Built at run time, where atomic cannot see the reads: the snapshot is
+        # named, on State, where the items live.
+        return nustd.kv.Snapshot(
+            shown >> item.erase() >> nu.IfDo(steps.len() >= 2, drawn(steps)), scope=nuspace.State
+        )
+
+    # The scope's items of each installed kind, one subscription each.
+    changes = [entries(spec.kind, level, scope_id).on_change() for spec in _specs().values()]
 
     def live(cursor: nu.Nu, pending: nu.Nu) -> nu.Nu:
         moved = nu.ReactEvery(
             lens.on_nav(), cursor.set(nu.Attr(NAV)) >> paint(cursor), changed_key=NAV
         )
         written = nu.ReactEvery(
-            nustd.kv.Snapshot(States.contents.on_change(), scope=States),
+            nuspace.atomic(nu.OnAny(*changes)),
             nu.Debounce(REPAINT_DELAY, paint(cursor), pending=pending),
         )
         return paint(cursor) >> nu.ParallelAsync(moved, written)
@@ -231,15 +242,9 @@ def picked(
         moved: An event: scopes added or removed, so they are listed again. A bare subscription.
     """
     pick = View.pick
-    listed = pick.set_options(ops.snapshot(options))
+    listed = pick.set_options(nuspace.atomic(options))
     lens_on_pick = nu.ReactLatest(
         pick.on_change(), nu.let(nu.Str(pick), lambda at: browse(level, nu.Str(at))), initial=True
     )
-    relisted = nu.ReactEvery(ops.snapshot(moved), listed)
+    relisted = nu.ReactEvery(nuspace.atomic(moved), listed)
     return listed >> pick.set(first) >> nu.ParallelAsync(lens_on_pick, relisted)
-
-
-def option(row: nu.Nu) -> nu.Nu:
-    """A cell or plane row (``ops.cell_rows``, ``ops.plane_rows``) as a select option, labelled by name or id."""
-    label = nu.If(row["name"] != "", row["name"], row["id"])
-    return nu.Dict.of(value=row["id"], label=label)

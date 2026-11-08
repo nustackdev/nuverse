@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import nustd.ui.lens
-from nuspace import CellSpec
+from nuspace.specs import CellSpec
 
 
 if TYPE_CHECKING:

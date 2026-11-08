@@ -1,22 +1,21 @@
-"""A plane content lens: one plane's own items, as kind, then item id, then the item (:mod:`._content_lens`).
+"""A plane content lens: one plane's own items, as kind, then content key, then the item (:mod:`._content_lens`).
 
-It starts on the plane its cell sits on. A dropdown picks another; it lists
-every plane and follows planes being added or removed.
+It starts on the plane its cell sits on. A dropdown picks another: the
+planes holding content items, a page per kind (never every plane of the
+space), listed again as a plane first gets an item of a kind.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from nuspace import CellSpec, Space, ops
-from nuspace.content import PLANE
+import nu
+import nuspace
+from nuspace.places import Here
+from nuspace.shapes.content import PLANE
+from nuspace.specs import CellSpec, content_specs
 
 from .. import source
-from ._content_lens import option, picked
-
-
-if TYPE_CHECKING:
-    import nu
+from ._content_lens import picked
+from ._options import plane_options
 
 
 __all__ = ["CELL", "out"]
@@ -24,8 +23,9 @@ __all__ = ["CELL", "out"]
 
 def out() -> nu.Nu:
     """The dropdown and the picked plane's items as columns, for as long as the cell runs."""
-    options = ops.plane_rows().iter().map(option).to_list()
-    return picked(PLANE, options, ops.Here.plane, Space.planes.on_children_change())
+    held = nuspace.State.content_planes
+    moved = nu.OnAny(*(held[name].planes.on_children_change() for name in content_specs()))
+    return picked(PLANE, plane_options(Here.plane), Here.plane, moved)
 
 
 CELL = CellSpec(

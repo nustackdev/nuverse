@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import CellSpec
+from nuspace.specs import CellSpec
 
 from ...contents.date import Date, DateContent, iso
 from .. import source

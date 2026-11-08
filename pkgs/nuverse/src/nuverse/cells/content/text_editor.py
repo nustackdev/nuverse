@@ -12,8 +12,9 @@ it elsewhere through its :class:`~._editing.Target`.
 from __future__ import annotations
 
 import nu
+import nuspace
 import nustd.ui
-from nuspace import CellSpec, ops
+from nuspace.specs import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
@@ -43,7 +44,7 @@ def _edit(item: Text) -> nu.Nu:
 def out() -> nu.Nu:
     """The editor over the cell's item, for as long as the cell runs."""
     # Brackets placed per step: each read and each keystroke's write is its own.
-    return ops.bracketed(editing(TextContent, _edit))
+    return nuspace.bracketed(editing(TextContent, _edit))
 
 
 CELL = CellSpec(

@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
 
 __all__ = ["extension"]
@@ -31,7 +31,7 @@ def extension() -> Extension:
     its module, gathered here in order: Planes as the picker lists them,
     Cells as the ``/`` menu does, kinds as the search form does.
     """
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
     from .cells.content import (
         checkbox,

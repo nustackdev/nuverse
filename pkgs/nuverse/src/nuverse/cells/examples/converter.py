@@ -12,7 +12,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import CellSpec, ops
+from nuspace.specs import CellSpec
 
 from .. import source
 
@@ -58,8 +58,8 @@ def _round(x: float) -> float:
 Rounded = nu.host(_round, name="ConverterRounded")
 
 
-class Convert(nuspace.CellState):
-    """The converter's state: the kind, a unit each side, and the amount in the base unit."""
+class Convert(nu.Shape):
+    """The converter's own state: the kind, a unit each side, and the amount in the base unit."""
 
     kind = nustd.kv.StrRef.slot()
     left = nustd.kv.StrRef.slot()
@@ -80,12 +80,13 @@ class Box(nustd.ui.Column):
 
 def out() -> nu.Nu:
     """The converter, for as long as the cell runs."""
+    state = nuspace.here(Convert)
     kinds = nu.Dict(nu.Literal(KINDS))
-    kind = Convert.kind.fallback("Length")
+    kind = state.kind.fallback("Length")
     units = nu.Dict(kinds[kind])
     names = nu.list(units.keys())
-    left = Convert.left.fallback(nu.str(names[0]))
-    right = Convert.right.fallback(nu.str(names[1]))
+    left = state.left.fallback(nu.str(names[0]))
+    right = state.right.fallback(nu.str(names[1]))
 
     def scale(unit: nu.Nu) -> nu.Float:
         return nu.Float(nu.List(units[unit])[0])
@@ -94,10 +95,10 @@ def out() -> nu.Nu:
         return nu.Float(nu.List(units[unit])[1])
 
     def amount(unit: nu.Nu) -> nu.Nu:
-        return Rounded((Convert.base.fallback(1.0) - offset(unit)) / scale(unit))
+        return Rounded((state.base.fallback(1.0) - offset(unit)) / scale(unit))
 
     def typed(side: nu.Nu, unit: nu.Nu) -> nu.Nu:
-        return Convert.base.set(nu.ToFloat(side.amount) * scale(unit) + offset(unit))
+        return state.base.set(nu.ToFloat(side.amount) * scale(unit) + offset(unit))
 
     def show() -> nu.Nu:
         return (
@@ -117,20 +118,20 @@ def out() -> nu.Nu:
         first = nu.list(units_of.keys())
         one = nu.List(units_of[first[0]])
         return (
-            Convert.kind.set(picked)
-            >> Convert.left.set(nu.str(first[0]))
-            >> Convert.right.set(nu.str(first[1]))
-            >> Convert.base.set(nu.Float(one[0]) + nu.Float(one[1]))
+            state.kind.set(picked)
+            >> state.left.set(nu.str(first[0]))
+            >> state.right.set(nu.str(first[1]))
+            >> state.base.set(nu.Float(one[0]) + nu.Float(one[1]))
         )
 
     # Anything stored changed, here or in another tab: draw it all again.
-    stored = (Convert.kind, Convert.left, Convert.right, Convert.base)
-    return ops.bracketed(
+    stored = (state.kind, state.left, state.right, state.base)
+    return nuspace.bracketed(
         show()
         >> nu.ParallelAsync(
             nu.ReactEvery(Box.kind.on_change(), rekind()),
-            nu.ReactEvery(Box.left.unit.on_change(), Convert.left.set(nu.ToStr(Box.left.unit))),
-            nu.ReactEvery(Box.right.unit.on_change(), Convert.right.set(nu.ToStr(Box.right.unit))),
+            nu.ReactEvery(Box.left.unit.on_change(), state.left.set(nu.ToStr(Box.left.unit))),
+            nu.ReactEvery(Box.right.unit.on_change(), state.right.set(nu.ToStr(Box.right.unit))),
             nu.ReactEvery(Box.left.amount.on_change(), typed(Box.left, left)),
             nu.ReactEvery(Box.right.amount.on_change(), typed(Box.right, right)),
             *(nu.ReactEvery(slot.on_change(), show()) for slot in stored),

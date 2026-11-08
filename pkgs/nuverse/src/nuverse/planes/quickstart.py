@@ -12,20 +12,23 @@ a live cell with their own hands, and hands them a next step.
 - ``next``: make a page, open a demo, docs, Discord.
 
 Every source is inline, so opening a cell's code shows the real program.
-The helpers the cells share (:func:`where`, :func:`again`, :func:`tips`, :func:`put_back`,
-:func:`welcome_back`, :func:`moved`) live here, not in any cell, so the
-code a newcomer opens stays short.
+The helpers the cells share (:func:`where`, :func:`throwaway`, :func:`again`,
+:func:`tips`, :func:`put_back`, :func:`welcome_back`, :func:`moved`) live
+here, not in any cell, so the code a newcomer opens stays short.
 """
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import nu
+import nuspace
 import nustd.ui
-from nuspace import PlaneSpec, ops
+from nuspace._telemetry.usage import track
+from nuspace.ops.interactions import Fabrics
 from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace.specs import PlaneSpec, SpecCells, WebOptions
 
 
 __all__ = [
@@ -36,11 +39,13 @@ __all__ = [
     "PLANE",
     "SHIPPED_LIMIT",
     "START",
+    "THROWAWAY",
     "WELCOME",
     "again",
     "counting",
     "moved",
     "put_back",
+    "throwaway",
     "tips",
     "welcome_back",
     "where",
@@ -53,13 +58,16 @@ SHIPPED_LIMIT = 70  # what meter ships with; anything else counts as edited
 #: The home folder, read once, so a path under it shows as ``~/...``.
 HOME = str(Path.home())
 
+#: Where the host makes a throwaway space, ``<temp dir>/nuspace-<hex>``. A
+#: space whose path starts with it is gone once it stops.
+THROWAWAY = str(Path(tempfile.gettempdir()) / "nuspace-")
+
 
 WELCOME = """\
 # For agents: this is the person's Quickstart page. Build new work on a page of its own, not here.
 import nu
 import nustd.ui
 import nuspace
-from nuspace import ops
 from nuverse.planes import quickstart
 
 LEAD = "Everything here is a cell: a tiny program that holds data, runs logic and draws itself. This page is cells too."
@@ -90,11 +98,11 @@ def show(raw):
     gone = (W.said.set("This space is throwaway, it goes when you stop it. To keep one, run:")
             >> W.path.hide() >> W.tail.hide() >> View.again.set(quickstart.again(raw))
             >> View.then.set("Your agent can build here too, prompts are below."))
-    return nu.IfDo(nu.Str(raw) == "", gone, kept >> back)
+    return nu.IfDo(quickstart.throwaway(raw), gone, kept >> back)
 
 
 def out():
-    raw = ops.snapshot(nuspace.Space.state.info.path.fallback(""))
+    raw = nuspace.atomic(nuspace.Space.info.path.fallback(""))
     drawn = View.lead.init() >> View.where.init() >> View.again.init() >> View.then.init()
     return drawn >> nu.let(raw, show)
 """
@@ -105,13 +113,14 @@ import nu
 import nustd.kv
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuspace.system.utils import snap
 from nuverse.planes import quickstart
 
 
-class Page(nuspace.PlaneState):
+class Page(nu.Shape):
     level = nustd.kv.FloatRef.slot()        # the number the meter below reads
+
+
+PAGE = nuspace.at.plane.state(Page)         # this plane's state, shared by its cells
 
 
 class Turn(nustd.ui.PageSection):
@@ -128,18 +137,18 @@ slider = View.turn.level
 
 
 def keep(v):
-    return ops.atomic_state(Page.level.set(nu.Float(v)))
+    return nuspace.atomic(PAGE.level.set(nu.Float(v)))
 
 
 def out(plane):
     moved = nu.ReactEvery(slider.on_change(), nu.let(nu.float(slider), keep) >> quickstart.moved())
     follow = nu.Reconcile(
-        snap(nu.OnAny(Page.level.on_change())),
-        nu.let(snap(Page.level.fallback(quickstart.START)), slider.set_value),
+        nuspace.atomic(nu.OnAny(PAGE.level.on_change())),
+        nu.let(nuspace.atomic(PAGE.level.fallback(quickstart.START)), slider.set_value),
     )
     return quickstart.counting(
         View.turn.actions.hide() >> View.turn.init()
-        >> quickstart.welcome_back(View.turn, snap(Page.level.fallback(quickstart.START)))
+        >> quickstart.welcome_back(View.turn, nuspace.atomic(PAGE.level.fallback(quickstart.START)))
         >> nu.ParallelAsync(moved, follow, quickstart.put_back(plane, View.turn.actions)))
 """
 
@@ -152,12 +161,14 @@ import nu
 import nustd.kv
 import nustd.ui
 import nuspace
-from nuspace.system.utils import snap
 from nuverse.planes import quickstart
 
 
-class Page(nuspace.PlaneState):
+class Page(nu.Shape):
     level = nustd.kv.FloatRef.slot()        # the number from the slider above
+
+
+PAGE = nuspace.at.plane.state(Page)         # this plane's state, shared by its cells
 
 
 class Reading(nustd.ui.Row):
@@ -180,7 +191,8 @@ def draw(level):
 
 def out():
     follow = nu.Reconcile(
-        snap(nu.OnAny(Page.level.on_change())), nu.let(snap(Page.level.fallback(quickstart.START)), draw)
+        nuspace.atomic(nu.OnAny(PAGE.level.on_change())),
+        nu.let(nuspace.atomic(PAGE.level.fallback(quickstart.START)), draw),
     )
     return R.init() >> quickstart.tips(LIMIT) >> follow
 """
@@ -190,7 +202,6 @@ AGENT = """\
 import nu
 import nustd.ui
 import nuspace
-from nuspace import ops
 from nuverse.planes import quickstart
 
 
@@ -220,11 +231,11 @@ def show(raw):
                            for i, a in enumerate(ASKS))) >> A.none.hide()
     gone = A.asks.hide() >> A.none.set("Your agent finds a space by its folder, and this one has none. "
                                        "Stop it and run nuspace run --with quickstart to get one.")
-    return nu.IfDo(nu.Str(raw) == "", gone, asks)
+    return nu.IfDo(quickstart.throwaway(raw), gone, asks)
 
 
 def out():
-    raw = ops.snapshot(nuspace.Space.state.info.path.fallback(""))
+    raw = nuspace.atomic(nuspace.Space.info.path.fallback(""))
     return A.init() >> nu.let(raw, show)
 """
 
@@ -235,10 +246,9 @@ import shutil
 import nu
 import nustd.ui
 import nuspace
-import nuspace.ui
-from nuspace import ops
-from nuspace.ext import EMPTY_PLANE
-from nuspace.system.utils import snap
+import nuspace.devices.web as web
+from nuspace._telemetry.usage import track
+from nuspace.specs import EMPTY_PLANE
 from nuverse.planes import quickstart
 
 HAS_DEMOS = importlib.util.find_spec("nudemos") is not None
@@ -285,7 +295,6 @@ class View(nustd.ui.Column):
 
 
 W = View.where
-made = nuspace.Space.state.made
 DEMOS = (
     (W.movies, "film", "Your personal movie tracker.",
      "A film base you run yourself. Films, people and timelines, all linked."),
@@ -311,20 +320,22 @@ def fill_rows(raw):
     return nu.Sequential(*rows)
 
 
-def open_made(name, spec):
-    \"\"\"Make it once, kept under the name with_plane uses, then go there.\"\"\"
+def open_made(spec):
+    \"\"\"Open the newest plane made from the spec, as with_plane does: made first when there is none.\"\"\"
+    newest = nuspace.Space.indexes.spec_planes[nuspace.specs.registered_name(spec)].ids.last()
+
     def go(pid):
-        make = ops.create_plane(spec, into=pid) >> ops.atomic(made.set_item(name, nu.Str(pid)))
-        return (pid.set(snap(made.get_item(name, "")))
-                >> nu.IfDo(snap(ops.plane_exists(nu.Str(pid))), nu.Noop(), make)
-                >> ops.track("quickstart_demo_opened") >> View.history.push(nuspace.ui.href(nu.Str(pid))))
+        gone = nuspace.plane.exists(nu.Str(pid)).not_()
+        return (pid.set(nuspace.atomic(newest.fallback("")))
+                >> nu.IfDo(nuspace.atomic(gone), nuspace.specs.add_plane(spec, into=pid))
+                >> track("quickstart_demo_opened") >> View.history.push(web.href(nu.Str(pid))))
     return nu.let("", go)
 
 
 def make_page(plane):
     def go(pid):
-        return (ops.create_plane(EMPTY_PLANE, parent=plane, name="My first page", into=pid)
-                >> ops.track("quickstart_page_made") >> View.history.push(nuspace.ui.href(nu.Str(pid))))
+        return (nuspace.specs.add_plane(EMPTY_PLANE, parent=plane, name="My first page", into=pid)
+                >> track("quickstart_page_made") >> View.history.push(web.href(nu.Str(pid))))
     return nu.let("", go)
 
 
@@ -333,11 +344,11 @@ def out(plane):
     if HAS_DEMOS:
         from nudemos import agents, movies, recipes
         arms += [
-            nu.ReactEvery(W.movies.go.on_click(), open_made("nudemos.movies", movies.PLANE)),
-            nu.ReactEvery(W.agents.go.on_click(), open_made("nudemos.agents", agents.PLANE)),
-            nu.ReactEvery(W.recipes.go.on_click(), open_made("nudemos.recipes", recipes.PLANE)),
+            nu.ReactEvery(W.movies.go.on_click(), open_made(movies.PLANE)),
+            nu.ReactEvery(W.agents.go.on_click(), open_made(agents.PLANE)),
+            nu.ReactEvery(W.recipes.go.on_click(), open_made(recipes.PLANE)),
         ]
-    raw = ops.snapshot(nuspace.Space.state.info.path.fallback(""))
+    raw = nuspace.atomic(nuspace.Space.info.path.fallback(""))
     return W.init() >> nu.let(raw, fill_rows) >> nu.ParallelAsync(*arms)
 """
 
@@ -347,7 +358,6 @@ PLANE = PlaneSpec(
     "Quickstart",
     icon="emoji:👋",
     description="Your first page: what a space is, one live cell to change, where to go next.",
-    meta={"editable": True, "full_width": False},
     cells=(
         ("welcome", WELCOME),
         ("dial", DIAL),
@@ -356,6 +366,7 @@ PLANE = PlaneSpec(
         ("next", NEXT),
     ),
     group="Quickstart",
+    web=WebOptions(editable=True, full_width=False),
     backend="async",
 )
 
@@ -369,12 +380,18 @@ def where(raw: nu.StrArg) -> nu.Str:
     return nu.Str(nu.If(path.startswith(HOME), path.replace(HOME, "~", 1), path))
 
 
+def throwaway(raw: nu.StrArg) -> nu.Bool:
+    """Whether the space at path ``raw`` is a throwaway one, gone when it stops: no path, or under :data:`THROWAWAY`."""
+    path = nu.Str(raw)
+    return nu.Bool((path == "").or_(path.startswith(THROWAWAY)))
+
+
 def again(raw: nu.StrArg) -> nu.Str:
     """The line that reopens this space: no path for home or a throwaway, else the path."""
     path = nu.Str(raw)
     bare = nu.Str("nuspace run --with quickstart")
     named = nu.Str("nuspace run ") + where(raw) + " --with quickstart"
-    return nu.Str(nu.If(path == "", bare, nu.If(path == HOME, bare, named)))
+    return nu.Str(nu.If(throwaway(raw).or_(path == HOME), bare, named))
 
 
 class _Tip(nustd.ui.Line):
@@ -403,26 +420,41 @@ class _Tips(nustd.ui.Column):
 def tips(limit: int) -> nu.Nu:
     """Draw the tip, and the done line once ``limit`` differs from what shipped. Draws and ends."""
     edited = limit != SHIPPED_LIMIT
-    done = _Tips.done.init() >> ops.track("quickstart_edited") if edited else _Tips.done.hide()
+    done = _Tips.done.init() >> track("quickstart_edited") if edited else _Tips.done.hide()
     return _Tips.tip.init() >> done
 
 
 def put_back(plane: nu.StrArg, button: nustd.ui.Ref) -> nu.Nu:
-    """``button`` up while meter's source is not as shipped; a click puts it back. Never returns."""
+    """``button`` up while meter's source is not as shipped; a click puts it back.
+
+    Meter is found by the name the spec gave it, in the plane's state
+    (:class:`~nuspace.specs.SpecCells`). Never returns while meter is in the
+    space; a plane with no meter keeps the button down and returns.
+    """
 
     def found(cid: nu.ObjectRef) -> nu.Nu:
         meter = nu.Str(cid)
+        source = nu.Str(Space.cells[meter].prog.fallback(""))
         shown = nu.Reconcile(
-            snap(nu.OnAny(Space.cells[meter].prog.on_change())),
+            nuspace.atomic(nu.OnAny(Space.cells[meter].prog.on_change())),
             nu.let(
-                snap(ops.prog(meter) != METER),
+                nuspace.atomic(source != METER),
                 lambda off: nu.IfDo(nu.Bool(off), button.display(), button.hide()),
             ),
         )
-        back = ops.set_prog(meter, METER) >> ops.track("quickstart_put_back")
-        return nu.ParallelAsync(shown, nu.ReactEvery(button.on_click(), back))
+        # The fabrics worked out before the commit, so no build runs inside it.
+        fixed = nu.let(
+            Fabrics(METER, plane, meter),
+            lambda used: nuspace.atomic(nuspace.cell.set_prog(meter, METER, fabrics=used)),
+        )
+        back = fixed >> track("quickstart_put_back")
+        there = nuspace.atomic(nuspace.cell.exists(meter))
+        return nu.IfDo(
+            there, nu.ParallelAsync(shown, nu.ReactEvery(button.on_click(), back)), button.hide()
+        )
 
-    return nu.let(snap(ops.cell_named(plane, "meter")), found)
+    named = nuspace.at.plane(id=plane).state(SpecCells).ids["meter"]
+    return nu.let(nuspace.atomic(named.fallback("")), found)
 
 
 def welcome_back(section: nustd.ui.Ref, level: nu.Nu) -> nu.Nu:
@@ -448,5 +480,5 @@ def counting(body: nu.Nu) -> nu.Nu:
 
 def moved() -> nu.Nu:
     """Track ``quickstart_moved`` the first time in a run, inside :func:`counting`. No store write."""
-    first = ops.track("quickstart_moved") >> _Told.moved.set(True)
+    first = track("quickstart_moved") >> _Told.moved.set(True)
     return nu.IfDo(nu.Bool(_Told.moved).not_(), first)

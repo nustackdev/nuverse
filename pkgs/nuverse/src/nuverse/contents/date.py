@@ -6,10 +6,11 @@ What date picker cells keep, one item each.
 from __future__ import annotations
 
 import nu
-import nuspace
 import nustd.datetime.kv
 import nustd.ui
 from nu.lang.sentinels import UNSET, Unset
+from nuspace.shapes.content import Content
+from nuspace.specs import ContentSpec
 
 
 __all__ = ["CONTENT", "Date", "DateContent", "DateHit", "DateView", "iso"]
@@ -38,7 +39,7 @@ def iso(item: Date) -> nu.Str:
     return nu.Str(nu.If(item.value.exists(), nu.ToStr(item.value), ""))
 
 
-class DateContent(nuspace.Content[Date], name="Date"):
+class DateContent(Content[Date], name="Date"):
     """The date kind: matched within bounds, drawn ISO."""
 
     @classmethod
@@ -74,4 +75,4 @@ class DateContent(nuspace.Content[Date], name="Date"):
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Date``.
-CONTENT = nuspace.ContentSpec(DateContent, description="A day, found within bounds.")
+CONTENT = ContentSpec(DateContent, description="A day, found within bounds.")

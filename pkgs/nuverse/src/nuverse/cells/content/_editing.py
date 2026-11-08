@@ -3,10 +3,11 @@
 An editor of one item (a text input, a number input, ...) edits its own
 cell's :data:`ITEM` by default. Its Config's Item section can point it at
 another item of its kind: the scope's level (a cell, a plane, the space),
-the scope's id (blank for this cell or this plane) and the item's id (blank
-for :data:`ITEM`). Where it points is the cell's own state
+the scope's id (blank for this cell or this plane) and the item's content
+key (blank for :data:`ITEM`). Where it points is the cell's own state
 (:class:`Target`), so two editors pointed at one item edit it together, and
-a program can point one by writing it (``ops.cell_state(c, Target.target.set(...))``).
+a program can point one by writing it
+(``nuspace.at.cell(id=c).state(Target).target.set(...)``).
 
 The viewers of any kind (:mod:`.item`, :mod:`.items`, :mod:`.item_picker`)
 pick the kind too, by name, from the installed kinds
@@ -24,9 +25,9 @@ import nustd.kv
 import nustd.ui
 from nu.engine import Declared
 from nu.lang import ScalarQuery
-from nuspace import ops
-from nuspace.content import CELL, PLANE, SPACE
-from nuspace.ext import content_spec, content_specs
+from nuspace.places import Here
+from nuspace.shapes.content import CELL, PLANE, SPACE, entries
+from nuspace.specs import content_spec, content_specs
 from nustd.ui.core import Ref as UiRef
 
 
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 
     from nu.domains.shape import StructuredRef
     from nu.lang.runtime import Runtime
-    from nuspace.content import Content
+    from nuspace.shapes.content import Content
 
 
 __all__ = [
@@ -43,12 +44,14 @@ __all__ = [
     "ITEM",
     "LEVEL_OPTIONS",
     "SECTIONS",
+    "TARGET",
     "ForKind",
     "KindField",
     "LevelField",
     "Target",
     "Where",
     "bounded",
+    "drawing",
     "editing",
     "editor",
     "kind_of",
@@ -56,11 +59,13 @@ __all__ = [
     "landed",
     "named",
     "pointed",
+    "render",
+    "render_hit",
     "where",
 ]
 
 
-#: The id of the item an editor edits when its Config names none.
+#: The content key of the item an editor edits when its Config names none.
 ITEM = "value"
 
 #: The scope levels a Config offers.
@@ -78,14 +83,18 @@ SECTIONS = [{"id": "settings", "label": "Config"}, {"id": "item", "label": "Item
 DEFAULT_KIND = "nuverse.Text"
 
 
-class Target(nuspace.CellState):
-    """Where the cell's item is, plain data: ``level``, ``scope``, ``id``, and ``kind`` for a viewer.
+class Target(nu.Shape):
+    """Where the cell's item is, plain data: ``level``, ``scope``, ``key``, and ``kind`` for a viewer.
 
     A field missing or blank takes its default: a cell, this cell or this
-    plane, :data:`ITEM`.
+    plane, :data:`ITEM`. Kept in the cell's own state (:data:`TARGET`).
     """
 
     target = nustd.kv.PrimitiveDictRef.slot()
+
+
+#: The running cell's :class:`Target`.
+TARGET = nuspace.here(Target).target
 
 
 class LevelField(nustd.ui.Field):
@@ -101,7 +110,7 @@ class Where(nustd.ui.Column):
 
     level = LevelField.slot(label="Scope")
     scope = nustd.ui.InputRef.slot(label="Scope id", placeholder="This cell or plane")
-    id = nustd.ui.InputRef.slot(label="Item id", placeholder=ITEM)
+    key = nustd.ui.InputRef.slot(label="Item key", placeholder=ITEM)
 
 
 def _field(ui: nu.Nu, name: str) -> nu.Nu:
@@ -122,26 +131,27 @@ def kind_of(held: nu.Nu) -> nu.Str:
 
 
 def pointed(held: nu.Nu, body: Callable[[str, nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
-    """``body(level, scope id, item id)`` for the item a target names, blanks filled.
+    """``body(level, scope id, key)`` for the item a target names, blanks filled.
 
     ``level`` is a python str, one of the three, so ``body`` can build a ref
-    on it (``Content.at``); the ids are terms.
+    on it (:func:`~nuspace.shapes.content.entries`); the id and the key are
+    terms.
 
     Args:
         held: A target, plain data (:class:`Target`).
         body: What to do with the item.
     """
-    scope_id, item_id = _given(held, "scope"), _given(held, "id")
-    item_id = nu.Str(nu.If(item_id == "", ITEM, item_id))
+    scope_id, key = _given(held, "scope"), _given(held, "key")
+    key = nu.Str(nu.If(key == "", ITEM, key))
     level = _given(held, "level")
 
     def on(at: str, own: nu.StrArg) -> nu.Nu:
-        return body(at, nu.Str(nu.If(scope_id == "", own, scope_id)), item_id)
+        return body(at, nu.Str(nu.If(scope_id == "", own, scope_id)), key)
 
     return nu.IfDo(
         level == PLANE,
-        on(PLANE, ops.Here.plane),
-        nu.IfDo(level == SPACE, body(SPACE, nu.Str(""), item_id), on(CELL, ops.Here.cell)),
+        on(PLANE, Here.plane),
+        nu.IfDo(level == SPACE, body(SPACE, nu.Str(""), key), on(CELL, Here.cell)),
     )
 
 
@@ -149,21 +159,21 @@ def editing(kind: type[Content[Any]], body: Callable[[Any], nu.Nu]) -> nu.Nu:
     """``body(item)`` over the item of ``kind`` the cell points at, started again when it points elsewhere.
 
     Runs for as long as the cell does. Bare: inside :func:`editor`, or a
-    cell's ``ops.bracketed``.
+    cell's ``nuspace.bracketed``.
     """
-    held = ops.snapshot(Target.target.fallback({}))
+    held = nuspace.atomic(TARGET.fallback({}))
 
-    def edit(at: str, scope_id: nu.Str, item_id: nu.Str) -> nu.Nu:
-        return body(kind.at((at, scope_id), item_id))
+    def edit(at: str, scope_id: nu.Str, key: nu.Str) -> nu.Nu:
+        return body(entries(kind, at, scope_id)[key])
 
     return nu.ReactLatest(
-        Target.target.on_change(), nu.let(held, lambda t: pointed(t, edit)), initial=True
+        TARGET.on_change(), nu.let(held, lambda t: pointed(t, edit)), initial=True
     )
 
 
 def where(
     ui: nu.Nu,
-    fields: Sequence[str] = ("level", "scope", "id"),
+    fields: Sequence[str] = ("level", "scope", "key"),
     *,
     shown: Mapping[str, str] | None = None,
 ) -> tuple[nu.Nu, list[nu.Nu]]:
@@ -174,13 +184,13 @@ def where(
             the same names (``kind`` and ``level`` in a Field, as selects).
         fields: The target's fields the section asks.
         shown: What a select shows for a field the target leaves blank, by
-            field. ``level`` shows :data:`~nuspace.content.CELL`.
+            field. ``level`` shows :data:`~nuspace.shapes.content.CELL`.
 
     Returns:
         What draws it, and the reactions keeping it and the target in step.
     """
     blanks = {"level": CELL, **(shown or {})}
-    held = nu.Dict(Target.target.fallback({}))
+    held = nu.Dict(TARGET.fallback({}))
 
     def given(name: str) -> nu.Nu:
         value = _given(held, name)
@@ -188,9 +198,9 @@ def where(
 
     show = nu.Sequential(*(_field(ui, f).set(given(f)) for f in fields))
     asked = nu.Dict.of(**{f: nu.Str(nu.ToStr(_field(ui, f))).strip() for f in fields})
-    keep = Target.target.set(asked)
+    keep = TARGET.set(asked)
     reactions = [nu.ReactEvery(_field(ui, f).on_change(), keep) for f in fields]
-    return show, [*reactions, nu.ReactEvery(Target.target.on_change(), show)]
+    return show, [*reactions, nu.ReactEvery(TARGET.on_change(), show)]
 
 
 def named(entry: nu.Nu, name: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
@@ -199,9 +209,9 @@ def named(entry: nu.Nu, name: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
     Returns:
         What draws it, and the reactions keeping it live.
     """
-    called = nuspace.Space.cells[ops.Here.cell].name
+    called = nuspace.Space.cells[Here.cell].name
     show = entry.set_label(called.fallback("")) >> name.set(called.fallback(""))
-    renamed = ops.rename_cell(ops.Here.cell, nu.Str(name))
+    renamed = nuspace.atomic(nuspace.cell.rename(Here.cell, nu.Str(name)))
     return show, [
         nu.ReactEvery(name.on_change(), renamed),
         nu.ReactEvery(called.on_change(), show),
@@ -231,15 +241,16 @@ def editor(
     show_name, renames = named(box.entry, box.config.settings.name)
     show_where, points = where(box.config.item)
     head = show_name >> show_where if first is None else first >> show_name >> show_where
-    return ops.bracketed(head >> nu.ParallelAsync(editing(kind, body), *renames, *points, *also))
+    return nuspace.bracketed(
+        head >> nu.ParallelAsync(editing(kind, body), *renames, *points, *also)
+    )
 
 
-def bounded(
-    state: type[nuspace.CellState], entry: nu.Nu, settings: nu.Nu
-) -> tuple[nu.Nu, list[nu.Nu]]:
+def bounded(state: nu.Shape, entry: nu.Nu, settings: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
     """``state``'s min, max and step on ``entry`` and in Config, both ways.
 
     What a number input and a slider configure: their bounds or range, and step.
+    ``state`` is the cell's own, eg ``nuspace.here(Range)``.
 
     Returns:
         What draws them, and the reactions keeping them live.
@@ -280,12 +291,13 @@ class ForKind(ScalarQuery):
     """The term ``build(kind, *args)`` makes for a kind known only at run time. Run it with ``nu.Eval``.
 
     The kind is found by name, through its installed spec
-    (:func:`~nuspace.ext.content_spec`), and ``build`` called with it and the
-    arguments' values, plain python, so it can use the whole
-    :class:`nuspace.Content` API (``items``, ``at``, ``new``, ``find``,
-    ``render``). What it builds is a program of its own: its bare ui chains
-    land under ``under``, its cell state under the running cell, and each of
-    its store accesses is bracketed (``ops.bracketed``).
+    (:func:`~nuspace.specs.content_spec`), and ``build`` called with it and
+    the arguments' values, plain python, so it can use the kind's own
+    behaviors (``find``, ``render``) and build refs on it
+    (:func:`~nuspace.shapes.content.entries`). What it builds is a program of
+    its own: its bare ui chains land under ``under``, and each of its store
+    accesses is bracketed (``nuspace.bracketed``). Places in it resolve as
+    the cell's own do.
 
     ``under`` is a ui ref the program names bare like any of its ui refs: it
     sits in a structural slot, never read, so the program's own rewrites
@@ -299,7 +311,7 @@ class ForKind(ScalarQuery):
 
     Raises:
         LookupError: When it runs, no installed kind has the name
-            (:func:`~nuspace.ext.content_spec`).
+            (:func:`~nuspace.specs.content_spec`).
     """
 
     _structural = Declared(value=frozenset({1}), name="structural")
@@ -316,7 +328,7 @@ class ForKind(ScalarQuery):
 
     def _term(self, kind: object, args: Sequence[object]) -> nu.Nu:
         made = self._payload["build"](content_spec(str(kind)).kind, *args)
-        return ops.bracketed(landed(made, self._children[1]))
+        return nuspace.bracketed(landed(made, self._children[1]))
 
     def _compile(self, nid: int, children: tuple[Callable, ...]) -> Callable:
         kind, rest = children[0], children[2:]
@@ -333,3 +345,31 @@ class ForKind(ScalarQuery):
             return self._term(await kind(rt), [await arg(rt) for arg in rest])
 
         return athunk
+
+
+def render(kind: type[Content[Any]], level: str, scope_id: str, key: str) -> nu.Nu:
+    """One item drawn in full by its kind's ``render``: a :class:`ForKind` build."""
+    return kind.render(entries(kind, level, scope_id)[key])
+
+
+def render_hit(kind: type[Content[Any]], level: str, scope_id: str, key: str) -> nu.Nu:
+    """One item drawn as a search hit by its kind's ``render_hit``: a :class:`ForKind` build."""
+    return kind.render_hit(entries(kind, level, scope_id)[key])
+
+
+def drawing(
+    kind: nu.StrArg,
+    level: nu.StrArg,
+    scope_id: nu.StrArg,
+    key: nu.StrArg,
+    under: nu.Nu,
+    *,
+    hit: bool = False,
+) -> nu.Nu:
+    """The item at an address, all four known only at run time, drawn under ``under``. Brackets itself.
+
+    Raises:
+        LookupError: When it runs, no installed kind has the name.
+    """
+    built = ForKind(kind, under, level, scope_id, key, build=render_hit if hit else render)
+    return nu.Eval(built)

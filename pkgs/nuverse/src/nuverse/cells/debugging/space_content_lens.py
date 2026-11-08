@@ -1,11 +1,11 @@
-"""A space content lens: the space's own items, as kind, then item id, then the item (:mod:`._content_lens`)."""
+"""A space content lens: the space's own items, as kind, then content key, then the item (:mod:`._content_lens`)."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nuspace import CellSpec
-from nuspace.content import SPACE
+from nuspace.shapes.content import SPACE
+from nuspace.specs import CellSpec
 
 from .. import source
 from ._content_lens import browse

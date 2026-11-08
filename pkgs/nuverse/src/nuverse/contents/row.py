@@ -6,10 +6,11 @@ A table cell keeps each of its rows as an item of its own, by row key.
 from __future__ import annotations
 
 import nu
-import nuspace
 import nustd.ui
 import nustd.ui.table
 from nu.lang.sentinels import UNSET, Unset
+from nuspace.shapes.content import Content
+from nuspace.specs import ContentSpec
 
 from .text import matches
 
@@ -61,7 +62,7 @@ def line(item: Row) -> nu.Str:
     return nu.Str(Line(_cells(item)))
 
 
-class RowContent(nuspace.Content[Row], name="Row"):
+class RowContent(Content[Row], name="Row"):
     """The row kind: matched by the words in any of its cells, drawn on one line."""
 
     @classmethod
@@ -88,6 +89,4 @@ class RowContent(nuspace.Content[Row], name="Row"):
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Row``.
-CONTENT = nuspace.ContentSpec(
-    RowContent, description="A table row, found by the words in its cells."
-)
+CONTENT = ContentSpec(RowContent, description="A table row, found by the words in its cells.")

@@ -1,7 +1,10 @@
-"""A kernel held open on the test's loop, as nuspace's own tests hold one.
+"""A space held open on the test's loop, as a host opens one: headless, with real workers.
 
-Run ops against it, read the store, and wait until the kernel has made
-something true. A trimmed copy of nuspace's ``tests/_lib/_support/kernel.py``.
+Run terms against it, read the stores, and wait until the kernel has made
+something true. The space is made first with the web device's planes
+(Settings among them), then opened headless: the kernel, the system planes
+and a worker pool run, no device driver does. A test that needs one runs it
+``beside`` the hold, eg the web device's nav.
 """
 
 from __future__ import annotations
@@ -12,14 +15,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import nu
+import nuspace
+import nuspace.host
 from _support.made import MADE, MADE_STORE
 from nu.lang import ScalarQuery
-from nuspace import ops
-from nuspace.system.kernel import open_kernel
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
+
+    from nuspace.kernel import EnvFactory
 
 
 class _Hold(ScalarQuery):
@@ -41,7 +46,7 @@ class _Hold(ScalarQuery):
 
 @dataclass
 class Kernel:
-    """An open kernel: run ops against it, read the store, wait for the kernel."""
+    """An open space: run terms against it, read the stores, wait for the kernel."""
 
     ctx: nu.Context
     done: asyncio.Event
@@ -52,10 +57,15 @@ class Kernel:
         return value
 
     async def read(self, term: nu.Nu) -> object:
-        return await self.run(ops.snapshot(term))
+        """``term`` read in ``nuspace.atomic``: a snapshot of each store it reads."""
+        return await self.run(nuspace.atomic(term))
+
+    async def do(self, term: nu.Nu) -> object:
+        """``term`` in one commit: ``nuspace.atomic``."""
+        return await self.run(nuspace.atomic(term))
 
     async def made(self, term: nu.Nu) -> object:
-        """Run ``term``, an op given ``into=MADE``, and read what it set there."""
+        """Run ``term``, a term given ``into=MADE``, and read what it set there."""
         await self.run(term)
         return await self.run(MADE)
 
@@ -76,14 +86,36 @@ class Kernel:
     async def close(self) -> None:
         if not self.task.done():
             self.done.set()
-            await asyncio.wait_for(self.task, 15)
+            await asyncio.wait_for(self.task, 30)
 
 
-async def opened(name: str = "nuverse-test", **kwargs: object) -> Kernel:
-    """A kernel open on this loop, held until :meth:`Kernel.close`."""
+async def opened(
+    path: str,
+    *,
+    name: str = "nuverse-test",
+    spares: int = 2,
+    envs: Mapping[str, EnvFactory] | None = None,
+    beside: nu.Nu | None = None,
+) -> Kernel:
+    """The space at ``path`` made with the web planes, then open headless on this loop until :meth:`Kernel.close`.
+
+    Args:
+        path: The space's root.
+        name: The workers' process name prefix.
+        spares: Idle workers to keep up.
+        envs: Env factories of the test's own.
+        beside: A term run beside the hold, cancelled at close, eg a driver.
+    """
+    await nu.arun(nuspace.host.make_space(path, devices=("web",)))
     loop = asyncio.get_running_loop()
     ready, done = loop.create_future(), asyncio.Event()
     hold = nu.With(MADE_STORE, body=nu.let(_Hold(ready, done), lambda _: nu.Noop()))
-    task = asyncio.create_task(nu.arun(open_kernel(hold, name=name, **kwargs)))
-    ctx = await asyncio.wait_for(asyncio.shield(ready), 20)
-    return Kernel(ctx, done, task)
+    body = hold if beside is None else nu.Race(beside, hold)
+    space = nuspace.host.open_space(
+        path, devices=(), spares=spares, envs=envs, body=body, name=name
+    )
+    task = asyncio.create_task(nu.arun(space))
+    await asyncio.wait({task, ready}, timeout=30, return_when=asyncio.FIRST_COMPLETED)
+    if task.done():
+        task.result()  # the open failed: say why
+    return Kernel(await asyncio.wait_for(ready, 1), done, task)

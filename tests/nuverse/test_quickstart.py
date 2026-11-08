@@ -12,14 +12,18 @@ from pathlib import Path
 import pytest
 
 import nu
+import nuspace
 import nustd.kv
+import nustd.ui
 import nuverse
-from nuspace import ops
-from nuspace.shapes import Reroot, Space
-from nuspace.system.devices.web.env import session_env
-from nuspace.system.kernel.body import Rewrites
+from nuspace.devices.web import Web
+from nuspace.devices.web.shell import Shell
+from nuspace.devices.web.utils import CellRoot
+from nuspace.places import Here, inside
+from nuspace.shapes import Space
+from nuspace.specs import SpecCells, add_plane, registered_name
 from nustd.ui.core import Frame, WsSession
-from nustd.ui.core.protocol import OP_INIT
+from nustd.ui.core.protocol import OP_INIT, OP_NOTIFY
 from nustd.ui.core.session import Session
 from nuverse.planes import quickstart
 
@@ -38,34 +42,35 @@ class _Browser(WsSession):
 SOURCES = dict(quickstart.PLANE.cells)
 
 
-class _Page(ops.PlaneState):
+class _Page(nu.Shape):
     level = nustd.kv.FloatRef.slot()
 
 
 def _level(plane: str) -> nu.Nu:
-    return ops.plane_state(plane, _Page.level.fallback(-1.0))
+    return nuspace.at.plane(id=plane).state(_Page).level.fallback(-1.0)
 
 
 async def _load(store, plane: str, cell: str) -> nu.Nu:
-    env = session_env("127.0.0.1:9")("s1")
-    rewrite = Rewrites(Reroot(plane, cell), env.rewrite)
+    """The cell's prog loaded as the kernel loads it for a tab: its ui under the cell's node."""
+    rewrite = CellRoot(Shell.viewer, Here.cell)
     load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=rewrite)
-    return await store.run(nustd.kv.Snapshot(load, scope=Space))
+    return await store.read(load)
 
 
 async def _cells(store, plane: str) -> dict:
-    return {c["name"]: c["id"] for c in await store.read(ops.cell_rows(plane))}
+    """The plane's cells by the names its spec gave them, as its plane state keeps them."""
+    return await store.read(nuspace.at.plane(id=plane).state(SpecCells).ids.extract())
 
 
 async def _plane(store) -> dict:
-    await store.run(ops.create_plane(quickstart.PLANE, plane_id="s"))
+    await store.run(add_plane(quickstart.PLANE, "s"))
     return await _cells(store, "s")
 
 
-async def _run(store, plane: str, cell: str, settle: float = 1.0, then=None) -> _Browser:
+async def _run(store, plane: str, cell: str, settle: float = 0.5, then=None) -> _Browser:
     """Run the cell as the kernel does, let it draw (and ``then`` run), then stop it."""
     browser = _Browser()
-    term = nu.Frame(ops.Here, await _load(store, plane, cell), plane=plane, cell=cell)
+    term = inside(await _load(store, plane, cell), plane=plane, cell=cell)
     task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
     await asyncio.sleep(settle)
     if then is not None:
@@ -132,7 +137,9 @@ def test_quickstart_registers_first_with_its_five_cells():
         "Quickstart",
         "async",
     )
-    assert spec.meta == {"editable": True, "full_width": False}
+    assert spec.meta == {}
+    assert (spec.web.editable, spec.web.full_width) == (True, False)
+    assert spec.key == ""
     assert list(SOURCES) == ["welcome", "dial", "meter", "agent", "next"]
 
 
@@ -155,18 +162,24 @@ def test_no_copy_carries_an_em_dash():
 
 @pytest.mark.parametrize("name", list(SOURCES))
 async def test_each_cell_loads_through_the_kernel_rewrites(store, name):
-    await store.run(
-        ops.add_plane("p", backend="async") >> ops.add_cell("p", SOURCES[name], cell_id="c")
-    )
+    await store.do(nuspace.plane.add("p", backend="async"))
+    await store.do(nuspace.cell.add("p", SOURCES[name], id="c", fabrics=["ui"]))
     term = await _load(store, "p", "c")
     assert isinstance(term, nu.Nu)
-    nu.validate(nu.compile(term))
+    nu.validate(nu.compile(inside(term, plane="p", cell="c")))
 
 
-async def test_every_cell_has_ui(store):
+async def test_every_cell_draws(store):
     cells = await _plane(store)
-    rows = {r["id"]: r for r in await store.read(ops.cell_rows("s"))}
-    assert all(rows[cid]["props"]["has_ui"] for cid in cells.values()), rows
+    assert sorted(cells) == sorted(SOURCES)
+    fabrics = {name: await store.read(Space.cells[cid].fabrics) for name, cid in cells.items()}
+    assert fabrics == {name: ["ui"] for name in SOURCES}
+
+
+async def test_the_plane_shows_on_the_web(store):
+    await _plane(store)
+    assert await store.read(Web.planes["s"].editable) is True
+    assert await store.read(Space.planes["s"].spec) == "nuverse.quickstart"
 
 
 # --- drawing ---------------------------------------------------------------------------------
@@ -184,13 +197,13 @@ ORDER = {
 @pytest.mark.parametrize("name", list(SOURCES))
 async def test_each_cell_draws_in_declared_order_and_writes_nothing_on_the_way_in(store, name):
     cells = await _plane(store)
-    rows = await store.read(ops.plane_rows())
+    planes = await store.read(Space.planes.extract())
     frames = _dicts(await _run(store, "s", cells[name]))
     assert frames
     tops = [p for p in _first_seen(frames) if len(p) == 1]
     assert tops == ORDER[name]
     assert await store.read(_level("s")) == -1.0
-    assert await store.read(ops.plane_rows()) == rows
+    assert await store.read(Space.planes.extract()) == planes
 
 
 async def test_the_slider_starts_at_the_stills_number(store):
@@ -225,7 +238,7 @@ async def test_meter_under_the_limit_draws_neutral_and_no_done_line(store):
 async def test_meter_with_limit_40_draws_warn_and_the_done_line(store):
     cells = await _plane(store)
     edited = quickstart.METER.replace("LIMIT = 70", "LIMIT = 40")
-    await store.run(ops.set_prog(cells["meter"], edited))
+    await store.do(nuspace.cell.set_prog(cells["meter"], edited, fabrics=["ui"]))
     frames = _dicts(await _run(store, "s", cells["meter"]))
     gauge = _payloads(frames, ("reading", "gauge"))[-1]
     assert gauge["variant"] == "warn"
@@ -237,24 +250,60 @@ async def test_meter_with_limit_40_draws_warn_and_the_done_line(store):
 async def test_a_broken_meter_shows_put_back_and_set_prog_hides_it(store):
     cells = await _plane(store)
     meter = cells["meter"]
-    await store.run(ops.set_prog(meter, quickstart.METER.replace("LIMIT = 70", "LIMIT = = 40")))
+    broken = quickstart.METER.replace("LIMIT = 70", "LIMIT = = 40")
+    await store.do(nuspace.cell.set_prog(meter, broken, fabrics=[]))
 
     async def put_back():
-        await store.run(ops.set_prog(meter, quickstart.METER))
+        await store.do(nuspace.cell.set_prog(meter, quickstart.METER, fabrics=["ui"]))
 
     frames = _dicts(await _run(store, "s", cells["dial"], then=put_back))
     ops_seen = [f["op"] for f in frames if _path(f) == ("turn", "actions")]
     assert ops_seen[0] == "hide"
     assert "display" in ops_seen
     assert ops_seen[-1] == "hide"
-    assert await store.read(ops.prog(meter)) == quickstart.METER
+    assert await store.read(Space.cells[meter].prog) == quickstart.METER
+
+
+class _Panel(nustd.ui.Column):
+    go = nustd.ui.ButtonRef.slot(label="Put back")
+
+
+async def test_clicking_put_back_restores_meter(store):
+    cells = await _plane(store)
+    meter = cells["meter"]
+    await store.do(nuspace.cell.set_prog(meter, "broken", fabrics=[]))
+    browser = _Browser()
+    term = inside(quickstart.put_back("s", _Panel.go), plane="s", cell="c")
+    task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
+    try:
+        await asyncio.sleep(0.3)
+        (clicked,) = browser._subs
+        browser._dispatch(Frame(OP_NOTIFY, ref=clicked, payload={}))
+        await asyncio.sleep(0.5)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    assert await store.read(Space.cells[meter].prog) == quickstart.METER
+    assert await store.read(Space.cells[meter].version) == 3
+    assert await store.read(Space.cells[meter].fabrics) == ["ui"]
+
+
+async def test_a_plane_with_no_meter_keeps_put_back_down(store):
+    cells = await _plane(store)
+    await store.do(nuspace.cell.remove(cells["meter"]))
+    frames = [
+        f for f in _dicts(await _run(store, "s", cells["dial"])) if _path(f) == ("turn", "actions")
+    ]
+    seen = [f["op"] for f in frames]
+    assert "display" not in seen
+    assert seen[-1] == "hide"
 
 
 async def test_a_slider_left_off_start_says_so(store):
     cells = await _plane(store)
     first = _dicts(await _run(store, "s", cells["dial"]))
     assert "Still at" not in _texts(first)
-    await store.run(ops.atomic_state(ops.plane_state("s", _Page.level.set(48.0))))
+    await store.do(nuspace.at.plane(id="s").state(_Page).level.set(48.0))
     frames = _dicts(await _run(store, "s", cells["dial"]))
     assert "Still at 48, where you left it." in _texts(frames)
     assert {"value": 48.0} in _payloads(frames, ("turn", "level"))
@@ -271,6 +320,7 @@ async def test_where_shows_home_as_tilde(store):
 
 async def test_a_throwaway_space_says_so_and_offers_the_line_that_keeps_one(store):
     cells = await _plane(store)
+    await store.do(Space.info.path.set(quickstart.THROWAWAY + "1a2b3c4d"))
     frames = _dicts(await _run(store, "s", cells["welcome"]))
     text = _texts(frames)
     assert "This space is throwaway" in text
@@ -284,6 +334,8 @@ async def test_a_throwaway_space_says_so_and_offers_the_line_that_keeps_one(stor
 async def test_the_come_back_line_names_the_path_only_off_home(store):
     home = quickstart.HOME
     assert await store.run(quickstart.again("")) == "nuspace run --with quickstart"
+    throwaway = quickstart.THROWAWAY + "1a2b3c4d"
+    assert await store.run(quickstart.again(throwaway)) == "nuspace run --with quickstart"
     assert await store.run(quickstart.again(home)) == "nuspace run --with quickstart"
     assert (
         await store.run(quickstart.again(f"{home}/work")) == "nuspace run ~/work --with quickstart"
@@ -296,7 +348,7 @@ async def test_the_come_back_line_names_the_path_only_off_home(store):
 
 async def test_a_home_space_shows_its_data_dir_and_comes_back_with_no_path(store):
     cells = await _plane(store)
-    await store.run(ops.atomic(Space.state.info.path.set(quickstart.HOME)))
+    await store.do(Space.info.path.set(quickstart.HOME))
     text = _texts(_dicts(await _run(store, "s", cells["welcome"])))
     assert "~/.nuspace." in text
     assert "nuspace run --with quickstart" in text
@@ -305,7 +357,7 @@ async def test_a_home_space_shows_its_data_dir_and_comes_back_with_no_path(store
 
 async def test_a_space_off_home_shows_its_path_and_comes_back_with_it(store):
     cells = await _plane(store)
-    await store.run(ops.atomic(Space.state.info.path.set(f"{quickstart.HOME}/work")))
+    await store.do(Space.info.path.set(f"{quickstart.HOME}/work"))
     text = _texts(_dicts(await _run(store, "s", cells["welcome"])))
     assert "This space lives in" in text
     assert "~/work/.nuspace." in text
@@ -324,7 +376,7 @@ def _next() -> dict:
 
 async def _handle(store, term: nu.Nu) -> _Browser:
     browser = _Browser()
-    await nu.arun(nu.Frame(ops.Here, term, plane="s", cell="c"), store.ctx.bind(Session, browser))
+    await nu.arun(inside(term, plane="s", cell="c"), store.ctx.bind(Session, browser))
     return browser
 
 
@@ -355,28 +407,32 @@ async def test_where_next_draws_its_rows_and_links(store):
 async def test_make_a_page_makes_an_empty_page_under_quickstart_and_goes_there(store):
     await _plane(store)
     browser = await _handle(store, _next()["make_page"]("s"))
-    (kid,) = await store.read(ops.children("s"))
-    (row,) = [r for r in await store.read(ops.plane_rows()) if r["id"] == kid]
-    assert row["name"] == "My first page"
-    assert await store.read(ops.cells(kid)) == []
+    (kid,) = await store.read(nu.list(Space.planes["s"].children.keys()))
+    assert await store.read(Space.planes[kid].name) == "My first page"
+    assert await store.read(nu.list(Space.planes[kid].cells.keys())) == []
+    assert await store.read(Web.planes.contains(kid)) is True
     assert _pushed(browser) == [f"/{kid}"]
 
 
-async def test_a_demo_is_made_once_under_the_name_with_plane_keeps(store):
-    from nudemos import recipes
+async def test_a_demo_opens_the_newest_plane_of_its_spec_made_once(store):
+    # Any spec opens the same way: a nuverse one, so nudemos need not be installed.
+    from nuverse.planes import runs as demo
 
     await _plane(store)
-    made = Space.state.made
+    made = Space.indexes.spec_planes[registered_name(demo.PLANE)].ids
     open_made = _next()["open_made"]
-    first = await _handle(store, open_made("nudemos.recipes", recipes.PLANE))
-    pid = await store.read(made.get_item("nudemos.recipes", ""))
-    assert pid
+    first = await _handle(store, open_made(demo.PLANE))
+    (pid,) = await store.read(nu.list(made.keys()))
     assert _pushed(first) == [f"/{pid}"]
-    again = await _handle(store, open_made("nudemos.recipes", recipes.PLANE))
-    assert await store.read(made.get_item("nudemos.recipes", "")) == pid
+    again = await _handle(store, open_made(demo.PLANE))
+    assert await store.read(nu.list(made.keys())) == [pid]
     assert _pushed(again) == [f"/{pid}"]
-    rows = [r for r in await store.read(ops.plane_rows()) if r["name"] == "Recipes"]
-    assert len(rows) == 1
+    # Removed, the next open makes a new one, and it is the newest.
+    await store.do(nuspace.plane.remove(pid))
+    third = await _handle(store, open_made(demo.PLANE))
+    newest = await store.read(made.last())
+    assert newest != pid
+    assert _pushed(third) == [f"/{newest}"]
 
 
 # --- telemetry -------------------------------------------------------------------------------

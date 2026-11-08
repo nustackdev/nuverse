@@ -14,7 +14,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import CellSpec, ops
+from nuspace.specs import CellSpec
 
 from .. import source
 
@@ -30,7 +30,7 @@ def _draw(alphabet: str, length: int) -> str:
 Draw = nu.host(_draw, name="PasswordDraw")
 
 
-class Pass(nuspace.CellState):
+class Pass(nu.Shape):
     """The generator's state: its options, and the password they made last."""
 
     length = nustd.kv.IntRef.slot()
@@ -55,42 +55,43 @@ class Box(nustd.ui.Column):
 
 def out() -> nu.Nu:
     """The generator, for as long as the cell runs: an option changed, or Generate, draws again."""
-    length = Pass.length.fallback(20)
-    upper, digits, symbols = (s.fallback(True) for s in (Pass.upper, Pass.digits, Pass.symbols))
+    state = nuspace.here(Pass)
+    length = state.length.fallback(20)
+    upper, digits, symbols = (s.fallback(True) for s in (state.upper, state.digits, state.symbols))
     alphabet = (
         nu.Str(string.ascii_lowercase)
         + nu.If(upper, string.ascii_uppercase, "")
         + nu.If(digits, string.digits, "")
         + nu.If(symbols, "!@#$%^&*-_=+?", "")
     )
-    draw = Pass.password.set(Draw(alphabet, length))
+    draw = state.password.set(Draw(alphabet, length))
 
     def keep(slot: nu.Nu, value: nu.Nu) -> nu.Nu:
         # The option first, then a password made with it, in one commit.
         return slot.set(value) >> draw
 
-    first = nu.IfDo(Pass.password.is_null(), draw)
-    return ops.bracketed(
+    first = nu.IfDo(state.password.is_null(), draw)
+    return nuspace.bracketed(
         first
-        >> Box.password.set(nu.str(Pass.password))
+        >> Box.password.set(nu.str(state.password))
         >> Box.length.set_value(length)
         >> Box.options.upper.set(upper)
         >> Box.options.digits.set(digits)
         >> Box.options.symbols.set(symbols)
         >> nu.ParallelAsync(
             nu.ReactEvery(Box.options.generate.on_click(), draw),
-            nu.ReactEvery(Box.length.on_change(), keep(Pass.length, nu.ToInt(Box.length))),
+            nu.ReactEvery(Box.length.on_change(), keep(state.length, nu.ToInt(Box.length))),
             nu.ReactEvery(
-                Box.options.upper.on_change(), keep(Pass.upper, nu.ToBool(Box.options.upper))
+                Box.options.upper.on_change(), keep(state.upper, nu.ToBool(Box.options.upper))
             ),
             nu.ReactEvery(
-                Box.options.digits.on_change(), keep(Pass.digits, nu.ToBool(Box.options.digits))
+                Box.options.digits.on_change(), keep(state.digits, nu.ToBool(Box.options.digits))
             ),
             nu.ReactEvery(
-                Box.options.symbols.on_change(), keep(Pass.symbols, nu.ToBool(Box.options.symbols))
+                Box.options.symbols.on_change(), keep(state.symbols, nu.ToBool(Box.options.symbols))
             ),
             # Every tab shows the password the store holds.
-            nu.ReactEvery(Pass.password.on_change(), Box.password.set(nu.str(Pass.password))),
+            nu.ReactEvery(state.password.on_change(), Box.password.set(nu.str(state.password))),
         )
     )
 

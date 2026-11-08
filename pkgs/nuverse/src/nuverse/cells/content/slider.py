@@ -12,7 +12,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import CellSpec
+from nuspace.specs import CellSpec
 
 from ...contents.number import Number, NumberContent
 from .. import source
@@ -22,7 +22,7 @@ from ._editing import SECTIONS, Where, bounded, editor
 __all__ = ["CELL", "Range", "out"]
 
 
-class Range(nuspace.CellState):
+class Range(nu.Shape):
     """A slider's state: the range and step its number moves within."""
 
     min = nustd.kv.FloatRef.slot()
@@ -62,7 +62,7 @@ def _edit(item: Number) -> nu.Nu:
 
 def out() -> nu.Nu:
     """The slider and its Config, for as long as the cell runs."""
-    show, reactions = bounded(Range, Box.entry.input, Box.config.settings)
+    show, reactions = bounded(nuspace.here(Range), Box.entry.input, Box.config.settings)
     return editor(NumberContent, Box, _edit, first=show, also=reactions)
 
 

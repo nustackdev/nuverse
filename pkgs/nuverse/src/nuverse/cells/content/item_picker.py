@@ -4,10 +4,12 @@ Its Config names the kind, by name, from the installed kinds
 (:mod:`._editing`); left as it is, text. It lists every item of the kind,
 from every scope, as ``Content.find`` walks them, each drawn with its kind's
 ``render_hit`` and a Pick button. The picked item's address,
-``{"kind", "scope": [level, id], "id"}`` (:func:`nuspace.content.address`),
-is the cell's own state, :attr:`Link.address`: a program follows the link
-with ``nuspace.ext.content_spec(kind).kind`` and ``Content.at``. One item
-relates to another by address, never by holding it.
+``{"kind", "scope": [level, id], "key"}``
+(:func:`nuspace.shapes.content.address`), is the cell's own state,
+:data:`LINK`: a program follows the link with
+``nuspace.specs.content_spec(kind).kind`` and
+:func:`~nuspace.shapes.content.entries`. One item relates to another by
+address, never by holding it.
 """
 
 from __future__ import annotations
@@ -18,25 +20,38 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import CellSpec, ops
-from nuspace.content import Drawing, kind_name
+from nuspace.shapes.content import kind_name
+from nuspace.specs import CellSpec
 from nustd.ui.core import SectionRef
 
 from .. import source
-from ._editing import DEFAULT_KIND, ForKind, KindField, Target, kind_of, kind_options, where
+from ._editing import (
+    DEFAULT_KIND,
+    TARGET,
+    ForKind,
+    KindField,
+    drawing,
+    kind_of,
+    kind_options,
+    where,
+)
 
 
 if TYPE_CHECKING:
-    from nuspace.content import Content
+    from nuspace.shapes.content import Content
 
 
-__all__ = ["CELL", "Link", "out"]
+__all__ = ["CELL", "LINK", "Link", "out"]
 
 
-class Link(nuspace.CellState):
+class Link(nu.Shape):
     """The item picked: its address, plain data. Missing until one is picked."""
 
     address = nustd.kv.PrimitiveDictRef.slot()
+
+
+#: The running cell's picked address (:class:`Link`).
+LINK = nuspace.here(Link).address
 
 
 class Which(nustd.ui.Column):
@@ -80,8 +95,8 @@ def _drawn(address: nu.Nu, under: nu.Nu, *, catch: nu.Nu) -> nu.Nu:
     """The item at ``address`` drawn as a hit under ``under``; ``catch`` when it cannot be."""
     at = nu.Dict(address)
     scope = nu.List(at["scope"])
-    drawing = Drawing(at["kind"], scope[0], scope[1], at["id"], under, hit=True)
-    return nu.TryCatch(ops.snapshot(nu.Eval(drawing)), catch=lambda _: catch)
+    drawn = drawing(at["kind"], scope[0], scope[1], at["key"], under, hit=True)
+    return nu.TryCatch(drawn, catch=lambda _: catch)
 
 
 def _candidates(kind: type[Content[Any]]) -> nu.Nu:
@@ -100,14 +115,14 @@ def _candidates(kind: type[Content[Any]]) -> nu.Nu:
             + nu.Str(" ")
             + nu.str(scope[1])
             + nu.Str(" · ")
-            + nu.str(address["id"])
+            + nu.str(address["key"])
         )
         unknown = row(i).hit.erase()
         return row(i).where.set(where) >> _drawn(address, row(i).hit, catch=unknown)
 
     def acts(entry: nu.Nu) -> nu.Nu:
         i, address = nu.List(entry)[0], nu.List(nu.List(entry)[1])[0]
-        return nu.ReactEvery(row(i).pick.on_click(), Link.address.set(address))
+        return nu.ReactEvery(row(i).pick.on_click(), LINK.set(address))
 
     def listed(found: nu.Nu) -> nu.Nu:
         entries = nu.List(found).iter().enumerate().to_list()
@@ -122,8 +137,14 @@ def _candidates(kind: type[Content[Any]]) -> nu.Nu:
         )
         return draw >> nu.ForEachParAsync(entries, acts)
 
-    changed = nuspace.States.contents[kind_name(kind)].on_change()
-    return nu.ReactLatest(changed, nu.let(ops.snapshot(kind.find()), listed), initial=True)
+    # Any item of the kind, at any scope: its three subtrees.
+    name = kind_name(kind)
+    changed = nu.OnAny(
+        nuspace.State.content_cells[name].on_change(),
+        nuspace.State.content_planes[name].on_change(),
+        nuspace.State.content_space[name].on_change(),
+    )
+    return nu.ReactLatest(changed, nu.let(nuspace.atomic(kind.find()), listed), initial=True)
 
 
 def _shown(held: nu.Nu) -> nu.Nu:
@@ -138,7 +159,7 @@ def _shown(held: nu.Nu) -> nu.Nu:
 
 def _picked() -> nu.Nu:
     """The item picked, drawn as a hit, or a line saying none is."""
-    address = ops.snapshot(Link.address.fallback({}))
+    address = nuspace.atomic(LINK.fallback({}))
     gone = View.picked.hit.erase() >> View.none.set("The picked item cannot be drawn.")
 
     def show(at: nu.Nu) -> nu.Nu:
@@ -154,14 +175,14 @@ def out() -> nu.Nu:
     which = View.config.which
     show, reactions = where(which, ("kind",), shown={"kind": DEFAULT_KIND})
     kinds = which.kind.input.set_options(kind_options())
-    held = ops.snapshot(Target.target.fallback({}))
-    return ops.bracketed(
+    held = nuspace.atomic(TARGET.fallback({}))
+    return nuspace.bracketed(
         kinds
         >> show
         >> nu.ParallelAsync(
-            nu.ReactLatest(Target.target.on_change(), nu.let(held, _shown), initial=True),
-            nu.ReactLatest(Link.address.on_change(), _picked(), initial=True),
-            nu.ReactEvery(View.picked.unpick.on_click(), Link.address.erase()),
+            nu.ReactLatest(TARGET.on_change(), nu.let(held, _shown), initial=True),
+            nu.ReactLatest(LINK.on_change(), _picked(), initial=True),
+            nu.ReactEvery(View.picked.unpick.on_click(), LINK.erase()),
             *reactions,
         )
     )

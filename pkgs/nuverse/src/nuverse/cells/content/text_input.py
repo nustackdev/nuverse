@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import nu
 import nustd.ui
-from nuspace import CellSpec
+from nuspace.specs import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source

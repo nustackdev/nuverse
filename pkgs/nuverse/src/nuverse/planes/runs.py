@@ -2,41 +2,52 @@
 
 Three cells, each drawn again when what is live changes, and only when what
 it shows did: the counts, the live plane runs, and their live cell runs.
-Everything is read off the live indexes, so it costs what is running, never
-history. Ages move with the clock, so the tables are read again every
-minute too.
+Everything is read off ``Space.exec.indexes.live`` and the run records it
+names, so it costs what is running, never history. Ages move with the
+clock, so the tables are read again every minute too.
 """
 
 from __future__ import annotations
 
 import nu
 import nuspace
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
-__all__ = ["CELLS", "COUNTS", "LIVE", "PLANE", "age", "lives"]
+__all__ = ["CELLS", "COUNTS", "LIVE", "PLANE", "age", "ids", "lives"]
 
 
 def age(now: nu.Nu, t: nu.Nu, unknown: str = "") -> nu.Nu:
-    """How long since ``t`` in minutes, eg ``12m``, ``unknown`` while ``t`` is None. For cell sources to import."""
+    """How long since ``t`` in minutes, eg ``12m``, ``unknown`` while ``t`` reads NULL. For cell sources to import."""
     m = nu.int(nu.Float(now) - t) // 60
     spelled = nu.If(
         m < 1, "<1m", nu.If(m < 60, nu.str(m) + "m", nu.str(m // 60) + "h " + nu.str(m % 60) + "m")
     )
-    return nu.If(nu.Is(t, None), unknown, spelled)
+    return nu.If(nu.IsNull(t), unknown, spelled)
+
+
+def ids(held: nu.Nu) -> nu.List:
+    """The keys of a live set, ``[]`` when it is not there. A read. For cell sources to import.
+
+    A plane run's live sets are made when it is added and dropped once it
+    is over, so a read racing its end finds none.
+    """
+    return nu.List(nu.If(held.exists(), nu.list(held.keys()), []))
 
 
 def lives() -> list[nu.Nu]:
-    """What says what is live moved: a plane run, a cell run, a cell run starting, a worker.
+    """What says what is live moved: a plane run, a cell run, either starting, a worker.
 
     Fresh subscriptions on every call. For cell sources to import.
     """
-    kernel = nuspace.Space.kernel
+    live = nuspace.Space.exec.indexes.live
+    runs = nuspace.Space.exec
     return [
-        kernel.running.on_children_change(),
-        kernel.runs.on_descendants_change("*", "cells_running", "*"),
-        kernel.runs.on_descendants_change("*", "cells", "*", "started_at"),
-        kernel.workers_running.on_children_change(),
+        live.plane_runs.on_children_change(),
+        live.plane_run_to_cell_runs.on_descendants_change("*", "ids", "*"),
+        runs.plane_runs.on_descendants_change("*", "started_at"),
+        runs.cell_runs.on_descendants_change("*", "started_at"),
+        live.workers.on_children_change(),
     ]
 
 
@@ -44,8 +55,9 @@ COUNTS = """\
 import nu
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuverse.planes.runs import lives
+from nuverse.planes.runs import ids, lives
+
+LIVE = nuspace.Space.exec.indexes.live
 
 
 def tile(name, label, value):
@@ -53,10 +65,9 @@ def tile(name, label, value):
 
 
 def counts():
-    kernel = nuspace.Space.kernel
-    running = nu.list(kernel.running)
-    cells = nu.Sum(nu.Map(nu.Iter(running), lambda r: kernel.runs[nu.Str(r)].cells_running.len()))
-    return nu.List.of(running.len(), cells, kernel.workers_running.len())
+    runs = ids(LIVE.plane_runs)
+    cells = nu.Sum(runs.iter().map(lambda r: ids(LIVE.plane_run_to_cell_runs[nu.Str(r)].ids).len()))
+    return nu.List.of(runs.len(), cells, ids(LIVE.workers).len())
 
 
 def tiles(n):
@@ -68,10 +79,10 @@ def tiles(n):
 
 
 def draw():
-    return nu.let(ops.snapshot(counts()), tiles)
+    return nu.let(nuspace.atomic(counts()), tiles)
 
 
-out = nu.Reconcile(ops.snapshot(nu.OnAny(*lives())), nu.let(ops.snapshot(counts()), tiles))
+out = nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw())
 """
 
 
@@ -80,24 +91,27 @@ import nu
 import nustd.time
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuverse.planes.runs import age, lives
+from nuverse.planes.runs import age, ids, lives
+
+LIVE = nuspace.Space.exec.indexes.live
 
 
 def rows():
     now = nustd.time.time()
 
-    def row(r):
+    def row(at):
+        r = nu.Str(at)
+        run = nuspace.Space.exec.plane_runs[r]
         return nu.List.of(
-            nuspace.Space.planes[r["plane"]].name.fallback(r["plane"]),
-            r["backend"],
-            r["by"],
-            nu.List(r["cells_running"]).len(),
-            nu.List(r["workers"]).len(),
-            age(now, r["started_at"]),
+            nuspace.plane.title(run.plane),
+            run.backend.fallback(""),
+            run.by.fallback(""),
+            ids(LIVE.plane_run_to_cell_runs[r].ids).len(),
+            ids(LIVE.plane_run_to_workers[r].ids).len(),
+            age(now, run.started_at),
         )
 
-    return ops.runs().iter().map(row).to_list()
+    return ids(LIVE.plane_runs).iter().map(row).to_list()
 
 
 def table(shown):
@@ -106,12 +120,10 @@ def table(shown):
 
 
 def draw():
-    return nu.let(ops.snapshot(rows()), table)
+    return nu.let(nuspace.atomic(rows()), table)
 
 
-out = nu.Reconcile(
-    ops.snapshot(nu.OnAny(*lives())), nu.let(ops.snapshot(rows()), table), every=60.0
-)
+out = nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw(), every=60.0)
 """
 
 
@@ -120,30 +132,32 @@ import nu
 import nustd.time
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuverse.planes.runs import age, lives
+from nuverse.planes.runs import age, ids, lives
+
+LIVE = nuspace.Space.exec.indexes.live
 
 
 def rows():
     now = nustd.time.time()
 
-    def row(r, c):
-        pid, cid = nu.str(r["plane"]), nu.str(c["cell"])
-        plane = nuspace.Space.planes[pid]
+    def row(plane, at):
+        run = nuspace.Space.exec.cell_runs[nu.Str(at)]
         return nu.List.of(
-            plane.name.fallback(pid),
-            nuspace.Space.cells[cid].name.fallback(cid),
-            c["by"],
-            c["version"],
-            c["worker"],
-            age(now, c["started_at"], "starting"),
+            nuspace.plane.title(plane),
+            nuspace.cell.title(run.cell),
+            run.by.fallback(""),
+            run.version.fallback(0),
+            run.worker.fallback(""),
+            age(now, run.started_at, "starting"),
         )
 
-    def cells(r):
-        live = ops.cell_runs(nu.str(r["id"]), live=True).iter()
-        return live.map(lambda c: row(r, c)).to_list()
+    def cells(at):
+        r = nu.Str(at)
+        plane = nu.Str(nuspace.Space.exec.plane_runs[r].plane)
+        live = ids(LIVE.plane_run_to_cell_runs[r].ids).iter()
+        return live.map(lambda c: row(plane, c)).to_list()
 
-    return nu.List(nu.Collect(nu.Flatten(ops.runs().iter().map(cells))))
+    return nu.List(nu.Collect(nu.Flatten(ids(LIVE.plane_runs).iter().map(cells))))
 
 
 def table(shown):
@@ -152,12 +166,10 @@ def table(shown):
 
 
 def draw():
-    return nu.let(ops.snapshot(rows()), table)
+    return nu.let(nuspace.atomic(rows()), table)
 
 
-out = nu.Reconcile(
-    ops.snapshot(nu.OnAny(*lives())), nu.let(ops.snapshot(rows()), table), every=60.0
-)
+out = nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw(), every=60.0)
 """
 
 
@@ -166,8 +178,8 @@ PLANE = PlaneSpec(
     "Runs",
     icon="activity",
     description="Live plane runs and their cells, kept live.",
-    meta={"editable": True, "full_width": False},
     cells=(("counts", COUNTS), ("live", LIVE), ("cells", CELLS)),
     group="System",
+    web=WebOptions(editable=True, full_width=False),
     backend="async",
 )

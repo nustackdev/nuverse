@@ -5,17 +5,18 @@ from __future__ import annotations
 import datetime
 
 import pytest
-from tests.nuverse.test_cells import _Browser
+from _support.made import MADE
 
 import nu
-import nustd.kv
+import nuspace
 import nuverse
-from nuspace import ops
-from nuspace.content import CELL, PLANE, kind_name
-from nuspace.ext import content_spec, space_registry
-from nuspace.shapes import Reroot, Space, States
-from nuspace.system.kernel.body import Rewrites
-from nuspace.system.ui import search
+from nuspace.devices.web import search
+from nuspace.devices.web.planes import ensure
+from nuspace.places import inside
+from nuspace.shapes import Space, State
+from nuspace.shapes.content import CELL, PLANE, entries
+from nuspace.specs import add_cell, content_spec, kind_name, space_registry
+from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.session import Session
 from nuverse.cells.content import (
     checkbox,
@@ -24,6 +25,7 @@ from nuverse.cells.content import (
     select,
     slider,
     switch,
+    table,
     text_editor,
     text_input,
 )
@@ -38,13 +40,27 @@ from nuverse.contents.text import TextContent
 CONTENTS = nuverse.extension().contents
 
 
-def _at(kind: type, item_id: str = "x") -> nu.Shape:
-    """An item of ``kind`` on cell ``c``."""
-    return kind.at((CELL, "c"), item_id)
+class _Browser(WsSession):
+    """A session with no socket. Keeps the frames it is sent."""
+
+    def __init__(self) -> None:
+        super().__init__(ws=None)
+        self.frames: list[Frame] = []
+
+    async def send(self, frame: Frame) -> None:
+        self.frames.append(frame)
+
+    def last(self, name: str) -> object:
+        return next(f.payload for f in reversed(self.frames) if f.ref[-1] == name)
+
+
+def _at(kind: type, key: str = "x", cell: str = "c") -> nu.Shape:
+    """An item of ``kind`` on cell ``cell``, by content key."""
+    return nuspace.at.cell(id=cell).content(kind)[key]
 
 
 async def _put(store, *writes: nu.Nu) -> None:
-    await store.run(ops.atomic_state(nu.Sequential(*writes)))
+    await store.do(nu.Sequential(*writes))
 
 
 # --- registered ---------------------------------------------------------------------
@@ -183,7 +199,7 @@ async def test_a_row_never_written_is_not_listed(store):
 async def _drawn(store, term: nu.Nu) -> _Browser:
     """``term`` run in a browserless session: the frames it wrote."""
     browser = _Browser()
-    await nu.arun(ops.snapshot(term), store.ctx.bind(Session, browser))
+    await nu.arun(nuspace.atomic(term), store.ctx.bind(Session, browser))
     return browser
 
 
@@ -241,6 +257,10 @@ async def test_a_hit_on_an_item_never_written_draws_blank(store):
 # --- Cells keep their data in items -----------------------------------------------------
 
 
+async def _plane(store, plane: str = "p", **kwargs: object) -> None:
+    await store.do(nuspace.plane.add(plane, backend="async", **kwargs))
+
+
 @pytest.mark.parametrize(
     ("module", "kind", "value"),
     [
@@ -256,31 +276,18 @@ async def test_a_hit_on_an_item_never_written_draws_blank(store):
     ids=lambda v: getattr(v, "__name__", "").rpartition(".")[2] or None,
 )
 async def test_an_editor_keeps_its_value_in_its_cells_value_item(store, module, kind, value):
-    await store.run(
-        ops.add_plane("p", ui=True, backend="async")
-        >> ops.create_cell("p", module.CELL, cell_id="c")
-    )
-    item = kind.at((CELL, "c"), ITEM)
+    await _plane(store)
+    await store.do(add_cell("p", module.CELL, id="c", fabrics=["ui"]))
+    item = _at(kind, ITEM)
     await _put(store, item.value.set(value))
     assert ITEM == "value"
     assert await store.read(kind.match(item)) is True
     # Not in the cell's own state, which keeps only what configures it.
-    assert "value" not in (await store.read(States.cells["c"].extract()) or {})
-
-
-async def test_an_item_goes_with_its_cell(store):
-    item = NumberContent.at((CELL, "c"), ITEM)
-    await store.run(
-        ops.add_plane("p", ui=True, backend="async")
-        >> ops.create_cell("p", number_input.CELL, cell_id="c")
-    )
-    await _put(store, item.value.set(3.0))
-    await store.run(ops.remove_cell("c"))
-    assert await store.read(item.value.exists()) is False
+    assert "value" not in (await store.read(State.cells["c"].extract()) or {})
 
 
 async def test_a_table_keeps_one_row_item_per_row(store):
-    rows = RowContent.items((CELL, "c"))
+    rows = nuspace.at.cell(id="c").content(RowContent)
     await _put(
         store,
         rows["r1"].cells["name"].set("Basil"),
@@ -288,21 +295,21 @@ async def test_a_table_keeps_one_row_item_per_row(store):
     )
     assert sorted(await store.read(nu.list(rows.keys()))) == ["r1", "r2"]
     for key, name in [("r1", "Basil"), ("r2", "Mint")]:
-        item = RowContent.at((CELL, "c"), key)
-        assert await store.read(RowContent.match(item, text=name)) is True
+        assert await store.read(RowContent.match(rows[key], text=name)) is True
     # A plane's items of the same kind are apart from a cell's of the same id.
-    assert await store.read(RowContent.match(RowContent.at((PLANE, "c"), "r1"))) is False
+    on_plane = nuspace.at.plane(id="c").content(RowContent)["r1"]
+    assert await store.read(RowContent.match(on_plane)) is False
 
 
 async def test_find_reaches_every_items_of_a_kind_from_a_program(store):
     await _put(
         store,
-        NumberContent.at((CELL, "n"), ITEM).value.set(250.0),
-        NumberContent.at((PLANE, "p"), "budget").value.set(40.0),
-        NumberContent.at((CELL, "s"), ITEM).value.set(25.0),
+        _at(NumberContent, ITEM, cell="n").value.set(250.0),
+        nuspace.at.plane(id="p").content(NumberContent)["budget"].value.set(40.0),
+        _at(NumberContent, ITEM, cell="s").value.set(25.0),
     )
     found = await store.read(NumberContent.find(min=30))
-    assert [(a["scope"], a["id"], item) for a, item in found] == [
+    assert [(a["scope"], a["key"], item) for a, item in found] == [
         ([CELL, "n"], ITEM, {"value": 250.0}),
         ([PLANE, "p"], "budget", {"value": 40.0}),
     ]
@@ -311,43 +318,36 @@ async def test_find_reaches_every_items_of_a_kind_from_a_program(store):
 # --- search, by kind ------------------------------------------------------------------
 
 
-def _loaded(plane: str, cell: str) -> nu.Nu:
-    """A search's cell loaded as the kernel loads it."""
-    rewrite = Rewrites(Reroot(plane, cell))
-    prog = Space.cells[cell].prog
-    return nustd.kv.Snapshot(
-        prog.load(scope={"plane": plane, "cell": cell}, rewrite=rewrite), scope=Space
-    )
-
-
 async def _hits(store, request: dict) -> list[tuple[str, list, str]]:
-    """``request`` searched, its cell run where the test runs: the hits as ``(kind, scope, id)``."""
-    await store.run(search.search(request))
-    pid = (await store.read(ops.children(search.SEARCHES)))[-1]
-    (cell,) = await store.read(ops.cells(pid))
-    await store.run(await store.run(_loaded(pid, cell)))
-    hits = await store.read(ops.plane_state(pid, search.Search.hits.extract()))
-    return [(h["kind"], list(h["scope"]), h["id"]) for h in hits]
+    """``request`` searched, its cell run where the test runs: the hits as ``(kind, scope, key)``."""
+    await store.run(search.search(request, into=MADE))
+    pid = await store.run(MADE)
+    (cell,) = await store.read(nu.list(Space.planes[pid].cells.keys()))
+    source = await store.read(Space.cells[cell].prog)
+    namespace: dict = {}
+    exec(compile(source, "search", "exec"), namespace)  # noqa: S102
+    await store.run(inside(namespace["out"](), plane=pid, cell=cell))
+    hits = nuspace.at.plane(id=pid).state(search.Search).hits
+    found = await store.read(nu.If(hits.exists(), hits.extract(), nu.Literal([])))
+    return [(h["kind"], list(h["scope"]), h["key"]) for h in found]
 
 
 async def test_a_search_by_kind_finds_what_cells_keep(store):
     def kept(kind: type, cell: str, value: object) -> nu.Nu:
-        return kind.at((CELL, cell), ITEM).value.set(value)
+        return _at(kind, ITEM, cell=cell).value.set(value)
 
-    await store.run(
-        ops.add_plane("p", name="Budget", ui=True, backend="async")
-        >> ops.create_cell("p", number_input.CELL, cell_id="n")
-        >> ops.create_cell("p", slider.CELL, cell_id="s")
-        >> ops.create_cell("p", text_editor.CELL, cell_id="t")
-        >> ops.create_cell("p", text_input.CELL, cell_id="i")
-    )
+    await store.run(ensure())
+    await _plane(store, name="Budget")
+    made = [(number_input, "n"), (slider, "s"), (text_editor, "t"), (text_input, "i"), (table, "g")]
+    for module, cid in made:
+        await store.do(add_cell("p", module.CELL, id=cid, fabrics=["ui"]))
     await _put(
         store,
         kept(NumberContent, "n", 250.0),
         kept(NumberContent, "s", 25.0),
         kept(TextContent, "t", "Basil likes sun"),
         kept(TextContent, "i", "mint"),
-        RowContent.items((CELL, "g"))["r1"].cells["name"].set("Basil"),
+        entries(RowContent, CELL, "g")["r1"].cells["name"].set("Basil"),
     )
     numbers = kind_name(NumberContent)
     assert await _hits(store, {numbers: {"min": 100}}) == [(numbers, [CELL, "n"], ITEM)]

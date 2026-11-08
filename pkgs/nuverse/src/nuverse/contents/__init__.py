@@ -1,8 +1,8 @@
 """The content kinds nuverse ships: the primitives any cell keeps its findable data in.
 
-One module each: a schema Shape, its :class:`nuspace.Content`, named on the
+One module each: a schema Shape, its :class:`~nuspace.shapes.content.Content`, named on the
 class as the class is less ``Content``, and ``CONTENT``, the
-:class:`nuspace.ContentSpec` it registers with as ``nuverse.<name>``, eg
+:class:`~nuspace.specs.ContentSpec` it registers with as ``nuverse.<name>``, eg
 ``nuverse.Text``. The store keys by that, never by the module.
 
 - :mod:`.text`: :class:`~.text.TextContent`, a string, found by its words.

@@ -13,7 +13,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import CellSpec
+from nuspace.specs import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
@@ -27,7 +27,7 @@ __all__ = ["CELL", "OPTIONS", "Choice", "out"]
 OPTIONS = ["One", "Two", "Three"]
 
 
-class Choice(nuspace.CellState):
+class Choice(nu.Shape):
     """A select cell's state: the options to pick from."""
 
     options = nustd.kv.ListRef.slot(str)
@@ -64,12 +64,12 @@ def _edit(item: Text) -> nu.Nu:
 
 def out() -> nu.Nu:
     """The select and its Config, for as long as the cell runs."""
-    settings = Box.config.settings
+    settings, choice = Box.config.settings, nuspace.here(Choice)
     # Seeded once: emptied by hand, the options stay empty.
-    seed = nu.IfDo(Choice.seeded.is_null(), Choice.options.set(OPTIONS) >> Choice.seeded.set(True))
+    seed = nu.IfDo(choice.seeded.is_null(), choice.options.set(OPTIONS) >> choice.seeded.set(True))
 
     def show_options() -> nu.Nu:
-        options = nu.list(Choice.options).fallback([])
+        options = nu.list(choice.options).fallback([])
         return Box.entry.input.set_options(options) >> settings.options.set(options)
 
     return editor(
@@ -79,9 +79,9 @@ def out() -> nu.Nu:
         first=seed >> show_options(),
         also=(
             nu.ReactEvery(
-                settings.options.on_change(), Choice.options.set(nu.List(settings.options))
+                settings.options.on_change(), choice.options.set(nu.List(settings.options))
             ),
-            nu.ReactEvery(Choice.options.on_change(), show_options()),
+            nu.ReactEvery(choice.options.on_change(), show_options()),
         ),
     )
 
