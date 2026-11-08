@@ -15,7 +15,7 @@ follows the store: a new stream shows up in the picker on its own.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from .cells import BAR, cell
 
@@ -132,7 +132,7 @@ def names():
         moved = lambda k: nu.IfDo(nu.Str(k) != Pick.stream, Pick.stream.set(nu.Str(k)) >> P.stream.choice.set(nu.Str(k)) >> paint())
         return P.stream.choice.set_options(fmt.options(got)) >> nu.let(kept, moved)
 
-    return nu.let(snap(reads.streams()), show)
+    return nu.let(reads.streams(), show)
 
 
 def opened(e):
@@ -189,7 +189,7 @@ def out(plane):
         seeds = dict(stream="", mode=consts.DEFAULT_MODE, count=consts.DEFAULT_COUNT, level=consts.DEFAULT_LEVEL, text="")
         return nu.Frame(Pick, following(root, view), **seeds, read=[], rows=None, tiles=None)
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -198,7 +198,7 @@ PLANE = PlaneSpec(
     "Messages",
     icon="list",
     description="One log stream, read off either end, filtered, live.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("bar", BAR), ("messages", MESSAGES)),
     backend="async",
 )

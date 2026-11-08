@@ -21,9 +21,8 @@ IMPORTS = """\
 import nu
 import nustd.time
 import nustd.ui
-from nuspace import ops
-from nuspace.system.utils import snap
-from nulog.planes.state import Config, at_root, child, following, root_of, saved, config, with_store
+import nuspace
+from nulog.planes.state import child, config, following, root_of, saved, with_store
 from nulog.planes import consts, fmt, reads
 """
 
@@ -62,7 +61,7 @@ def live(s):
         counts = nu.List(reads.streams()).len(), nu.List(reads.series()).len()
         return fmt.status(fmt.look(s["path"]), *counts, s["every"])
 
-    return nu.ForeverDo(nu.let(snap(read()), draw) >> nu.Delay(s["every"]))
+    return nu.ForeverDo(nu.let(read(), draw) >> nu.Delay(s["every"]))
 
 
 def link(plane, root):
@@ -71,7 +70,7 @@ def link(plane, root):
         go = B.config.set(href=nu.Str("/") + nu.Str(p), label="Config")
         return nu.IfDo((nu.Str(p) != "").and_(nu.Str(p) != plane), go)
 
-    return nu.let(snap(child(root, "nulog_config")), to)
+    return nu.let(nuspace.atomic(child(root, "nulog_config")), to)
 
 
 def out(plane):
@@ -79,5 +78,5 @@ def out(plane):
         placed = draw(fmt.status(fmt.look(""), 0, 0, 0.0))
         return placed >> link(plane, root) >> following(root, lambda s: with_store(s, lambda: live(s), off))
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)

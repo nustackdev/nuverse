@@ -17,7 +17,7 @@ __all__ = ["INTRO", "OVERVIEW", "ROOT"]
 INTRO = '''\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nulog.planes.state import child
 
 TEXT = """\\
@@ -44,11 +44,11 @@ class View(nustd.ui.Column):
     links = Links.slot(gap=4)
 
 
-def to(ref, plane, made_by, label):
+def to(ref, plane, spec, label):
     def go(p):
         return nu.IfDo(nu.Str(p) != "", ref.set(href=nu.Str("/") + nu.Str(p), label=label))
 
-    return nu.let(snap(child(plane, made_by)), go)
+    return nu.let(nuspace.atomic(child(plane, spec)), go)
 
 
 def out(plane):
@@ -111,14 +111,14 @@ def live(s):
         both = nu.let(reads.streams(cap), lambda names: nu.let(reads.series(cap), lambda kinds: reads.newest(names, kinds)))
         return nu.let(both, lambda b: fmt.overview(nu.List(b)[0], nu.List(b)[1], nustd.time.time()))
 
-    return View.empty.erase() >> nu.ForeverDo(nu.let(snap(read()), draw) >> nu.Delay(s["every"]))
+    return View.empty.erase() >> nu.ForeverDo(nu.let(read(), draw) >> nu.Delay(s["every"]))
 
 
 def out(plane):
     def follow(root):
         return following(root, lambda s: with_store(s, lambda: live(s), off))
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 

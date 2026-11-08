@@ -15,14 +15,14 @@ import pytest
 
 import nu
 import nulog
+import nuspace
 import nustd.kv
 from nulog import planes
 from nulog.planes import state
-from nuspace import ops
-from nuspace.ext import space_registry
-from nuspace.shapes import Reroot, Space
-from nuspace.system.devices.web.env import session_env
-from nuspace.system.kernel.body import Rewrites
+from nuspace import Space
+from nuspace.devices.web.env import session_env
+from nuspace.places import inside
+from nuspace.specs import SpecCells, space_registry
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_NOTIFY
 from nustd.ui.core.session import Session
@@ -90,16 +90,17 @@ def _write(path: Path, n: int = 5) -> str:
 
 async def _seed(store, path: str = "", root: str = ROOT) -> dict:
     """The Log tree under ``root``, pointed at ``path``; its planes' ids by spec name."""
-    await store.run(ops.create_plane(planes.PLANE, plane_id=root))
+    await store.run(nuspace.specs.add_plane(planes.PLANE, id=root))
     if path:
         await store.run(state.point(root, path))
-    kids = await store.read(ops.children(root))
+    kids = await store.read(nu.list(Space.planes[root].children.keys()))
     names = [c.name for c in planes.PLANE.children]
     return {planes.PLANE.name: root, **dict(zip(names, kids, strict=True))}
 
 
 async def _cells(store, plane: str) -> dict:
-    return {c["name"]: c["id"] for c in await store.read(ops.cell_rows(plane))}
+    """The plane's cells by the names its spec gave them, as the spec kept them."""
+    return await store.read(nuspace.at.plane(id=plane).state(SpecCells).ids.extract())
 
 
 def _run(store, plane: str, cell: str, browser: _Browser) -> asyncio.Task:
@@ -108,15 +109,9 @@ def _run(store, plane: str, cell: str, browser: _Browser) -> asyncio.Task:
     async def go() -> None:
         env = session_env("127.0.0.1:9")("s1")
         load = Space.cells[cell].prog.load(
-            scope={"plane": plane, "cell": cell},
-            rewrite=Rewrites(Reroot(plane, cell), env.rewrite),
+            scope={"plane": plane, "cell": cell}, rewrite=env.rewrite
         )
-        term = nu.Frame(
-            ops.Here,
-            await store.run(nustd.kv.Snapshot(load, scope=Space)),
-            plane=plane,
-            cell=cell,
-        )
+        term = inside(await store.read(load), plane=plane, cell=cell)
         await nu.arun(term, store.ctx.bind(Session, browser))
 
     return asyncio.create_task(go())

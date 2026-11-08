@@ -21,7 +21,7 @@ Needs nuspace: install ``nulog[space]``. ``import nulog`` never loads this.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import config, messages, metrics, overview
 from .cells import BAR
@@ -39,7 +39,7 @@ PLANE = PlaneSpec(
     "Log",
     icon="database",
     description="A nulog store read live: log streams, metric series, and its config.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("intro", overview.INTRO), ("bar", BAR), ("overview", overview.OVERVIEW)),
     children=CHILDREN,
     group="Observe",

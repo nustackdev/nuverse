@@ -1,9 +1,10 @@
 """The config each Log plane keeps, how its children find it, and how each follows it.
 
-The config lives in the root Log plane's state (:class:`Config`), written
-by the Config plane and read by every cell under the root. Each child
-finds the root from its own id (:func:`root_of`): the root made from
-:data:`nulog.planes.PLANE` is itself, a child's root is its parent.
+The config lives in the root Log plane's state, read through
+:class:`Config` (:func:`at_root`), written by the Config plane and read by
+every cell under the root. Each child finds the root from its own id
+(:func:`root_of`): the root made from :data:`nulog.planes.PLANE` is
+itself, a child's root is its parent.
 
 The planes hang as the root makes them::
 
@@ -24,9 +25,7 @@ from typing import TYPE_CHECKING
 import nu
 import nuspace
 import nustd.kv
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace import Space
 
 from . import consts, fmt
 from .store import Opened
@@ -37,9 +36,9 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "MADE_BY",
     "RELOOK",
     "ROOT",
+    "SPEC",
     "Config",
     "at_root",
     "child",
@@ -55,15 +54,15 @@ __all__ = [
 #: The root Plane's name.
 ROOT = "log"
 
-#: What a root records as ``made_by``, the name the space registers it under.
-MADE_BY = f"nulog.{ROOT}"
+#: What a root records as ``spec``, the name the space registers it under.
+SPEC = f"nulog.{ROOT}"
 
 #: Seconds between looks at a path with no store behind it yet.
 RELOOK = 2.0
 
 
-class Config(nuspace.PlaneState):
-    """What the Config plane saves, in the root's state. Unset slots read as the defaults.
+class Config(nu.Shape):
+    """What the Config plane saves, in the root's state (:func:`at_root`). Unset slots read as the defaults.
 
     ``saved`` counts the saves: the cells follow it, so one save moves them
     once, whatever it changed.
@@ -77,38 +76,34 @@ class Config(nuspace.PlaneState):
 
 
 def root_of(plane: nu.StrArg) -> nu.Str:
-    """The Log root ``plane`` belongs to: itself, or its parent. Bare read."""
-    made_by = Space.planes[plane].props.made_by.fallback("")
-    return nu.Str(nu.If(made_by == MADE_BY, plane, ops.parent(plane)))
+    """The Log root ``plane`` belongs to: itself, or its parent. Bare read, 2 keys."""
+    row = Space.planes[plane]
+    return nu.Str(nu.If(row.spec.fallback("") == SPEC, plane, row.parent))
 
 
-def at_root(root: nu.StrArg, term: nu.Nu) -> nu.Nu:
-    """``term`` over :class:`Config`, landed on the root's state. Bare."""
-    return ops.plane_state(root, term)
+def at_root(root: nu.StrArg) -> Config:
+    """The root's config: its plane state read through :class:`Config`. Builds refs, reads nothing."""
+    return nuspace.at.plane(id=root).state(Config)
 
 
 def config(root: nu.StrArg) -> nu.Dict:
     """Every setting, the defaults where nothing is saved: ``{path, every, count, window, saved}``. Bare."""
-    s = Config
-    return nu.Dict(
-        at_root(
-            root,
-            nu.Dict.of(
-                path=s.path.fallback(""),
-                every=s.every.fallback(consts.DEFAULT_EVERY),
-                count=s.count.fallback(consts.DEFAULT_COUNT),
-                window=s.window.fallback(consts.DEFAULT_WINDOW),
-                saved=s.saved.fallback(0),
-            ),
-        )
+    s = at_root(root)
+    return nu.Dict.of(
+        path=s.path.fallback(""),
+        every=s.every.fallback(consts.DEFAULT_EVERY),
+        count=s.count.fallback(consts.DEFAULT_COUNT),
+        window=s.window.fallback(consts.DEFAULT_WINDOW),
+        saved=s.saved.fallback(0),
     )
 
 
 def saved(root: nu.StrArg, **fields: nu.Nu | object) -> nu.Nu:
     """Save ``fields`` into the root's config and move ``saved``, in one commit."""
-    writes = [getattr(Config, k).set(v) for k, v in fields.items()]
-    moved = Config.saved.set(Config.saved.fallback(0) + 1)
-    return ops.atomic_state(at_root(root, nu.Sequential(*writes, moved)))
+    s = at_root(root)
+    writes = [getattr(s, k).set(v) for k, v in fields.items()]
+    moved = s.saved.set(s.saved.fallback(0) + 1)
+    return nuspace.atomic(nu.Sequential(*writes, moved))
 
 
 def point(root: nu.StrArg, path: nu.StrArg) -> nu.Nu:
@@ -122,26 +117,34 @@ def following(root: nu.StrArg, body: Callable[[nu.Dict], nu.Nu]) -> nu.Nu:
     The config is read into a frame and the body raced against a save:
     a save cancels the body (closing any store it opened) and the loop comes
     round with what was saved. A body that ends early waits for the save
-    parked.
+    parked. The wait for a save re-checks, so a missed notification moves
+    the cells late, never not at all.
     """
+    count = at_root(root).saved
 
     def turn(held: nu.ObjectRef) -> nu.Nu:
         now = nu.Dict(held)
-        moves = snap(at_root(root, Config.saved.on_change()))
         moved = nu.WaitUntil(
-            moves, nu.Int(snap(at_root(root, Config.saved.fallback(0)))) != now["saved"]
+            nuspace.atomic(count.on_change()),
+            nu.Int(nuspace.atomic(count.fallback(0))) != now["saved"],
+            after=nu.RECHECK_AFTER,
+            every=nu.RECHECK_EVERY,
         )
         return nu.Race(body(now) >> nu.Park(), moved)
 
-    return nu.ForeverDo(nu.let(snap(config(root)), turn))
+    return nu.ForeverDo(nu.let(nuspace.atomic(config(root)), turn))
 
 
-def child(root: nu.StrArg, made_by: str) -> nu.Str:
-    """The root's child plane made from the spec named ``made_by``, ``""`` when there is none. Bare read."""
+def child(root: nu.StrArg, spec: str) -> nu.Str:
+    """The root's child plane made from the spec named ``spec``, ``""`` when there is none. Bare read.
+
+    Walks the root's own children, three as the root makes them: the spec
+    keeps no ids of the child planes it made.
+    """
     found = (
-        ops.children(root)
-        .iter()
-        .filter(lambda p: Space.planes[nu.Str(p)].props.made_by.fallback("") == made_by)
+        Space.planes[root]
+        .children.iter()
+        .filter(lambda p: Space.planes[nu.Str(p)].spec.fallback("") == spec)
     )
     return nu.Str(nu.str(found.first(default="")))
 

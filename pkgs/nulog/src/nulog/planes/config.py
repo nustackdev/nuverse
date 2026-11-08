@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from .cells import BAR, cell
 
@@ -63,7 +63,7 @@ def show(root):
             >> K.window.choice.set(s["window"]) >> check(s["path"])
         )
 
-    return nu.let(snap(config(root)), put)
+    return nu.let(nuspace.atomic(config(root)), put)
 
 
 def save(root):
@@ -87,7 +87,7 @@ def out(plane):
     def follow(root):
         return placed() >> show(root) >> nu.ReactEvery(View.go.save.on_click(), save(root))
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -115,7 +115,7 @@ PLANE = PlaneSpec(
     "Config",
     icon="cog",
     description="Which nulog store this Log plane reads, and how often.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("bar", BAR), ("config", CONFIG), ("about", ABOUT)),
     backend="async",
 )

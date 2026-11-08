@@ -8,7 +8,7 @@ store is opened there for the body and closed after.
 
 The store is bound under the nulog root shapes as tags (:class:`Messages`,
 :class:`Metrics`), the way a space's own stores are bound under ``Space``
-and ``States``: kv refs find their navigator by root shape, so a read of
+and ``State``: kv refs find their navigator by root shape, so a read of
 ``Messages.streams`` lands here and a space's own reads never do. Brackets
 over it name the tag too: ``nustd.kv.Snapshot(read, scope=Messages)``.
 

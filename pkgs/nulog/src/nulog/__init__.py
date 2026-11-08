@@ -68,7 +68,7 @@ from .presets import store, store_ro
 
 
 if TYPE_CHECKING:
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
 
 __version__ = "0.2.4"
@@ -106,7 +106,7 @@ __all__ = [
 
 def extension() -> Extension:
     """The Log planes, as one nuspace extension."""
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
     from .planes import PLANE
 

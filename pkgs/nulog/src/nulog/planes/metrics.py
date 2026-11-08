@@ -13,7 +13,7 @@ picker. The series list follows the store, as the stream list does.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from .cells import BAR, cell
 
@@ -91,7 +91,7 @@ def names():
         moved = lambda k: nu.IfDo(nu.Str(k) != Pick.series, Pick.series.set(nu.Str(k)) >> P.series.choice.set(nu.Str(k)) >> paint())
         return P.series.choice.set_options(fmt.options(got)) >> nu.let(kept, moved)
 
-    return nu.let(snap(reads.series()), show)
+    return nu.let(reads.series(), show)
 
 
 def picked():
@@ -127,7 +127,7 @@ def out(plane):
     def follow(root):
         return nu.Frame(Pick, following(root, view), series="", window=consts.DEFAULT_WINDOW, points=None, tiles=None)
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -136,7 +136,7 @@ PLANE = PlaneSpec(
     "Metrics",
     icon="chart-line",
     description="One metric series over a window, charted from a sample, live.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("bar", BAR), ("metrics", METRICS)),
     backend="async",
 )
