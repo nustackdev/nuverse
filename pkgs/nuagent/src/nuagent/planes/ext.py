@@ -11,7 +11,7 @@ cells the agent adds are its own source, not shims.
 from __future__ import annotations
 
 import nu
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
 __all__ = ["COMPOSER", "PLANE", "said_prog"]
@@ -36,7 +36,7 @@ PLANE = PlaneSpec(
     "Chat",
     icon="messages-square",
     description="A conversation with an agent that answers in Nu and acts on the space.",
-    meta={"editable": True, "full_width": False},
+    web=WebOptions(editable=True, full_width=False),
     cells=(("composer", COMPOSER),),
     group="Agents",
     backend="async",

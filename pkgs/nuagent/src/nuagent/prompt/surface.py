@@ -141,10 +141,10 @@ def _declaration(record: Record) -> list[str]:
 
 
 def _base(owner: type) -> str:
-    """The Shape class ``owner`` derives from, spelled from its package: ``nuspace.PlaneState``.
+    """The Shape class ``owner`` derives from, spelled from its package: ``nu.Shape``, or ``pkg.Base``.
 
-    The base is part of what the model copies: a nuspace ``PlaneState`` lands
-    in the space's store, a bare ``nu.Shape`` of kv Refs lands nowhere.
+    The base is part of what the model copies: a Shape with a base of its
+    own behaves as that base does, so the model declares it the same.
     """
     base = owner.__bases__[0]
     if base is Shape:

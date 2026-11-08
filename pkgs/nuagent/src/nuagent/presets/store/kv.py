@@ -7,13 +7,17 @@ model's own Shapes, and :class:`KVRun` it ends the run through. They may be
 one sqlite file. That is safe because no bracket is ever held across the
 backend's answer or the program's run, so the two never wait on each other.
 
-**The brackets are placed here, not by the loop.** ``nustd.kv.Atomic`` picks
-a ``Snapshot`` or a ``Transaction`` from its body's own writes, at build
-time. :meth:`KVStore.bracket` wraps the loop's short session steps on
-:class:`KVSession`'s store, :meth:`KVStore.rewrite` wraps world terms on the
-untagged one. The model's program is a world term the loop cannot see until
-it is built, so it reaches ``rewrite`` through ``LoadNu``'s own ``rewrite``
-slot: built first, bracketed after, so ``Atomic`` sees its writes.
+**The brackets are placed here, not by the loop.** Both pick a ``Snapshot``
+or a ``Transaction`` from the term's own writes, at build time.
+:meth:`KVStore.bracket` wraps the loop's short session steps with
+``nustd.kv.atomic``, on :class:`KVSession`'s store, the one its refs are
+rooted at. :meth:`KVStore.rewrite` wraps world terms with ``nustd.kv.Atomic``
+on the untagged store as a whole: the world is any number of root Shapes
+(the model's own, :class:`KVRun`) on one untagged navigator, and a program
+writing two of them is still one commit there. The model's program is a
+world term the loop cannot see until it is built, so it reaches ``rewrite``
+through ``LoadNu``'s own ``rewrite`` slot: built first, bracketed after, so
+the bracket sees its writes.
 
 **One bracket per program.** The model's whole program runs in one
 bracket. A program that writes and also waits on something slow (a model
@@ -95,8 +99,8 @@ class KVStore:
 
     @staticmethod
     def bracket(body: Nu) -> Nu:
-        """``body`` in a Snapshot or a Transaction on the session's store, by its writes."""
-        return nustd.kv.Atomic(body, scope=KVSession)
+        """``body`` in a Snapshot or a Transaction on the session's store, by its writes. One commit."""
+        return nustd.kv.atomic(body)
 
     @staticmethod
     def rewrite(term: Nu) -> Nu:

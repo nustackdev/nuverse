@@ -1,8 +1,8 @@
-"""What a conversation keeps: all of it in its engine plane's own state.
+"""What a conversation keeps: all of it in its engine plane's own state, and the page's link to it.
 
 One engine per conversation, and everything the conversation is lives in the
-engine plane's ``PlaneState``, ``States.planes[engine].state``. Three Shapes
-land there, side by side, addressed by slot name:
+engine plane's state, ``State.planes[engine]``, read through two Shapes side
+by side, addressed by slot name (``nuspace.at.plane(id=engine).state(Chat)``):
 
 - :class:`Chat`: the page's half (the inbox the person writes) and the
   engine's (where it is, what each turn did), and the loop's session.
@@ -10,15 +10,19 @@ land there, side by side, addressed by slot name:
   so the prompt shows the model that slot and nothing else.
 
 The page writes ``inbox`` and nothing else. The engine writes the rest, and
-the model's program writes ``done``. A model ``PlaneState`` of its own lands
-in the same state too: a program running on the engine is a cell of it.
+the model's program writes ``done``. A model Shape of its own read through
+``nuspace.at.plane`` lands in the same state too: a program running on the
+engine is a cell of it.
+
+The page keeps one more Shape in its own plane state, :class:`Engine`: the
+ids of its engine, the engine's cell and its reaction, minted once and
+read by every cell on the page.
 """
 
 from __future__ import annotations
 
 import nu
 import nustd.kv
-from nuspace import PlaneState
 
 
 __all__ = [
@@ -29,6 +33,7 @@ __all__ = [
     "STOPPED",
     "THINKING",
     "Chat",
+    "Engine",
     "Outcome",
     "Run",
 ]
@@ -62,8 +67,8 @@ class Outcome(nu.Shape):
     line = nustd.kv.IntRef.slot()  #: source line of a ``construct`` failure, when it has one
 
 
-class Chat(PlaneState):
-    """One conversation: what the person said, where the engine is, and what each turn did.
+class Chat(nu.Shape):
+    """One conversation, in the engine's plane state: what the person said, where the engine is, what each turn did.
 
     The last four slots are the loop's session (:class:`nuagent.core.Store`).
     """
@@ -80,7 +85,24 @@ class Chat(PlaneState):
     outcome = nustd.kv.ShapeRef.slot(Outcome)
 
 
-class Run(PlaneState):
-    """The run itself: the model sets ``done`` and the engine moves on after that turn."""
+class Run(nu.Shape):
+    """The run itself, in the engine's plane state: ``nuspace.at.plane.state(Run).done.set(True)`` ends it.
+
+    The model sets ``done`` and the engine moves on after that turn.
+    """
 
     done = nustd.kv.BoolRef.slot()
+
+
+class Engine(nu.Shape):
+    """A chat page's engine, in the page's own plane state: ``nuspace.at.plane(id=page).state(Engine)``.
+
+    ``plane`` and ``cell`` are minted once, the first time the page makes
+    sure of its engine, and never change. ``reaction`` is the reaction that
+    runs the engine on its inbox, kept so the page adds one only when it
+    has none.
+    """
+
+    plane = nustd.kv.StrRef.slot()
+    cell = nustd.kv.StrRef.slot()
+    reaction = nustd.kv.StrRef.slot()

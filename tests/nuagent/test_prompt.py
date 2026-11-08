@@ -131,6 +131,16 @@ def test_the_catalogue_takes_a_fabric_the_run_binds():
     assert "catalogue" not in names(sections(modules=()))
 
 
+def test_the_catalogue_spells_an_attribute_module_as_a_program_writes_it():
+    # nuspace.plane is the op module nuspace sets as an attribute, not an importable name.
+    text = prompt.catalogue("nuspace.plane").render()
+    assert "## nuspace.plane" in text
+    assert "  nuspace.plane.add " in text
+    assert "nuspace.ops" not in text
+    with pytest.raises(ModuleNotFoundError):
+        prompt.catalogue("nuspace.no_such").render()
+
+
 # --- surface -----------------------------------------------------------------
 
 

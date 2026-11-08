@@ -85,14 +85,33 @@ def render(*modules: str | ModuleType) -> str:
     return "\n\n".join([HEAD, *(_module(m) for m in modules or MODULES)])
 
 
+def _found(module: str | ModuleType) -> tuple[str, ModuleType]:
+    """The module and the name a program writes it by.
+
+    A dotted name that is a module attribute rather than an importable
+    module (``"nuspace.plane"``, which ``nuspace`` sets to its op module)
+    keeps that spelling: it is how a program writes it.
+    """
+    if isinstance(module, ModuleType):
+        return module.__name__, module
+    try:
+        return module, importlib.import_module(module)
+    except ModuleNotFoundError:
+        head, _, attr = module.rpartition(".")
+        found = getattr(importlib.import_module(head), attr, None) if head else None
+        if not isinstance(found, ModuleType):
+            raise
+        return module, found
+
+
 def _module(module: str | ModuleType) -> str:
-    found = module if isinstance(module, ModuleType) else importlib.import_module(module)
-    lines = [f"## {found.__name__}"]
+    name, found = _found(module)
+    lines = [f"## {name}"]
     for title, listed in GROUPS:
         records = [r for r in listed(found) if not _host(r)]
         if records:
             lines.append(f"\n{title}:")
-            lines.extend(_line(found.__name__, r) for r in records)
+            lines.extend(_line(name, r) for r in records)
     return "\n".join(lines)
 
 

@@ -1,9 +1,10 @@
 """The Chat page: a conversation with an agent, where the page's cells are the conversation.
 
-The page keeps nothing of its own: every cell on it reads the engine's plane
-state (:class:`~.state.Chat`), and they run while a tab has the page open.
-The page starts as one cell, the composer, and the conversation grows above
-it, a cell at a time:
+The page keeps nothing of the conversation: every cell on it reads the
+engine's plane state (:class:`~.state.Chat`), and they run while a tab has
+the page open. The page's own state holds only its engine's ids
+(:class:`~.state.Engine`). The page starts as one cell, the composer, and
+the conversation grows above it, a cell at a time:
 
 - ``composer``: a box, Send and Stop, and the status by them (thinking,
   running, stopped or error, nothing while idle). Its first run makes sure
@@ -14,6 +15,9 @@ it, a cell at a time:
 - ``answer``: what the agent adds itself (:func:`answer`), from its own
   program: any cell, a few lines of Markdown or a live table. It may change
   or remove the ones it added before.
+
+A new cell goes above the composer, which the page finds by the id its spec
+kept under ``composer`` (:class:`~nuspace.specs.SpecCells`), never by name.
 
 The terms the cells use are here too, for anything else that drives a chat:
 :func:`ensure`, :func:`tell`, :func:`say`, :func:`stop`, and :func:`answer`
@@ -26,22 +30,23 @@ from typing import TYPE_CHECKING
 
 import nu
 import nu.prog
+import nuspace
 import nustd.ui
 from nu.lang import ScalarQuery
 from nuagent.protocol import CONSTRUCT, NO_CODE, OK, RUNTIME
-from nuspace import ops
-from nuspace.ops.kernel import plane_live
-from nuspace.ops.utils import MintId
-from nuspace.shapes import Reroot
-from nuspace.system.devices.web.shell import Shell
-from nuspace.system.devices.web.utils import CellRoot
-from nuspace.system.services import enable_react, up_plane
-from nuspace.system.utils import snap
+from nuspace import Space
+from nuspace.devices.web.shell import Shell
+from nuspace.devices.web.utils import CellRoot
+from nuspace.ops.interactions import Fabrics
+from nuspace.places import Here
+from nuspace.specs import SpecCells
+from nuspace.system import reactions
+from nuspace.utils import MintId
 
 from . import settings
-from .engine import IMPORTS, MADE_BY, SOURCE, engine_cell, engine_of, inbox_change, pending
+from .engine import IMPORTS, SOURCE, SPEC, conversation, engine_of, inbox_change, pending
 from .ext import said_prog
-from .state import ERROR, IDLE, RUNNING, STOPPED, THINKING, Chat
+from .state import ERROR, IDLE, RUNNING, STOPPED, THINKING, Chat, Engine
 
 
 if TYPE_CHECKING:
@@ -51,8 +56,8 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "ANSWER_BY",
-    "SAID_BY",
+    "ANSWER_SPEC",
+    "SAID_SPEC",
     "Builds",
     "answer",
     "composer",
@@ -64,13 +69,13 @@ __all__ = [
 ]
 
 
-#: What a cell the agent adds records as ``made_by``.
-ANSWER_BY = "nuagent.answer"
+#: What a cell the agent adds records as ``spec``.
+ANSWER_SPEC = "nuagent.answer"
 
-#: What a cell a message adds records as ``made_by``.
-SAID_BY = "nuagent.said"
+#: What a cell a message adds records as ``spec``.
+SAID_SPEC = "nuagent.said"
 
-#: The composer cell's name: messages and answers go on the page above it.
+#: The composer cell's name in the spec: messages and answers go on the page above it.
 BOX = "composer"
 
 #: The pill's tone per status shown.
@@ -88,48 +93,76 @@ TITLES = {
 }
 
 
+def _linked(page: nu.StrArg) -> Engine:
+    """The page's engine ids, in its own plane state. Builds refs, reads nothing."""
+    return nuspace.at.plane(id=page).state(Engine)
+
+
 def ensure(page: nu.StrArg) -> nu.Nu:
     """The page's engine, its cell, its lists, its reaction and the agent settings, each made when missing.
 
-    Idempotent, and safe from two tabs at once: the engine and its cell
-    have fixed ids, and the reaction is :func:`enable_react`'s, which is
-    idempotent itself.
+    Idempotent, in a row of short commits:
+
+    1. The engine's and its cell's ids, minted once into the page's state
+       (:class:`~.state.Engine`). Two tabs at once agree on them: the
+       second finds the first one's.
+    2. The engine plane under the page, with its one cell, when there is
+       none at that id. The web never shows it.
+    3. The conversation's lists, made with it: the page and the engine read
+       them from the start.
+    4. The agent settings (:func:`.settings.ensure`).
+    5. The reaction on the engine's inbox, added when the page keeps none,
+       its id kept in the page's state. Two tabs opening a new chat at the
+       same moment can both add one.
+    6. A run of the engine, when a message waits and none is live: a
+       reaction fires on changes only, so messages sent while the space was
+       closed, or before it bound, wait for a run started here.
 
     Args:
         page: The chat page.
     """
-    engine = engine_of(page)
-    cell = engine_cell(engine)
-    plane = ops.add_plane(
-        engine, backend="async", name="engine", parent=page, ui=False, made_by=MADE_BY
-    )
-    made = nu.IfDo(snap(ops.plane_exists(engine).not_()), plane) >> nu.IfDo(
-        snap(ops.cell_exists(cell).not_()),
-        ops.add_cell(engine, SOURCE, cell_id=cell, name="engine"),
-    )
-    # The conversation's lists, made with it: the page and the engine read them from the start.
-    lists = Chat.inbox.init(nu.List.create()) >> Chat.turns.init(nu.List.create())
-    lists = lists >> Chat.messages.init(nu.List.create())
-    kept = ops.atomic_state(ops.plane_state(engine, lists))
-    reaction = enable_react(inbox_change(engine), engine, imports=IMPORTS)
-    # A reaction fires on changes only: messages sent while the space was
-    # closed, or before it bound, wait for a run started here.
-    idle = nu.List(snap(plane_live(engine))).len() == 0
-    waiting = nu.Bool(snap(ops.plane_state(engine, pending())))
-    caught_up = nu.IfDo(nu.And(idle, waiting), up_plane(engine))
-    return made >> kept >> settings.ensure() >> reaction >> caught_up
+    linked = _linked(page)
+    claimed = nuspace.atomic(linked.plane.init(MintId("p")) >> linked.cell.init(MintId("c")))
+
+    def made(ids: nu.ObjectRef) -> nu.Nu:
+        got = nu.Dict(ids)
+        engine, cell = nu.Str(got["plane"]), nu.Str(got["cell"])
+        plane = nuspace.plane.add(engine, parent=page, name="engine", backend="async", spec=SPEC)
+        add = plane >> nuspace.cell.add(engine, SOURCE, id=cell, name="engine", fabrics=[])
+        built = nuspace.atomic(nu.IfDo(nuspace.plane.exists(engine, removed=True).not_(), add))
+        c = conversation(engine)
+        lists = c.inbox.init(nu.List.create()) >> c.turns.init(nu.List.create())
+        lists = nuspace.atomic(lists >> c.messages.init(nu.List.create()))
+        reacting = reactions.add(
+            inbox_change(engine), engine, imports=IMPORTS, into=linked.reaction
+        )
+        reaction = nu.IfDo(nuspace.atomic(linked.reaction.exists().not_()), reacting)
+        waiting = nuspace.plane_run.any_live(engine).not_().and_(pending(engine))
+
+        def caught_up(kept: nu.ObjectRef) -> nu.Nu:
+            return nu.IfDo(nuspace.atomic(waiting), reactions.up_plane(engine, nu.Str(kept)))
+
+        up = nu.let(nuspace.atomic(linked.reaction), caught_up)
+        return built >> lists >> settings.ensure() >> reaction >> up
+
+    read = nuspace.atomic(nu.Dict.of(plane=linked.plane, cell=linked.cell))
+    return claimed >> nu.let(read, made)
 
 
 def say(engine: nu.StrArg, text: nu.StrArg) -> nu.Nu:
     """``text`` into the engine's inbox: its reaction runs it. One commit."""
-    return ops.atomic_state(ops.plane_state(engine, Chat.inbox.append(text)))
+    return nuspace.atomic(conversation(engine).inbox.append(text))
 
 
-def _above(page: nu.StrArg) -> nu.Int:
-    """Where a new cell goes on the page: the composer's place, the end when it has none. Bare read."""
-    cells = ops.cells(page)
-    box = ops.cell_named(page, BOX)
-    return nu.Int(nu.If(cells.contains(box), cells.index(box), cells.len()))
+def _above(page: nu.StrArg, add: Callable[..., nu.Nu]) -> nu.Nu:
+    """``add(before=composer)`` while the composer is a live cell of the page, else ``add()``, the end. Bare.
+
+    The composer is the id the page's spec kept under :data:`BOX`, one read.
+    """
+    box = nuspace.at.plane(id=page).state(SpecCells).ids[BOX]
+    row = Space.cells[box]
+    on_page = (row.plane.fallback("") == page).and_(row.removed_at.exists().not_())
+    return nu.IfDo(on_page, add(before=box), add())
 
 
 def tell(page: nu.StrArg, text: nu.StrArg) -> nu.Nu:
@@ -144,12 +177,16 @@ def tell(page: nu.StrArg, text: nu.StrArg) -> nu.Nu:
     engine = engine_of(page)
 
     def placed(at: nu.ObjectRef) -> nu.Nu:
-        cell = ops.add_cell(
-            page, said_prog(nu.Int(at)), name="said", index=_above(page), made_by=SAID_BY
-        )
-        return cell >> say(engine, text)
+        prog = said_prog(nu.Int(at))
 
-    return nu.let(snap(ops.plane_state(engine, Chat.inbox.len())), placed)
+        def add(**where: nu.StrArg) -> nu.Nu:
+            return nuspace.cell.add(
+                page, prog, name="said", spec=SAID_SPEC, fabrics=["ui"], **where
+            )
+
+        return nuspace.atomic(_above(page, add)) >> say(engine, text)
+
+    return nu.let(nuspace.atomic(conversation(engine).inbox.len()), placed)
 
 
 def stop(engine: nu.StrArg) -> nu.Nu:
@@ -159,10 +196,12 @@ def stop(engine: nu.StrArg) -> nu.Nu:
     ends on its own, then each live run interrupted (killed after the grace
     when a call will not let go). What it said so far stays.
     """
-    handled = Chat.cursor.set(Chat.inbox.len()) >> Chat.status.set(STOPPED)
-    live = snap(plane_live(engine))
-    stopping = nu.ForEachDo(live, lambda run: ops.plane_stop(nu.Str(run)))
-    return ops.atomic_state(ops.plane_state(engine, handled)) >> stopping
+    c = conversation(engine)
+    handled = c.cursor.set(c.inbox.len()) >> c.status.set(STOPPED)
+    ids = Space.exec.indexes.live.plane_to_plane_runs[engine].ids
+    live = nuspace.atomic(nu.If(ids.exists(), nu.list(ids.keys()), nu.Literal([])))
+    stopping = nu.ForEachDo(live, lambda run: nuspace.atomic(nuspace.plane_run.stop(nu.Str(run))))
+    return nuspace.atomic(handled) >> stopping
 
 
 # --- answer ---------------------------------------------------------------------
@@ -175,14 +214,14 @@ _BRACE = nu.prog.PyBrace()
 def _stands(built: object, plane: str, cell: str) -> bool:
     """True when what construction gave back is a term the page would run. Raises when not.
 
-    Rewritten the way the kernel rewrites a page cell (rerooted, then its ui
-    under the cell's node on the viewer), then compiled and validated, as
-    the kernel's ``Eval`` does before it drives it.
+    Rewritten the way a tab's session rewrites a page cell (its ui under the
+    cell's node on the viewer), then compiled and validated, as the
+    kernel's ``Eval`` does before it drives it.
     """
     if not isinstance(built, nu.Nu):
         msg = f"the answer does not build: {built}"
         raise ValueError(msg)
-    term = CellRoot(Shell.viewer, cell)(Reroot(plane, cell)(built))
+    term = CellRoot(Shell.viewer, cell)(built)
     try:
         nu.validate(nu.compile(term))
     except Exception as err:
@@ -238,29 +277,33 @@ def answer(source: nu.StrArg, *, into: nu.Ref | None = None) -> nu.Nu:
     Called from the agent's program, which runs as the engine's cell: the
     page is the engine's parent. The source is built first, the way the page
     will build it, and one that does not build raises (``ValueError``),
-    nothing added. Then it is written as one commit, ``made_by``
-    :data:`ANSWER_BY`, and runs on the page like any cell while a tab has it
-    open.
+    nothing added. Then its fabrics are worked out from that build, and it
+    is written as one commit, ``spec`` :data:`ANSWER_SPEC`. It runs on the
+    page like any cell while a tab has it open.
 
     Args:
         source: The cell's source: a module with ``out()``, as any cell.
-        into: Set to the new cell's id, for a program that edits it after.
+        into: Set to the new cell's id once it is written, its own commit,
+            for a program that edits it after.
     """
-    page = snap(ops.parent(ops.Here.plane))
+    page = nuspace.atomic(Space.planes[Here.plane].parent)
 
     def placed(on: nu.ObjectRef) -> nu.Nu:
+        p = nu.Str(on)
+
         def built(minted: nu.ObjectRef) -> nu.Nu:
             cid = nu.Str(minted)
-            add = ops.add_cell(
-                nu.Str(on),
-                source,
-                cell_id=cid,
-                name="answer",
-                index=_above(nu.Str(on)),
-                made_by=ANSWER_BY,
-                into=into,
-            )
-            return nu.IfDo(Builds(source, nu.Str(on), cid), add)
+
+            def written(used: nu.ObjectRef) -> nu.Nu:
+                def add(**where: nu.StrArg) -> nu.Nu:
+                    return nuspace.cell.add(
+                        p, source, id=cid, name="answer", spec=ANSWER_SPEC, fabrics=used, **where
+                    )
+
+                made = nuspace.atomic(_above(p, add))
+                return made if into is None else made >> nuspace.atomic(into.set(cid))
+
+            return nu.IfDo(Builds(source, p, cid), nu.let(Fabrics(source, p, cid), written))
 
         return nu.let(MintId("c"), built)
 
@@ -306,17 +349,17 @@ def _step(pair: nu.Nu) -> nu.Nu:
     )
 
 
-def _trace(at: nu.IntArg) -> nu.Nu:
-    """Message ``at`` as plain data: its text, its turns, and whether it is handled. Bare, on the engine's state.
+def _trace(c: Chat, at: nu.IntArg) -> nu.Nu:
+    """Message ``at`` as plain data: its text, its turns, and whether it is handled. Bare, on the conversation ``c``.
 
     The text is ``""`` until it lands: the cell is on the page before the
     message is in the inbox.
     """
-    mine = Chat.turns.iter().enumerate().filter(lambda p: nu.Dict(nu.Tuple(p)[1])["at"] == at)
+    mine = c.turns.iter().enumerate().filter(lambda p: nu.Dict(nu.Tuple(p)[1])["at"] == at)
     return nu.Dict.of(
-        text=nu.If(Chat.inbox.len() > at, Chat.inbox[at], ""),
+        text=nu.If(c.inbox.len() > at, c.inbox[at], ""),
         steps=mine.map(_step).to_list(),
-        done=Chat.cursor.fallback(0) > at,
+        done=c.cursor.fallback(0) > at,
     )
 
 
@@ -331,8 +374,11 @@ def _title(steps: nu.List, done: nu.Nu) -> nu.Str:
 
 
 def said(page: nu.StrArg, at: nu.IntArg) -> nu.Nu:
-    """The said cell: message ``at``, and the trace of the agent's work on it, drawn again as it grows."""
-    engine = engine_of(page)
+    """The said cell: message ``at``, and the trace of the agent's work on it, drawn again as it grows.
+
+    A level flow with re-checks: a missed notification redraws late, never
+    leaves the trace stale.
+    """
     trace = Message.trace
 
     def turn(t: nu.Nu) -> nu.Nu:
@@ -351,32 +397,36 @@ def said(page: nu.StrArg, at: nu.IntArg) -> nu.Nu:
         text = Message.said.bubble.text.set(s["text"])
         return text >> trace.set(title=_title(steps, s["done"])) >> nu.ForEachDo(steps, turn)
 
-    moves = [Chat.inbox.on_change(), Chat.turns.on_change(), Chat.cursor.on_change()]
-    changes = [ops.plane_state(engine, m) for m in moves]
-    return nu.Reconcile(
-        snap(nu.OnAny(*changes)), nu.let(snap(ops.plane_state(engine, _trace(at))), draw)
-    )
+    def follow(engine: nu.ObjectRef) -> nu.Nu:
+        c = conversation(nu.Str(engine))
+        changes = [c.inbox.on_change(), c.turns.on_change(), c.cursor.on_change()]
+        return nu.Reconcile(
+            nuspace.atomic(nu.OnAny(*changes)),
+            nu.let(nuspace.atomic(_trace(c, at)), draw),
+            after=nu.RECHECK_AFTER,
+            every=nu.RECHECK_EVERY,
+        )
+
+    return nu.let(nuspace.atomic(engine_of(page)), follow)
 
 
 # --- status, drawn by the composer ----------------------------------------------------------------------
 
 
-def _shown() -> nu.Nu:
-    """The status as the page shows it. Bare, on the engine's state.
+def _shown(c: Chat) -> nu.Nu:
+    """The status as the page shows it. Bare, on the conversation ``c``.
 
     Thinking reads as running while the latest reply's program runs: the
     conversation ends on the model's message until the observation lands.
     """
-    kept = Chat.status.fallback(IDLE)
-    last = nu.If(
-        Chat.messages.len() > 0, nu.Dict(Chat.messages.last_elem()).get_item("role", ""), ""
-    )
+    kept = c.status.fallback(IDLE)
+    last = nu.If(c.messages.len() > 0, nu.Dict(c.messages.last_elem()).get_item("role", ""), "")
     running = (kept == THINKING).and_(nu.Str(last) == "assistant")
     shown = nu.Str(nu.If(running, RUNNING, kept))
     return nu.Dict.of(
         status=shown,
         tone=nu.Dict(TONES).get_item(shown, "neutral"),
-        error=nu.If(kept == ERROR, Chat.error.fallback(""), ""),
+        error=nu.If(kept == ERROR, c.error.fallback(""), ""),
     )
 
 
@@ -400,9 +450,10 @@ def composer(page: nu.StrArg) -> nu.Nu:
 
     Send puts the message on the page and in the inbox (:func:`tell`). The
     status pill shows while the engine works and is gone while idle, Stop
-    is live only while it thinks, and a failure shows above the box.
+    is live only while it thinks, and a failure shows above the box. The
+    status is a level flow re-checked every few seconds, so a missed
+    notification shows late, never not at all.
     """
-    engine = engine_of(page)
     box, actions = Composer.text, Composer.actions
 
     def sent(typed: nu.Nu) -> nu.Nu:
@@ -418,19 +469,20 @@ def composer(page: nu.StrArg) -> nu.Nu:
         idle = (shown != THINKING).and_(shown != RUNNING)
         return pill >> error >> actions.stop.set_disabled(idle)
 
-    moves = [Chat.status.on_change(), Chat.messages.on_change(), Chat.inbox.on_change()]
-    on = [ops.plane_state(engine, m) for m in moves]
-    placed = box.set("") >> actions.send.set("Send") >> actions.stop.set("Stop", disabled=True)
-    return (
-        ensure(page)
-        >> placed
-        >> nu.ParallelAsync(
+    def follow(e: nu.ObjectRef) -> nu.Nu:
+        engine = nu.Str(e)
+        c = conversation(engine)
+        on = [c.status.on_change(), c.messages.on_change(), c.inbox.on_change()]
+        return nu.ParallelAsync(
             nu.Reconcile(
-                snap(nu.OnAny(*on)),
-                nu.let(snap(ops.plane_state(engine, _shown())), draw),
+                nuspace.atomic(nu.OnAny(*on)),
+                nu.let(nuspace.atomic(_shown(c)), draw),
+                after=nu.RECHECK_AFTER,
                 every=5.0,
             ),
             nu.ReactEvery(actions.send.on_click(), nu.let(nu.Str(box).strip(), sent)),
             nu.ReactEvery(actions.stop.on_click(), stop(engine)),
         )
-    )
+
+    placed = box.set("") >> actions.send.set("Send") >> actions.stop.set("Stop", disabled=True)
+    return ensure(page) >> placed >> nu.let(nuspace.atomic(engine_of(page)), follow)

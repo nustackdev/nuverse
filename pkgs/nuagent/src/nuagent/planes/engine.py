@@ -1,6 +1,7 @@
 """The engine: a conversation's headless plane, one cell, run by a reaction on its inbox.
 
-Each chat page has its own engine, a child plane with no ui. Nothing keeps it
+Each chat page has its own engine, a child plane the web never shows, its
+id kept in the page's state (:class:`~.state.Engine`). Nothing keeps it
 running: a reaction on its ``inbox`` (made by the page) starts a run of it
 whenever the person sends something, and the run handles every message past
 its ``cursor`` and returns. That is the reactions contract, so an extra fire
@@ -33,13 +34,13 @@ import uuid
 from typing import TYPE_CHECKING
 
 import nu
+import nuspace
 from nuagent import prompt
 from nuagent.core import follow, seed, turn
-from nuspace import ops
 
 from . import settings
-from .state import ERROR, IDLE, THINKING, Chat, Run
-from .store import SpaceStore, here
+from .state import ERROR, IDLE, THINKING, Chat, Engine, Run
+from .store import SpaceStore
 
 
 if TYPE_CHECKING:
@@ -51,10 +52,11 @@ if TYPE_CHECKING:
 __all__ = [
     "CHAT",
     "IMPORTS",
-    "MADE_BY",
+    "OPS",
     "SOURCE",
+    "SPEC",
     "Handling",
-    "engine_cell",
+    "conversation",
     "engine_of",
     "handling",
     "inbox_change",
@@ -64,8 +66,8 @@ __all__ = [
 ]
 
 
-#: What an engine plane records as ``made_by``.
-MADE_BY = "nuagent.engine"
+#: What an engine plane records as ``spec``.
+SPEC = "nuagent.engine"
 
 #: The engine cell's prog: the engine on the backend the settings name.
 SOURCE = """\
@@ -103,29 +105,38 @@ same conversation.
 
 
       def out():
-          return answer(CELL) >> Run.done.set(True)
+          return answer(CELL) >> nuspace.at.plane.state(Run).done.set(True)
 
 - `answer` builds the cell first, the way the page will: one that does not
   build fails your program and adds nothing, so fix it and try again. Add it
   in a turn before the one that sets `Run.done`, or in the same program
   before setting it. A message that only asks something still gets one.
-- Your earlier answers are cells on the page, `made_by` `"nuagent.answer"`.
-  Change or remove them through `nuspace.ops` when a later message asks:
-  the page is `ops.parent(ops.Here.plane)`.
-- Your program runs as a cell on this conversation's own plane: a `PlaneState`
-  or `CellState` you declare lands there. Act on the rest of the space
-  through `nuspace.ops`."""
+- Your earlier answers are cells on the page, `spec` `"nuagent.answer"`.
+  Change or remove them through `nuspace.cell` when a later message asks:
+  the page is `nuspace.Space.planes[nuspace.places.Here.plane].parent`.
+- Your program runs as a cell on this conversation's own plane: a Shape you
+  read through `nuspace.at.plane.state(Shape)` or `nuspace.here(Shape)`
+  lands there, and `Run` is one. Act on the rest of the space through
+  `nuspace.plane`, `nuspace.cell` and the other ops."""
 
 
 def engine_of(page: nu.StrArg) -> nu.Str:
-    """A chat page's engine plane id: the page's, with ``_engine`` after it."""
-    return nu.Str(page) + "_engine"
+    """A chat page's engine plane id, as the page keeps it (:class:`~.state.Engine`). Bare read, NULL before one is made."""
+    return nu.Str(nuspace.at.plane(id=page).state(Engine).plane)
 
 
-def engine_cell(engine: nu.StrArg) -> nu.Str:
-    """The engine's one cell id: the engine's, with ``_cell`` after it."""
-    return nu.Str(engine) + "_cell"
+def conversation(engine: nu.StrArg | None = None) -> Chat:
+    """A conversation's state: ``engine``'s plane state read through :class:`~.state.Chat`.
 
+    Bare, the running plane's: the engine's own, read from its cell. Builds
+    refs, reads nothing.
+    """
+    place = nuspace.at.plane if engine is None else nuspace.at.plane(id=engine)
+    return place.state(Chat)
+
+
+#: The nuspace op modules the catalogue lists, spelled as a program writes them.
+OPS = ("nuspace.plane", "nuspace.cell", "nuspace.plane_run", "nuspace.cell_run", "nuspace.state")
 
 #: What the reaction's source imports, for :func:`inbox_change` to name.
 IMPORTS = "from nuagent.planes.state import Chat"
@@ -134,41 +145,39 @@ IMPORTS = "from nuagent.planes.state import Chat"
 def inbox_change(engine: nu.StrArg) -> nu.Str:
     """The change a reaction runs the engine on, as source: its inbox, in its plane state.
 
-    Named through the typed :class:`~.state.Chat`, placed with ``ops.plane_state``,
-    and not as ``States.planes[engine].state["inbox"]``: an untyped key is a
-    leaf, and a leaf hears its own writes, not an append to the list under it.
+    Named through the typed :class:`~.state.Chat` on the engine's place, and
+    not as an untyped key: an untyped key is a leaf, and a leaf hears its
+    own writes, not an append to the list under it.
     """
-    return "ops.plane_state(" + nu.Str(nu.Repr(engine)) + ", Chat.inbox.on_change())"
+    head = nu.Str("nuspace.at.plane(id=") + nu.Repr(engine)
+    return head + nu.Str(").state(Chat).inbox.on_change()")
 
 
-def pending() -> nu.Bool:
-    """Whether a message waits past the cursor. Bare, on the engine's own state."""
-    return Chat.cursor.fallback(0) < Chat.inbox.len()
+def pending(engine: nu.StrArg | None = None) -> nu.Bool:
+    """Whether a message waits past the cursor. Bare, on ``engine``'s state, the running plane's when absent."""
+    c = conversation(engine)
+    return c.cursor.fallback(0) < c.inbox.len()
 
 
 def parts() -> tuple[prompt.Section, ...]:
     """The opening prompt's sections: the protocol, :data:`CHAT`, Nu, nuspace, what exists, Run."""
-    modules = (*prompt.MODULES, "nustd.kv", "nuspace.ops", "nuagent.planes")
+    modules = (*prompt.MODULES, "nustd.kv", "nuspace", *OPS, "nuagent.planes")
     found = prompt.sections(add=prompt.NUSPACE, modules=modules, run=Run)
     return prompt.inserted(found, prompt.Section("chat", lambda: CHAT), after="protocol")
 
 
-def _read(term: nu.Nu) -> nu.Nu:
-    """``term`` on the engine's own state, read in a snapshot."""
-    return ops.snapshot(here(term))
-
-
 def _record(at: nu.Int) -> nu.Nu:
     """The turn that just ran, kept for the page: the reply, its program, how it went. No bracket."""
-    told = nu.Dict(Chat.messages.last_elem())
+    c = conversation()
+    told = nu.Dict(c.messages.last_elem())
     kept = nu.Dict.of(
         at=at,
-        reply=Chat.reply.fallback(""),
-        program=nu.str(Chat.program.fallback("")),
-        kind=Chat.outcome.kind.fallback(""),
+        reply=c.reply.fallback(""),
+        program=nu.str(c.program.fallback("")),
+        kind=c.outcome.kind.fallback(""),
         observation=nu.str(told["content"]),
     )
-    return Chat.turns.append(kept)
+    return c.turns.append(kept)
 
 
 def _past(at: nu.Int, status: str) -> nu.Nu:
@@ -177,9 +186,8 @@ def _past(at: nu.Int, status: str) -> nu.Nu:
     Never back: a stop moves the cursor to the end while a run may still be
     finishing, and that run's own move must not undo it.
     """
-    return nu.IfDo(Chat.cursor.fallback(0) <= at, Chat.cursor.set(at + 1)) >> Chat.status.set(
-        status
-    )
+    c = conversation()
+    return nu.IfDo(c.cursor.fallback(0) <= at, c.cursor.set(at + 1)) >> c.status.set(status)
 
 
 def handling(got: Mapping[str, object], backend: Backend | None = None) -> nu.Nu:
@@ -198,25 +206,28 @@ def handling(got: Mapping[str, object], backend: Backend | None = None) -> nu.Nu
     store = SpaceStore()
     write = store.bracket
     opened = parts()
+    c = conversation()
 
     def message(at: nu.ObjectRef) -> nu.Nu:
         i = nu.Int(at)
 
         def handle(text: nu.ObjectRef) -> nu.Nu:
-            first = nu.Int(_read(Chat.messages.len())) == 0
+            first = nu.Int(nuspace.atomic(c.messages.len())) == 0
             begin = nu.IfDo(first, seed(store, prompt.opening(text, opened)), follow(store, text))
-            going = store.rewrite(Run.done.not_())
+            going = store.rewrite(store.run.done.not_())
             turns = nu.WhileDo(going, turn(store, held.ask) >> write(_record(i)))
-            started = write(Chat.status.set(THINKING) >> Chat.error.set(""))
+            started = write(c.status.set(THINKING) >> c.error.set(""))
             return started >> begin >> turns >> write(_past(i, IDLE))
 
         def failed(err: nu.Nu) -> nu.Nu:
-            return write(Chat.error.set(nu.Str(err)) >> _past(i, ERROR))
+            return write(c.error.set(nu.Str(err)) >> _past(i, ERROR))
 
-        return nu.TryCatch(nu.let(_read(Chat.inbox[i]), handle), catch=failed)
+        return nu.TryCatch(nu.let(nuspace.atomic(c.inbox[i]), handle), catch=failed)
 
-    kept = nu.Noop() if got["sid"] else write(Chat.sid.set(sid))
-    every = nu.WhileDo(_read(pending()), nu.let(_read(Chat.cursor.fallback(0)), message))
+    kept = nu.Noop() if got["sid"] else write(c.sid.set(sid))
+    every = nu.WhileDo(
+        nuspace.atomic(pending()), nu.let(nuspace.atomic(c.cursor.fallback(0)), message)
+    )
     return kept >> held.wrap(every)
 
 
@@ -231,12 +242,13 @@ def out(backend: Backend | None = None) -> nu.Nu:
         backend: the backend to run on. None reads the settings each time the
             engine wakes, and builds the one they name.
     """
-    woke = ops.snapshot(nu.Dict.of(config=settings.config(), sid=Chat.sid.fallback("")))
+    c = conversation()
+    woke = nuspace.atomic(nu.Dict.of(config=settings.config(), sid=c.sid.fallback("")))
     run = nu.let(woke, lambda got: nu.Eval(Handling(got, nu.Literal(backend))))
 
     def failed(err: nu.Nu) -> nu.Nu:
         # Nothing could start (the settings, the backend): every message sent so far fails with it.
-        given_up = Chat.cursor.set(Chat.inbox.len()) >> Chat.status.set(ERROR)
-        return ops.atomic_state(Chat.error.set(nu.Str(err)) >> given_up)
+        given_up = c.cursor.set(c.inbox.len()) >> c.status.set(ERROR)
+        return nuspace.atomic(c.error.set(nu.Str(err)) >> given_up)
 
-    return nu.IfDo(ops.snapshot(pending()), nu.TryCatch(run, catch=failed))
+    return nu.IfDo(nuspace.atomic(pending()), nu.TryCatch(run, catch=failed))

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
 
 __all__ = ["__version__", "extension"]
@@ -26,7 +26,7 @@ __version__ = "0.2.5"
 
 def extension() -> Extension:
     """The Chat plane, as a nuspace extension."""
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
     from .planes import PLANE
 

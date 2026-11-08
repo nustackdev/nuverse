@@ -1,13 +1,14 @@
 """The agent every conversation runs on: one cell in the space's Settings plane.
 
-The cell is ``agent``, under a fixed id, :data:`CELL`, so the engines find it
-without a lookup. Its prog is a shim over :func:`out`, and what it keeps is
-:class:`Config`, in its own state: a small form, saved by a button.
+The cell is ``agent``, keyed :data:`KEY`, so the engines find it with one
+index read: one per space, the key prefixed with the package. Its prog is a
+shim over :func:`out`, and what it keeps is :class:`Config`, in its own
+state: a small form, saved by a button.
 
-A chat page makes the cell when it is missing (:func:`ensure`), and leaves it
-alone when it is there: after that it is the owner's to edit. An engine reads
-it each time it wakes (:func:`config`), so a change holds from the next
-message on, and builds its backend from it (:func:`backend_of`).
+A chat page makes the cell when no cell has the key (:func:`ensure`), and
+leaves it alone when one does: after that it is the owner's to edit. An
+engine reads it each time it wakes (:func:`config`), so a change holds from
+the next message on, and builds its backend from it (:func:`backend_of`).
 
 Secrets are not kept here yet. ``key_env`` is the name of an environment
 variable, read where the engine runs.
@@ -22,8 +23,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import ops
-from nuspace.system.utils import snap
+from nuspace import Space
 
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BACKENDS",
     "CC",
-    "CELL",
+    "KEY",
     "LLM",
     "NAME",
     "PLANE",
@@ -44,6 +44,7 @@ __all__ = [
     "backend_of",
     "config",
     "ensure",
+    "kept",
     "out",
 ]
 
@@ -51,8 +52,8 @@ __all__ = [
 #: The space's Settings plane, where the cell lives.
 PLANE = "settings"
 
-#: The cell's id, fixed.
-CELL = "settings_agent"
+#: The cell's key, one per space.
+KEY = "nuagent_agent"
 
 #: What the cell is called.
 NAME = "agent"
@@ -78,8 +79,8 @@ out = settings.out()
 """
 
 
-class Config(nuspace.CellState):
-    """The agent: which backend, which model, and for an endpoint where and with what key."""
+class Config(nu.Shape):
+    """The agent, in the cell's own state: which backend, which model, and for an endpoint where and with what key."""
 
     backend = nustd.kv.StrRef.slot()  #: one of :data:`BACKENDS`, :data:`CC` when unset
     model = nustd.kv.StrRef.slot()  #: empty for the backend's default
@@ -116,30 +117,41 @@ class Form(nustd.ui.Form):
     save = nustd.ui.ButtonRef.slot(label="Save", icon="check")
 
 
-def _values() -> nu.Nu:
-    """What the cell keeps, as plain data, the defaults filled in. Bare, the cell's own state."""
+def kept() -> Config:
+    """What the cell keeps: its state read through :class:`Config`, found by :data:`KEY`. Builds refs."""
+    return nuspace.at.cell(KEY).state(Config)
+
+
+def _values(c: Config) -> nu.Nu:
+    """What ``c`` holds, as plain data, the defaults filled in. Bare."""
     return nu.Dict.of(
-        backend=Config.backend.fallback(CC),
-        model=Config.model.fallback(""),
-        endpoint=Config.endpoint.fallback(""),
-        key_env=Config.key_env.fallback(""),
+        backend=c.backend.fallback(CC),
+        model=c.model.fallback(""),
+        endpoint=c.endpoint.fallback(""),
+        key_env=c.key_env.fallback(""),
     )
 
 
 def config() -> nu.Nu:
     """The agent's settings as a dict, the defaults filled in. Bare read, from anywhere."""
-    return ops.cell_state(CELL, _values())
+    return _values(kept())
 
 
 def ensure() -> nu.Nu:
-    """The cell, made when the Settings plane has none. Idempotent, and never rewrites one there."""
-    missing = snap(ops.plane_exists(PLANE).and_(ops.cell_exists(CELL).not_()))
-    return nu.IfDo(missing, ops.add_cell(PLANE, SOURCE, cell_id=CELL, name=NAME))
+    """The cell, made when the Settings plane is there and no cell has :data:`KEY`. One commit.
+
+    Never rewrites one there. Safe from two pages at once: the check and the
+    add land in one commit, and the key is taken once.
+    """
+    missing = nuspace.plane.exists(PLANE).and_(Space.indexes.cell_keys.contains(KEY).not_())
+    made = nuspace.cell.add(PLANE, SOURCE, name=NAME, key=KEY, fabrics=["ui"])
+    return nuspace.atomic(nu.IfDo(missing, made))
 
 
 def out() -> nu.Nu:
     """The cell's program: the form shows what is kept, and Save keeps what the form holds."""
     form = Form
+    mine = nuspace.here(Config)
 
     def show(kept: nu.Nu) -> nu.Nu:
         c = nu.Dict(kept)
@@ -151,16 +163,21 @@ def out() -> nu.Nu:
         )
 
     typed = (
-        Config.backend.set(nu.Str(form.backend.input).fallback(CC))
-        >> Config.model.set(nu.Str(form.model.input).strip())
-        >> Config.endpoint.set(nu.Str(form.endpoint.input).strip())
-        >> Config.key_env.set(nu.Str(form.key_env.input).strip())
+        mine.backend.set(nu.Str(form.backend.input).fallback(CC))
+        >> mine.model.set(nu.Str(form.model.input).strip())
+        >> mine.endpoint.set(nu.Str(form.endpoint.input).strip())
+        >> mine.key_env.set(nu.Str(form.key_env.input).strip())
     )
-    slots = (Config.backend, Config.model, Config.endpoint, Config.key_env)
+    slots = (mine.backend, mine.model, mine.endpoint, mine.key_env)
     changes = [slot.on_change() for slot in slots]
     return form.save.set("Save") >> nu.ParallelAsync(
-        nu.Reconcile(snap(nu.OnAny(*changes)), nu.let(snap(_values()), show)),
-        nu.ReactEvery(form.save.on_click(), ops.atomic_state(typed)),
+        nu.Reconcile(
+            nuspace.atomic(nu.OnAny(*changes)),
+            nu.let(nuspace.atomic(_values(mine)), show),
+            after=nu.RECHECK_AFTER,
+            every=nu.RECHECK_EVERY,
+        ),
+        nu.ReactEvery(form.save.on_click(), nuspace.atomic(typed)),
     )
 
 
