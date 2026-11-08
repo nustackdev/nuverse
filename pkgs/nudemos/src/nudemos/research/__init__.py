@@ -28,9 +28,10 @@ week's digest and the notebook at once.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells
+from .kit import KEY
 
 
 __all__ = ["PLANE"]
@@ -41,8 +42,9 @@ PLANE = PlaneSpec(
     "Research",
     icon="atom",
     description="A research desk on LLMs: papers, claims and our own evals, all live.",
-    meta={"editable": True, "full_width": True},
     cells=cells.ROOT,
     group="Demos",
+    key=KEY,
+    web=WebOptions(editable=True, full_width=True),
     backend="async",
 )

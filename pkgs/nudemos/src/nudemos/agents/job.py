@@ -47,14 +47,13 @@ SKETCH = (
 
 RUN = """\
 import nu
+import nuspace
 import nustd.cc
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.agents import views
 from nudemos.agents.claude import Claude
 from nudemos.agents.job import CARRY, SKETCH
-from nudemos.agents.state import Agent
+from nudemos.agents.state import AGENT
 
 #: This agent, as it was made: name, folder, model, permission mode, brief.
 SPEC = {}
@@ -72,23 +71,23 @@ OPTIONS = {
 
 def logged(ev):
     # One commit per event: into the log, what it is doing now, and the idle clock.
-    count = Agent.n.fallback(0)
-    return ops.atomic_state(
-        Agent.log.append(views.dumped(ev)) >> Agent.n.set(count + 1)
-        >> Agent.doing.set(views.doing_of(ev)) >> Agent.beat.set(nustd.time.time())
+    count = AGENT.n.fallback(0)
+    return nuspace.atomic(
+        AGENT.log.append(views.dumped(ev)) >> AGENT.n.set(count + 1)
+        >> AGENT.doing.set(views.doing_of(ev)) >> AGENT.beat.set(nustd.time.time())
     )
 
 
 def accounted(ev):
     # A result: what the turn cost, and what it came to.
     def add(t):
-        return ops.atomic_state(
-            Agent.turns.set(Agent.turns.fallback(0) + t["turns"])
-            >> Agent.tokens_in.set(Agent.tokens_in.fallback(0) + t["in"])
-            >> Agent.tokens_out.set(Agent.tokens_out.fallback(0) + t["out"])
-            >> Agent.cost.set(Agent.cost.fallback(0.0) + t["cost"])
-            >> Agent.seconds.set(Agent.seconds.fallback(0.0) + t["seconds"])
-            >> Agent.answer.set(ev["text"]) >> Agent.answered.set(Agent.answered.fallback(0) + 1)
+        return nuspace.atomic(
+            AGENT.turns.set(AGENT.turns.fallback(0) + t["turns"])
+            >> AGENT.tokens_in.set(AGENT.tokens_in.fallback(0) + t["in"])
+            >> AGENT.tokens_out.set(AGENT.tokens_out.fallback(0) + t["out"])
+            >> AGENT.cost.set(AGENT.cost.fallback(0.0) + t["cost"])
+            >> AGENT.seconds.set(AGENT.seconds.fallback(0.0) + t["seconds"])
+            >> AGENT.answer.set(ev["text"]) >> AGENT.answered.set(AGENT.answered.fallback(0) + 1)
         )
 
     return nu.let(views.tally(ev), add)
@@ -96,8 +95,8 @@ def accounted(ev):
 
 def drawn():
     # Whatever it put in sketch.json, onto its page's board.
-    seen = snap(Agent.sketch.fallback([]))
-    return nu.let(views.sketch_in(SPEC["cwd"], seen), lambda s: ops.atomic_state(Agent.sketch.set(s)))
+    seen = nuspace.atomic(AGENT.sketch.fallback([]))
+    return nu.let(views.sketch_in(SPEC["cwd"], seen), lambda s: nuspace.atomic(AGENT.sketch.set(s)))
 
 
 def heard(ev):
@@ -105,7 +104,7 @@ def heard(ev):
     return (
         logged(ev)
         >> nu.IfDo(kind == "result", accounted(ev))
-        >> nu.IfDo(kind == "tool_use", ops.atomic_state(Agent.calls.set(Agent.calls.fallback(0) + 1)))
+        >> nu.IfDo(kind == "tool_use", nuspace.atomic(AGENT.calls.set(AGENT.calls.fallback(0) + 1)))
         >> nu.IfDo(kind == "tool_result", drawn())
     )
 
@@ -113,63 +112,63 @@ def heard(ev):
 def turn():
     # The next message, its turn streamed into the log, raced against a stop.
     def told(msg):
-        took = ops.atomic_state(
-            Agent.inbox.del_at(0) >> Agent.status.set("working") >> Agent.error.set("")
-            >> Agent.prompts.set(Agent.prompts.fallback(0) + 1)
+        took = nuspace.atomic(
+            AGENT.inbox.del_at(0) >> AGENT.status.set("working") >> AGENT.error.set("")
+            >> AGENT.prompts.set(AGENT.prompts.fallback(0) + 1)
         )
         streamed = nu.ForEachDo(Claude.say(msg), heard)
-        stopped = nu.WaitUntil(snap(Agent.stop.on_change()), snap(Agent.stop.fallback(False)), every=2.0)
-        cut = ops.atomic_state(Agent.cut.set(True) >> Agent.status.set("stopped") >> Agent.doing.set(""))
+        stopped = nu.WaitUntil(nuspace.atomic(AGENT.stop.on_change()), nuspace.atomic(AGENT.stop.fallback(False)), every=2.0)
+        cut = nuspace.atomic(AGENT.cut.set(True) >> AGENT.status.set("stopped") >> AGENT.doing.set(""))
         failed = lambda err: (
             logged(nu.Dict.of(type="error", text=nu.Str(err)))
-            >> ops.atomic_state(
-                Agent.error.set(nu.Str(err)) >> Agent.answer.set(nu.Str("Failed: ") + nu.Str(err))
-                >> Agent.answered.set(Agent.answered.fallback(0) + 1)
+            >> nuspace.atomic(
+                AGENT.error.set(nu.Str(err)) >> AGENT.answer.set(nu.Str("Failed: ") + nu.Str(err))
+                >> AGENT.answered.set(AGENT.answered.fallback(0) + 1)
             )
         )
         user = nu.Dict.of(type="user", text=msg)
         return took >> logged(user) >> nu.TryCatch(nu.Race(streamed, stopped >> cut), catch=failed)
 
-    return nu.let(snap(Agent.inbox.first_elem()), told)
+    return nu.let(nuspace.atomic(AGENT.inbox.first_elem()), told)
 
 
 def waiting():
     # Idle until told something, stopped, or idle too long.
-    rest = ops.atomic_state(Agent.status.set("idle") >> Agent.doing.set(""))
-    stale = nustd.time.time() - Agent.beat.fallback(0.0) > IDLE
-    woken = snap((Agent.inbox.fallback([]).len() > 0).or_(Agent.stop.fallback(False)).or_(stale))
-    return rest >> nu.WaitUntil(snap(Agent.inbox.on_change()), woken, every=2.0)
+    rest = nuspace.atomic(AGENT.status.set("idle") >> AGENT.doing.set(""))
+    stale = nustd.time.time() - AGENT.beat.fallback(0.0) > IDLE
+    woken = nuspace.atomic((AGENT.inbox.fallback([]).len() > 0).or_(AGENT.stop.fallback(False)).or_(stale))
+    return rest >> nu.WaitUntil(nuspace.atomic(AGENT.inbox.on_change()), woken, every=2.0)
 
 
 def loop():
-    told = (Agent.inbox.fallback([]).len() > 0)
-    fresh = nustd.time.time() - Agent.beat.fallback(0.0) <= IDLE
-    going = snap(Agent.stop.fallback(False).not_().and_(told.or_(fresh)))
-    return nu.WhileDo(going, nu.IfDo(snap(told), turn(), waiting()))
+    told = (AGENT.inbox.fallback([]).len() > 0)
+    fresh = nustd.time.time() - AGENT.beat.fallback(0.0) <= IDLE
+    going = nuspace.atomic(AGENT.stop.fallback(False).not_().and_(told.or_(fresh)))
+    return nu.WhileDo(going, nu.IfDo(nuspace.atomic(told), turn(), waiting()))
 
 
 def begun():
     # The first start mints the conversation and queues the brief. Later ones carry on a cut turn.
     def first(sid):
-        brief = nu.IfDo(nu.Str(SPEC["brief"]) != "", Agent.inbox.append(SPEC["brief"]))
-        return ops.atomic_state(Agent.sid.set(sid) >> Agent.spec.set(SPEC) >> brief)
+        brief = nu.IfDo(nu.Str(SPEC["brief"]) != "", AGENT.inbox.append(SPEC["brief"]))
+        return nuspace.atomic(AGENT.sid.set(sid) >> AGENT.spec.set(SPEC) >> brief)
 
-    fresh = snap(Agent.sid.fallback("") == "")
-    cut = snap(Agent.cut.fallback(False).or_(Agent.status.fallback("") == "working"))
-    carry = ops.atomic_state(Agent.inbox.insert(0, CARRY) >> Agent.cut.set(False))
-    clock = ops.atomic_state(Agent.beat.set(nustd.time.time()) >> Agent.status.set("starting"))
+    fresh = nuspace.atomic(AGENT.sid.fallback("") == "")
+    cut = nuspace.atomic(AGENT.cut.fallback(False).or_(AGENT.status.fallback("") == "working"))
+    carry = nuspace.atomic(AGENT.inbox.insert(0, CARRY) >> AGENT.cut.set(False))
+    clock = nuspace.atomic(AGENT.beat.set(nustd.time.time()) >> AGENT.status.set("starting"))
     return nu.IfDo(fresh, nu.let(nustd.cc.NewSession(), first), nu.IfDo(cut, carry)) >> clock
 
 
 def ended():
-    stopped = snap(Agent.stop.fallback(False))
-    return ops.atomic_state(Agent.status.set(nu.If(stopped, "stopped", "idle")) >> Agent.doing.set(""))
+    stopped = nuspace.atomic(AGENT.stop.fallback(False))
+    return nuspace.atomic(AGENT.status.set(nu.If(stopped, "stopped", "idle")) >> AGENT.doing.set(""))
 
 
 def out(cell):
-    session = nustd.cc.Session(loop(), sid=snap(Agent.sid))
+    session = nustd.cc.Session(loop(), sid=nuspace.atomic(AGENT.sid))
     run = begun() >> nu.With(nustd.cc.bind(Claude, **OPTIONS), body=session) >> ended()
-    return nu.IfDo(snap(Agent.stop.fallback(False)), ended(), run)
+    return nu.IfDo(nuspace.atomic(AGENT.stop.fallback(False)), ended(), run)
 """
 
 

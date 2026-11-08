@@ -1,6 +1,6 @@
 """What every Owlbridge cell shares: the store, the tables loaded from it, where pages are.
 
-- :class:`Shop`: the one store, in the root plane's state. The tables live in
+- :class:`Shop`: the one store, in the root plane's state (:data:`SHOP`). The tables live in
   it as shards: each a numpy record array's bytes under an int id in
   ``shards``, described in ``index`` (its table, rows, version, where it came
   from). History, the live stream and every import are shards of the same
@@ -9,8 +9,9 @@
   this process has not seen at their current version (the live ones, mostly),
   then runs a :mod:`.calc` function over them. Cells of one page share a
   process, so a page loads the tables once and follows only what moves.
-- :func:`on_shop`: a cell's body with :class:`Shop` landed at the root,
-  wherever the cell's page is, once the opening history is in.
+- :func:`on_shop`: a cell's body over :data:`SHOP`, wherever the cell's
+  page is, once the opening history is in. One Owlbridge per space: its
+  root is keyed :data:`KEY`, so every cell finds it in one index read.
 - :func:`seed`: the first open: two years of history, the catalog, the jobs.
 - :func:`start`, :func:`stop`: the stream and the importer, headless jobs.
 
@@ -27,13 +28,14 @@ import numpy as np
 
 import nu
 import nuspace
-import nuspace.ui
 import nustd.kv
 import nustd.ui
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace import Space
+from nuspace.devices import web
+from nuspace.specs import PlaneSpec, WebOptions
+from nuspace.utils import MintId
 
+from .. import headless
 from . import calc, gen
 from .shop import PRODUCTS
 
@@ -44,23 +46,30 @@ if TYPE_CHECKING:
 
 __all__ = [
     "IMPORTS",
+    "KEY",
     "LIVE",
-    "MADE_BY",
+    "ROOT_ID",
+    "SHOP",
     "Product",
     "Shop",
     "on_shop",
     "pack",
     "page_of",
     "read",
-    "root_of",
     "seed",
     "start",
     "unpack",
 ]
 
 
-#: What the root records as ``made_by``, and the ``made_by`` of the jobs and the customer pages.
-MADE_BY, JOB, CUSTOMER = "nudemos.data", "data_job", "data_customer"
+#: ``spec`` of the jobs and of the customer pages.
+JOB, CUSTOMER = "data_job", "data_customer"
+
+#: The root's key: one Owlbridge per space.
+KEY = "nudemos_data"
+
+#: The root's id, one index read. NULL while the space has no Owlbridge.
+ROOT_ID = Space.indexes.plane_keys[KEY]
 
 #: Where shard ids start: history below, then the stream's, then the imports'.
 LIVE, IMPORTS = 1000, 900_000
@@ -79,7 +88,7 @@ class Product(nu.Shape):
     stock = nustd.kv.IntRef.slot()
 
 
-class Shop(nuspace.PlaneState):
+class Shop(nu.Shape):
     """Owlbridge's store: the tables as shards, the catalog, the knobs every page reads."""
 
     # The tables: shard bytes by id, and per id {table, rows, v, origin, at}.
@@ -108,19 +117,26 @@ class Shop(nuspace.PlaneState):
     inbox = nustd.kv.StrRef.slot()
     imports = nustd.kv.PrimitiveListRef.slot()
     importer = nustd.kv.PrimitiveDictRef.slot()
+    # The planes it made, by minted id: its two jobs by name, a customer's page by customer id.
+    jobs = nustd.kv.DictRef.slot(str)
+    customers = nustd.kv.DictRef.slot(str)
+
+
+#: Owlbridge's store, in the root's state: what every cell and job reads and writes.
+SHOP = nuspace.at.plane(KEY).state(Shop)
 
 
 # --- where things are -----------------------------------------------------------------------
 
 
-def _made_by(plane: nu.StrArg) -> nu.Str:
-    return Space.planes[plane].props.made_by.fallback("")
+def _spec(plane: nu.StrArg) -> nu.Str:
+    return Space.planes[plane].spec.fallback("")
 
 
-def root_of(plane: nu.StrArg) -> nu.Str:
-    """The Owlbridge root a plane belongs to: itself, its meta's ``base``, or its parent. Bare read."""
-    base = nu.str(Space.planes[plane].meta["base"].fallback(ops.parent(plane)))
-    return nu.Str(nu.If(_made_by(plane) == MADE_BY, plane, base))
+def _children(root: nu.StrArg) -> nu.List:
+    """``[[spec, id], ...]`` of the root's pages, in order. A read of its own children, a dozen."""
+    kids = Space.planes[root].children.keys()
+    return nu.List(kids).iter().map(lambda p: nu.List.of(_spec(nu.Str(p)), p)).to_list()
 
 
 @nu.host
@@ -130,8 +146,7 @@ def _pick_page(kids: list[list[str]], name: str) -> str:
 
 def page_of(root: nu.StrArg, name: str) -> nu.Str:
     """The id of the page under the root made from the Plane named ``name``, eg ``data_revenue``. Bare read."""
-    kids = ops.children(root).iter().map(lambda p: nu.List.of(_made_by(nu.Str(p)), p)).to_list()
-    return nu.Str(_pick_page(kids, name))
+    return nu.Str(_pick_page(_children(root), name))
 
 
 @nu.host
@@ -141,26 +156,28 @@ def _page_map(kids: list[list[str]]) -> dict[str, str]:
 
 def pages(root: nu.StrArg) -> nu.Dict:
     """``{revenue: "/<id>", funnel: ..., ...}``: a link to every page under the root. Bare read."""
-    kids = ops.children(root).iter().map(lambda p: nu.List.of(_made_by(nu.Str(p)), p)).to_list()
-    return nu.Dict(_page_map(kids))
-
-
-def at(root: nu.StrArg, term: nu.Nu) -> nu.Nu:
-    """``term`` over :class:`Shop`, landed on the root's state. Bare."""
-    return ops.plane_state(root, term)
+    return nu.Dict(_page_map(_children(root)))
 
 
 def on_shop(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
-    """``build(root)`` with :class:`Shop` landed at the root, once the opening history is in."""
+    """``build(root)``, bracketed step by step over :data:`SHOP`, once the opening history is in.
+
+    ``plane`` is the plane the cell runs on; every plane finds the one root by its key.
+    """
+    del plane
 
     def landed(root: nu.ObjectRef) -> nu.Nu:
         r = nu.Str(root)
+        # Level: a missed notification would leave the page waiting for good.
         ready = nu.WaitUntil(
-            snap(at(r, Shop.ready.on_change())), snap(at(r, Shop.ready.fallback(False)))
+            nuspace.atomic(SHOP.ready.on_change()),
+            nuspace.atomic(SHOP.ready.fallback(False)),
+            after=nu.RECHECK_AFTER,
+            every=nu.RECHECK_EVERY,
         )
-        return ready >> ops.bracketed(at(r, build(r)))
+        return ready >> nuspace.bracketed(build(r))
 
-    return nu.let(snap(root_of(plane)), landed)
+    return nu.let(nuspace.atomic(ROOT_ID), landed)
 
 
 # --- shards ---------------------------------------------------------------------------------
@@ -234,15 +251,15 @@ def shaped(
 
 
 def loaded(which: tuple[str, ...]) -> tuple[nu.Nu, nu.Nu]:
-    """The index, and the stale shards of ``which`` fetched into this process. Over :class:`Shop`."""
-    index = Shop.index.extract()
+    """The index, and the stale shards of ``which`` fetched into this process. Over :data:`SHOP`."""
+    index = SHOP.index.extract()
     ids = nu.List(stale(index, list(which)))
-    got = ids.iter().map(lambda i: absorb(i, index, Shop.shards[nu.Int(i)])).to_list()
+    got = ids.iter().map(lambda i: absorb(i, index, SHOP.shards[nu.Int(i)])).to_list()
     return index, got
 
 
 def read(name: str, *args: object, tables: tuple[str, ...] = ("lines", "people")) -> nu.Nu:
-    """``calc.<name>`` over the tables, as a term. Over :class:`Shop`, unbracketed (the cell snaps it)."""
+    """``calc.<name>`` over the tables, as a term. Over :data:`SHOP`, unbracketed (the cell brackets it)."""
     index, got = loaded(tables)
     return shaped(name, list(tables), index, got, nu.List.of(*args))
 
@@ -261,7 +278,7 @@ def prepend(item: object, items: list, keep: int) -> list:
 
 def changes() -> list[nu.Nu]:
     """What a dashboard follows: the tables, and the shared filters."""
-    return [Shop.beat.on_change(), Shop.filters.on_change()]
+    return [SHOP.beat.on_change(), SHOP.filters.on_change()]
 
 
 # --- the first open -------------------------------------------------------------------------
@@ -335,7 +352,7 @@ def inbox_dir() -> str:
 
 def _catalog() -> nu.Nu:
     def one(p: dict) -> nu.Nu:
-        row = Shop.products[p["sku"]]
+        row = SHOP.products[p["sku"]]
         return (
             row.name.set(p["name"])
             >> row.category.set(p["category"])
@@ -353,33 +370,33 @@ def seed(root: nu.Str) -> nu.Nu:
     def write(o: nu.ObjectRef) -> nu.Nu:
         d = nu.Dict(o)
         shards = nu.ForEachDo(
-            d["shards"], lambda s: Shop.shards.set_item(nu.Int(nu.List(s)[0]), nu.List(s)[1])
+            d["shards"], lambda s: SHOP.shards.set_item(nu.Int(nu.List(s)[0]), nu.List(s)[1])
         )
         index = nu.ForEachDo(
-            d["index"], lambda kv: Shop.index[nu.Str(nu.List(kv)[0])].set(nu.List(kv)[1])
+            d["index"], lambda kv: SHOP.index[nu.Str(nu.List(kv)[0])].set(nu.List(kv)[1])
         )
         knobs = (
             _catalog()
-            >> Shop.filters.set(FILTERS)
-            >> Shop.traffic.set(TRAFFIC)
-            >> Shop.query.set(QUERY)
-            >> Shop.plan.set(PLAN)
-            >> Shop.cohort.set("Retention")
-            >> Shop.pace.set("Busy")
-            >> Shop.stop.set(False)
-            >> Shop.stream.set(d["stream"])
-            >> Shop.feed.set(d["feed"])
-            >> Shop.imports.set([])
-            >> Shop.inbox.set(inbox_dir())
+            >> SHOP.filters.set(FILTERS)
+            >> SHOP.traffic.set(TRAFFIC)
+            >> SHOP.query.set(QUERY)
+            >> SHOP.plan.set(PLAN)
+            >> SHOP.cohort.set("Retention")
+            >> SHOP.pace.set("Busy")
+            >> SHOP.stop.set(False)
+            >> SHOP.stream.set(d["stream"])
+            >> SHOP.feed.set(d["feed"])
+            >> SHOP.imports.set([])
+            >> SHOP.inbox.set(inbox_dir())
+            # Made empty, so the pages read it before the stream's first tick.
+            >> SHOP.sold.init(nu.Dict.create())
         )
-        return ops.atomic_state(
-            at(root, shards >> index >> knobs >> Shop.beat.set(1) >> Shop.ready.set(True))
-        )
+        return nuspace.atomic(shards >> index >> knobs >> SHOP.beat.set(1) >> SHOP.ready.set(True))
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
-        take = nu.IfDo(Shop.seeded.is_null(), Shop.seeded.set(True) >> mine.set(True))
+        take = nu.IfDo(SHOP.seeded.is_null(), SHOP.seeded.set(True) >> mine.set(True))
         build = nu.let(opening(time.time()), write) >> start(root)
-        return ops.atomic_state(at(root, take)) >> nu.IfDo(nu.Bool(mine), build)
+        return nuspace.atomic(take) >> nu.IfDo(nu.Bool(mine), build)
 
     return nu.let(False, first)
 
@@ -388,47 +405,51 @@ def seed(root: nu.Str) -> nu.Nu:
 
 
 def job_of(root: nu.StrArg, name: str) -> nu.Str:
-    """A job's plane id: fixed under the root, ``<root>.stream`` or ``<root>.importer``."""
-    return nu.Str(root) + "." + name
+    """A job's plane id, ``stream`` or ``importer``, NULL before it is first started. Bare read."""
+    del root
+    return nu.Str(SHOP.jobs[name])
 
 
 def _job(root: nu.StrArg, name: str, source: str) -> nu.Nu:
-    job = job_of(root, name)
-    made = ops.add_plane(
-        job, backend="mp", name=name, parent=root, ui=False, made_by=JOB, meta=nu.Dict.of(base=root)
-    ) >> ops.add_cell(job, source, cell_id=job + "_main", name=name)
-    return nu.IfDo(nu.Bool(snap(ops.plane_exists(job))).not_(), made)
+    """Job ``name`` under the root, made once and supervised: its id minted and kept first."""
+    held = SHOP.jobs[name]
+
+    def made(job: nu.ObjectRef) -> nu.Nu:
+        jid = nu.Str(job)
+        make = headless.make(
+            jid, parent=root, name=name, backend="mp", spec=JOB, cells=[(name, source)]
+        )
+        return headless.once(jid, make) >> headless.supervise(jid)
+
+    claimed = nuspace.atomic(held.init(MintId("p")))
+    return claimed >> nu.let(nuspace.atomic(held), made)
 
 
 def start(root: nu.StrArg) -> nu.Nu:
     """Both jobs made if they are not there, the stream's stop cleared, both supervised."""
     from .jobs import IMPORTER, STREAM
 
-    clear = ops.atomic_state(at(root, Shop.stop.set(False)))
-    return (
-        _job(root, "stream", STREAM)
-        >> _job(root, "importer", IMPORTER)
-        >> clear
-        >> nuspace.supervise(job_of(root, "stream"))
-        >> nuspace.supervise(job_of(root, "importer"))
-    )
+    clear = nuspace.atomic(SHOP.stop.set(False))
+    return clear >> _job(root, "stream", STREAM) >> _job(root, "importer", IMPORTER)
 
 
 def stop(root: nu.StrArg) -> nu.Nu:
     """Ask the stream to stop: it ends its loop at the next tick and says so."""
-    return ops.atomic_state(at(root, Shop.stop.set(True)))
+    del root
+    return nuspace.atomic(SHOP.stop.set(True))
 
 
 def live(root: nu.StrArg, name: str) -> nu.Bool:
-    """Whether a job has a run now. Bare read."""
-    return nu.Bool(Space.kernel.planes_running.contains(job_of(root, name)))
+    """Whether a job has a live run, False before it is first started. Bare read."""
+    held = SHOP.jobs[name]
+    return nu.Bool(nu.If(held.exists(), headless.live(job_of(root, name)), False))
 
 
 # --- metrics and customer pages -------------------------------------------------------------
 
 
 def metric(value: Callable[[calc.Tables, np.ndarray], float], fmt: str = "money") -> nu.Nu:
-    """A metric a cell defines as ``value(t, keep)``, over the shared filters, as a term. Over :class:`Shop`.
+    """A metric a cell defines as ``value(t, keep)``, over the shared filters, as a term. Over :data:`SHOP`.
 
     ``fmt`` is how it reads: ``money``, ``pct``, ``count`` or ``ratio``.
     """
@@ -439,31 +460,42 @@ def metric(value: Callable[[calc.Tables, np.ndarray], float], fmt: str = "money"
         return calc.metric(t, value, f or FILTERS, fmt, time.time()) if len(t.lines) else None
 
     index, got = loaded(("lines", "people"))
-    return nu.host(run, name=f"Metric_{value.__name__}")(index, got, Shop.filters.fallback({}))
+    return nu.host(run, name=f"Metric_{value.__name__}")(index, got, SHOP.filters.fallback({}))
 
 
 def customer_page(root: nu.StrArg, cid: nu.StrArg) -> nu.Str:
-    """A customer's page id: the root's, then the customer's id."""
-    return nu.Str(root) + ".customer." + nu.Str(cid)
+    """A customer's page id, NULL before it is first opened. Bare read."""
+    del root
+    return nu.Str(SHOP.customers[cid])
 
 
 def open_customer(
     root: nu.StrArg, cid: nu.StrArg, name: nu.StrArg, under: nu.StrArg, history: nustd.ui.HistoryRef
 ) -> nu.Nu:
-    """Open a customer's page on ``history``, made under ``under`` (the Customers page) the first time."""
-    from nuspace import PlaneSpec
+    """Open a customer's page on ``history``, made under ``under`` (the Customers page) the first time.
 
+    Its id is minted and kept in the store first, so a second open finds it.
+    """
     from .pages import CUSTOMER_CELLS
 
-    spec = PlaneSpec(CUSTOMER, "Customer", cells=CUSTOMER_CELLS, backend="async")
-    pid = customer_page(root, cid)
-    meta = nu.Dict.of(base=root, customer=cid, icon="lucide:user", editable=True, full_width=True)
-    make = ops.create_plane(spec, parent=under, name=name, plane_id=pid) >> ops.set_plane_meta(
-        pid, meta
+    spec = PlaneSpec(
+        CUSTOMER,
+        "Customer",
+        icon="user",
+        cells=CUSTOMER_CELLS,
+        web=WebOptions(editable=True, full_width=True),
+        backend="async",
     )
-    return nu.IfDo(nu.Bool(snap(ops.plane_exists(pid))).not_(), make) >> history.push(
-        nuspace.ui.href(pid)
-    )
+    held = SHOP.customers[cid]
+
+    def opened(page: nu.ObjectRef) -> nu.Nu:
+        pid = nu.Str(page)
+        about = nuspace.atomic(nuspace.plane.set_meta(pid, nu.Dict.of(customer=cid)))
+        make = nuspace.specs.add_plane(spec, pid, parent=under, name=name) >> about
+        return headless.once(pid, make) >> history.push(web.href(pid))
+
+    claimed = nuspace.atomic(held.init(MintId("p")))
+    return claimed >> nu.let(nuspace.atomic(held), opened)
 
 
 def subject(plane: nu.StrArg) -> nu.Str:

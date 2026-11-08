@@ -1,20 +1,23 @@
-"""nudemos: found through the entry point, its Planes seeded, and their cells run on a real store."""
+"""nudemos: found through the entry point, its Planes made from their specs, and their cells run on a real store."""
 
 from __future__ import annotations
 
 import asyncio
+import zlib
 from typing import TYPE_CHECKING
 
 import pytest
 
 import nu
+import nu.prog
 import nuspace
 import nustd.kv
-from nudemos import counter, movies, sampled, tour
-from nuspace import PlaneSpec, ops
-from nuspace.shapes import Reroot, Space, reroot
-from nuspace.system.devices.web.env import session_env
-from nuspace.system.kernel.body import Rewrites
+from nudemos import agents, counter, data, movies, ops, recipes, research, sampled, tour
+from nuspace import Space
+from nuspace.devices.web import Web
+from nuspace.devices.web.env import session_env
+from nuspace.places import inside
+from nuspace.specs import PlaneSpec, SpecCells
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.session import Session
 
@@ -29,13 +32,23 @@ SPECS = [tour.PLANE, *(m.PLANE for m in (*DEMOS, *MOVIES))]
 SOURCES = [source for spec in SPECS for _, source in spec.cells]
 
 
-class _Counter(nuspace.CellState):
+def _every_cell(spec: PlaneSpec) -> list[tuple[str, str]]:
+    """``(name, source)`` of every cell a spec and its children seed."""
+    return [*spec.cells, *(c for child in spec.children for c in _every_cell(child))]
+
+
+#: The demos keyed once per space, and every cell their roots seed: built as the kernel builds them.
+KEYED = [ops, research, data]
+KEYED_SOURCES = [s for m in (*KEYED, agents, recipes) for _, s in _every_cell(m.PLANE)]
+
+
+class _Counter(nu.Shape):
     """The counter cell's state, as its source declares it."""
 
     value = nustd.kv.IntRef.slot()
 
 
-class _Series(nuspace.PlaneState):
+class _Series(nu.Shape):
     """The sampled plane's state, as its cells declare it."""
 
     cursor = nustd.kv.IntRef.slot()
@@ -68,21 +81,20 @@ async def _until(check: Callable[[], bool], timeout: float = 5.0) -> None:
 
 
 async def _cells(store, plane: str) -> dict:
-    """``{cell name: cell id}`` of a plane."""
-    return {c["name"]: c["id"] for c in await store.read(ops.cell_rows(plane))}
+    """``{cell name: cell id}`` of a plane made from a spec: what its plane state keeps."""
+    return await store.read(nuspace.at.plane(id=plane).state(SpecCells).ids.extract())
 
 
 async def _load(store, plane: str, cell: str) -> nu.Nu:
-    """The cell's program, loaded through the kernel's rewrites, a session's among them."""
+    """The cell's program, loaded as the kernel loads it, through a session's rewrite."""
     env = session_env("127.0.0.1:9")("s1")
-    rewrite = Rewrites(Reroot(plane, cell), env.rewrite)
-    load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=rewrite)
-    return await store.run(nustd.kv.Snapshot(load, scope=Space))
+    load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=env.rewrite)
+    return await store.read(load)
 
 
 async def _run(store, plane: str, cell: str, browser: _Browser) -> asyncio.Task:
     """The cell's program run as the kernel runs it, inside its ``Here`` frame."""
-    term = nu.Frame(ops.Here, await _load(store, plane, cell), plane=plane, cell=cell)
+    term = inside(await _load(store, plane, cell), plane=plane, cell=cell)
     return asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
 
 
@@ -97,7 +109,7 @@ async def _stop(*tasks: asyncio.Task) -> None:
 
 
 def test_discovery_finds_the_tour_and_the_demos():
-    from nuspace.ext import discover
+    from nuspace.specs import discover
 
     ext = discover()["nudemos"]
     assert [p.name for p in ext.planes] == [
@@ -119,14 +131,15 @@ def test_discovery_finds_the_tour_and_the_demos():
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.name)
 def test_each_spec_is_a_demo(spec: PlaneSpec):
-    from nuspace.system.backends import BACKENDS
+    from nuspace.kernel.backends import BACKENDS
 
     assert spec.group == "Demos"
     assert spec.icon
     assert spec.description
     assert spec.backend in BACKENDS
     assert spec.backend == "async"
-    assert spec.meta["editable"] is True
+    assert spec.web is not None
+    assert spec.web.editable is True
     names = [name for name, _ in spec.cells]
     assert names
     assert len(set(names)) == len(names)
@@ -137,44 +150,67 @@ def test_the_tour_nests_the_demos():
     assert all(not m.PLANE.children for m in DEMOS)
 
 
+def test_demos_meant_once_per_space_are_keyed_by_package():
+    keys = [m.PLANE.key for m in KEYED]
+    assert keys == ["nudemos_ops", "nudemos_research", "nudemos_data"]
+    assert all(not m.PLANE.key for m in (*DEMOS, tour, agents, recipes))
+
+
 # --- creating them ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("module", [*DEMOS, *MOVIES], ids=lambda m: m.PLANE.name)
 async def test_each_demo_is_created_with_its_cells(store, module):
     spec = module.PLANE
-    await store.run(ops.create_plane(spec, plane_id="p1"))
-    (row,) = [r for r in await store.read(ops.plane_rows()) if r["id"] == "p1"]
+    await store.run(nuspace.specs.add_plane(spec, "p1"))
+    row = await store.read(Space.planes["p1"].extract())
     assert row["name"] == spec.label
-    assert row["props"] == {
-        "system": False,
-        "ui": True,
-        "made_by": f"nudemos.{spec.name}",
-        "backend": "async",
-    }
-    assert row["meta"] == {**spec.meta, "icon": f"lucide:{spec.icon}"}
-    cells = await store.read(ops.cell_rows("p1"))
-    assert [(c["name"], c["prog"]) for c in cells] == list(spec.cells)
-    assert all(c["props"]["has_ui"] for c in cells)
+    assert row["spec"] == f"nudemos.{spec.name}"
+    assert row["backend"] == "async"
+    assert row["icon"] == f"lucide:{spec.icon}"
+    shown = await store.read(Web.planes["p1"].extract())
+    assert shown == {"editable": True, "full_width": spec.web.full_width, "compact": False}
+    ids = await _cells(store, "p1")
+    # In the spec's order on the plane, each found by its name in the plane's state.
+    placed = await store.read(Space.planes["p1"].cells.keys(limit=20))
+    assert placed == [ids[name] for name, _ in spec.cells]
+    for name, prog in spec.cells:
+        cell = await store.read(Space.cells[ids[name]].extract())
+        assert (cell["name"], cell["prog"], cell["plane"]) == (name, prog, "p1")
+        assert cell["fabrics"] == ["ui"]
 
 
 async def test_the_tour_is_created_with_the_demos_under_it(store):
-    await store.run(ops.create_plane(tour.PLANE, plane_id="t"))
-    assert [c["name"] for c in await store.read(ops.cell_rows("t"))] == ["intro"]
-    kids = await store.read(ops.children("t"))
-    rows = {r["id"]: r for r in await store.read(ops.plane_rows())}
-    assert [rows[k]["props"]["made_by"] for k in kids] == ["nudemos.counter", "nudemos.sampled"]
-    assert all(rows[k]["parent"] == "t" for k in kids)
+    await store.run(nuspace.specs.add_plane(tour.PLANE, "t"))
+    assert set(await _cells(store, "t")) == {"intro"}
+    kids = await store.read(Space.planes["t"].children.keys(limit=10))
+    specs = [await store.read(Space.planes[k].spec) for k in kids]
+    assert specs == ["nudemos.counter", "nudemos.sampled"]
     for kid, module in zip(kids, DEMOS, strict=True):
-        cells = await store.read(ops.cell_rows(kid))
-        assert [(c["name"], c["prog"]) for c in cells] == list(module.PLANE.cells)
+        assert await store.read(Space.planes[kid].parent) == "t"
+        assert set(await _cells(store, kid)) == {name for name, _ in module.PLANE.cells}
 
 
-@pytest.mark.parametrize("source", SOURCES, ids=lambda s: str(hash(s)))
-async def test_each_cell_loads_through_the_kernel_rewrites(store, source):
-    await store.run(ops.add_plane("p", backend="async") >> ops.add_cell("p", source, cell_id="c"))
+async def test_a_keyed_demo_is_found_by_its_key_and_made_once(store):
+    await store.run(nuspace.specs.add_plane(ops.PLANE, "o1"))
+    assert await store.read(Space.indexes.plane_keys["nudemos_ops"]) == "o1"
+    with pytest.raises(nuspace.errors.Exists):
+        await store.run(nuspace.specs.add_plane(ops.PLANE, "o2"))
+
+
+@pytest.mark.parametrize("source", SOURCES, ids=lambda s: f"{zlib.crc32(s.encode()):08x}")
+async def test_each_cell_loads_through_the_session_rewrite(store, source):
+    await store.do(nuspace.plane.add("p", backend="async") >> nuspace.cell.add("p", source, id="c"))
     term = await _load(store, "p", "c")
     assert isinstance(term, nu.Nu)
+    nu.validate(nu.compile(term))
+
+
+@pytest.mark.parametrize("source", KEYED_SOURCES, ids=lambda s: f"{zlib.crc32(s.encode()):08x}")
+def test_each_root_cell_of_the_bigger_demos_builds(source):
+    brace = nu.prog.PyBrace()
+    term = brace.construct(source, scope={"plane": "p", "cell": "c"})
+    assert isinstance(term, nu.Nu), term
     nu.validate(nu.compile(term))
 
 
@@ -182,7 +218,7 @@ async def test_each_cell_loads_through_the_kernel_rewrites(store, source):
 
 
 async def test_the_counter_ticks_once_a_second_however_many_tabs(store):
-    await store.run(ops.create_plane(counter.PLANE, plane_id="p"))
+    await store.run(nuspace.specs.add_plane(counter.PLANE, "p"))
     cid = (await _cells(store, "p"))["count"]
     one, two = _Browser(), _Browser()
     tabs = [await _run(store, "p", cid, one), await _run(store, "p", cid, two)]
@@ -190,7 +226,7 @@ async def test_the_counter_ticks_once_a_second_however_many_tabs(store):
         await asyncio.sleep(3.3)
     finally:
         await _stop(*tabs)
-    count = await store.read(reroot(_Counter.value, "p", cid))
+    count = await store.read(nuspace.at.cell(id=cid).state(_Counter).value)
     assert 2 <= count <= 4
     # Both tabs follow the one count, whichever ticked.
     for tab in (one, two):
@@ -199,9 +235,9 @@ async def test_the_counter_ticks_once_a_second_however_many_tabs(store):
 
 
 async def test_the_counter_carries_on_from_its_state(store):
-    await store.run(ops.create_plane(counter.PLANE, plane_id="p"))
+    await store.run(nuspace.specs.add_plane(counter.PLANE, "p"))
     cid = (await _cells(store, "p"))["count"]
-    await store.run(ops.atomic_state(reroot(_Counter.value, "p", cid).set(41)))
+    await store.do(nuspace.at.cell(id=cid).state(_Counter).value.set(41))
     tab = _Browser()
     task = await _run(store, "p", cid, tab)
     try:
@@ -211,13 +247,13 @@ async def test_the_counter_carries_on_from_its_state(store):
 
 
 async def test_sampled_feeds_in_batches_and_charts_a_sample(store):
-    await store.run(ops.create_plane(sampled.PLANE, plane_id="p"))
+    await store.run(nuspace.specs.add_plane(sampled.PLANE, "p"))
     ids = await _cells(store, "p")
     feed, chart = _Browser(), _Browser()
     tasks = [await _run(store, "p", ids["feed"], feed), await _run(store, "p", ids["chart"], chart)]
     try:
         await _until(lambda: len(chart.drawn("chart")) >= 2)
-        cursor = await store.read(reroot(_Series.cursor, "p", ""))
+        cursor = await store.read(nuspace.at.plane(id="p").state(_Series).cursor)
     finally:
         await _stop(*tasks)
     assert cursor > 0
@@ -235,7 +271,8 @@ async def test_sampled_feeds_in_batches_and_charts_a_sample(store):
 # a pane URL. The row clicks and launches across the demos all do this.
 PUSHES = """\
 import nu
-import nuspace.ui
+import nu.prog
+import nuspace.devices.web as web
 import nustd.ui
 
 
@@ -245,12 +282,12 @@ class View(nustd.ui.Column):
 
 
 def out(plane):
-    return View.head.set("Opening") >> View.history.push(nuspace.ui.href(plane + ".run", {"id": 7})) >> nu.ForeverDo(nu.Delay(3600.0))
+    return View.head.set("Opening") >> View.history.push(web.href(plane + ".run", {"id": 7})) >> nu.ForeverDo(nu.Delay(3600.0))
 """
 
 
 async def test_a_cell_moves_the_page_with_a_history_ref_under_itself(store):
-    await store.run(ops.add_plane("p", backend="async") >> ops.add_cell("p", PUSHES, cell_id="c"))
+    await store.do(nuspace.plane.add("p", backend="async") >> nuspace.cell.add("p", PUSHES, id="c"))
     tab = _Browser()
     task = await _run(store, "p", "c", tab)
     try:

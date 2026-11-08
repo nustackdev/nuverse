@@ -14,7 +14,7 @@ sync uses ``$NUVERSE_MEMES_RPC``, then the public mainnet endpoint.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from .cells import BAR, cell
 
@@ -50,11 +50,11 @@ K = View.knobs
 
 
 def show(root):
-    c = Control
-    shown = at_root(root, nu.Dict.of(
+    c = control_at(root)
+    shown = nu.Dict.of(
         rpc=c.rpc.fallback(""), rate=c.rate.fallback(RATE), start=c.start.fallback(0), images=c.images.fallback(False),
-    ))
-    return nu.let(snap(shown), lambda v: (
+    )
+    return nu.let(nuspace.atomic(shown), lambda v: (
         K.rpc.set(v["rpc"]) >> K.rate.set_value(v["rate"]) >> K.start.set_value(v["start"])
         >> View.go.hint.set(views.endpoint_hint(v["rpc"])) >> View.images.show.set(v["images"])
     ))
@@ -63,13 +63,14 @@ def show(root):
 def save(root):
     # What the form says now, read from the browser once per click.
     rate = nu.If(nu.float(K.rate) > 0.0, nu.float(K.rate), RATE)
-    kept = Control.rpc.set(nu.Str(K.rpc).strip()) >> Control.rate.set(rate) >> Control.start.set(nu.int(K.start))
-    return ops.atomic_state(at_root(root, kept)) >> show(root)
+    c = control_at(root)
+    kept = c.rpc.set(nu.Str(K.rpc).strip()) >> c.rate.set(rate) >> c.start.set(nu.int(K.start))
+    return nuspace.atomic(kept) >> show(root)
 
 
 def images(root):
     # The switch saves on its own: what it says now, read from the browser once per flip.
-    return ops.atomic_state(at_root(root, Control.images.set(nu.Bool(View.images.show))))
+    return nuspace.atomic(control_at(root).images.set(nu.Bool(View.images.show)))
 
 
 def placed():
@@ -93,7 +94,7 @@ def out(plane):
             nu.ReactEvery(View.images.show.on_change(), images(root)),
         )
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -121,10 +122,10 @@ def said(stats, sync):
 
 def out(plane):
     def follow(root):
-        read = said(at_root(root, Memes.stats.fallback({})), at_root(root, Memes.sync.fallback({})))
-        return nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), View.state.set_value), every=5.0)
+        read = said(memes_at(root).stats.fallback({}), memes_at(root).sync.fallback({}))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), View.state.set_value), every=5.0)
 
-    return View.head.set("What the sync says") >> nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return View.head.set("What the sync says") >> nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -155,7 +156,7 @@ PLANE = PlaneSpec(
     "Sync",
     icon="cog",
     description="Where the memes sync reads from, how fast, and from which slot.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("sync", BAR), ("settings", SETTINGS), ("state", STATE), ("about", ABOUT)),
     backend="async",
 )

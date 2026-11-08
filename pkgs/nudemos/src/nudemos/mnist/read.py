@@ -22,7 +22,7 @@ page goes without it, and the two buttons still feed it.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
 __all__ = ["PLANE", "READ"]
@@ -30,15 +30,12 @@ __all__ = ["PLANE", "READ"]
 
 READ = '''\
 import nu
+import nuspace
 import nustd.ui
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
 from nudemos.mnist import views
 from nudemos.mnist.interactions import Classify, Holds, MnistDigit, Use
 from nudemos.mnist.reader import Reader
-from nudemos.mnist.state import Run
-from nudemos.mnist.views import at
+from nudemos.mnist.state import run_at, runs_change
 
 #: Seconds between looks at the picked run for a newer checkpoint.
 EVERY = 0.5
@@ -124,8 +121,8 @@ AS_IS = "What the model is given: an MNIST test digit, as it is."
 
 def model(job, slot):
     # A model's step and test score, never its bytes.
-    m = Run.models[slot]
-    return nu.Dict.of(step=at(job, m.step.fallback(-1)), acc=at(job, m.acc.fallback(-1.0)))
+    m = run_at(job).models[slot]
+    return nu.Dict.of(step=m.step.fallback(-1), acc=m.acc.fallback(-1.0))
 
 
 def draw(a):
@@ -136,7 +133,7 @@ def draw(a):
 def read(job, slot, m, look):
     # The weights leave the store only when the reader has not got this step of this model.
     key = job + "/" + slot + "/" + nu.str(m["step"])
-    blob = snap(at(job, Run.models[slot].blob.fallback(b"")))
+    blob = nuspace.atomic(run_at(job).models[slot].blob.fallback(b""))
     loaded = nu.IfDo(nu.Bool(Holds(key)), nu.Noop(), nu.let(Use(key, blob), lambda _: nu.Noop()))
     shown = views.answer(Classify(Shown.image), Shown.label, slot, m)
     # A read overtaken by a newer input or model draws nothing.
@@ -150,7 +147,7 @@ def settle():
         return nu.let(look, lambda k: nu.IfDo(nu.Str(k) != Shown.seen, Shown.seen.set(k) >> read(job, slot, m, k)))
 
     def picked(job, slot):
-        return nu.let(snap(model(job, slot)), lambda m: go(job, slot, m))
+        return nu.let(nuspace.atomic(model(job, slot)), lambda m: go(job, slot, m))
 
     return nu.let(nu.Str(Shown.job), lambda j: nu.let(nu.Str(Shown.kind), lambda s: picked(nu.Str(j), nu.Str(s))))
 
@@ -212,10 +209,10 @@ def placed():
 
 
 def body(root):
-    runs = Space.planes[nu.Str(root)].children.on_change()
+    runs = runs_change(nu.Str(root))
     pad = [nu.ReactEvery(W.pad.sketch.on_change(), drew())] if SKETCH else []
     return placed() >> took([], -1) >> nu.ParallelAsync(
-        nu.Reconcile(snap(nu.OnAny(*[runs])), nu.let(snap(views.choices(views.shelf(nu.Str(root)))), options), every=3.0),
+        nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.choices(views.shelf(nu.Str(root)))), options), every=3.0),
         nu.ReactEvery(P.run.choice.on_change(), chose()),
         nu.ReactEvery(P.model.choice.on_change(), Shown.kind.set(nu.Str(P.model.choice)) >> settle()),
         nu.ReactEvery(W.pad.tools.sample.on_click(), sampled()),
@@ -230,7 +227,7 @@ def out(plane):
         shown = nu.Frame(Shown, body(root), job="", chosen=False, kind="latest", image=[], label=-1, n=0, seen="")
         return nu.Provide(Reader, {}, shown)
 
-    return nu.let(snap(ops.parent(plane)), run)
+    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), run)
 '''
 
 
@@ -239,7 +236,7 @@ PLANE = PlaneSpec(
     "Read",
     icon="pencil",
     description="Pick a trained MNIST model, draw a digit, and watch it read.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("read", READ),),
     backend="async",
 )

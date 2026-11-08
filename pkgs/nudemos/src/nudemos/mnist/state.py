@@ -1,10 +1,14 @@
 """The state a run keeps, and where the cells that show it find it.
 
-A run is a headless job plane with one cell, ``<job>_main``. :class:`Run`
-is that cell's state: what it trains with, how far it got, and its metrics.
-The job writes it bare (its own state), every other cell reads and steers it
-under the job's cell with ``ops.cell_state``. One class, imported by every
-cell, so the slots are declared once.
+A run is a headless job plane with one cell. :class:`Run` is that cell's
+state: what it trains with, how far it got, and its metrics. The job writes
+it as its own (``nuspace.here(Run)``), every other cell reads and steers it
+at the job's cell (:func:`run_at`). One class, imported by every cell, so the
+slots are declared once.
+
+The MNIST plane keeps its runs' planes in its own state (:class:`Runs`), and
+a run page its job's id (:class:`Made`), so nothing looks a run up by
+scanning.
 
 The metric series are kh57 maps keyed by step: they grow with the run, and a
 chart samples a few hundred points out of them at the same cost however long
@@ -20,8 +24,8 @@ The planes hang as the Launch plane makes them::
 
     MNIST                 the root, made from :data:`nudemos.mnist.PLANE`
       Launch, Compare, Read
-      <run>               a run page (ui), made_by ``mnist_run``
-        train             the job (headless, mp), made_by ``mnist_job``
+      <run>               a run page (on the web), spec ``mnist_run``
+        train             the job (headless, mp), spec ``mnist_job``
 """
 
 from __future__ import annotations
@@ -29,25 +33,27 @@ from __future__ import annotations
 import nu
 import nuspace
 import nustd.kv
-from nuspace import ops
-from nuspace.shapes import Space
 
 
 __all__ = [
     "JOB",
     "PAGE",
     "SLOTS",
+    "Made",
     "Model",
     "Pick",
     "Run",
+    "Runs",
     "job_cell",
     "job_of",
+    "run_at",
+    "runs_change",
     "runs_of",
     "status_of",
 ]
 
 
-#: ``made_by`` of a run page, and of the job under it.
+#: The spec names of a run page, and of the job under it.
 PAGE, JOB = "mnist_run", "mnist_job"
 
 
@@ -63,7 +69,7 @@ class Model(nu.Shape):
     acc = nustd.kv.FloatRef.slot()
 
 
-class Run(nuspace.CellState):
+class Run(nu.Shape):
     """A run's state, on its job's one cell."""
 
     # What it trains with, as launched, and the learning rate it trains at now.
@@ -101,41 +107,64 @@ class Run(nuspace.CellState):
     looked = nustd.kv.IntRef.slot()
 
 
-class Pick(nuspace.PlaneState):
-    """The Compare plane's: the runs ticked in its table, by run page id."""
+class Pick(nu.Shape):
+    """The Compare plane's, in its plane's state: the runs ticked in its table, by run plane id."""
 
-    pages = nustd.kv.ListRef.slot(str)
+    planes = nustd.kv.ListRef.slot(str)
 
 
-def _made_by(plane: nu.Nu) -> nu.Str:
-    return Space.planes[nu.Str(plane)].props.made_by.fallback("")
+class Runs(nu.Shape):
+    """The MNIST plane's, in its plane's state: its run planes, oldest first."""
+
+    planes = nustd.kv.LogDictRef.slot(bool)
+
+
+class Made(nu.Shape):
+    """A run page's, in its plane's state: its job, once made."""
+
+    job = nustd.kv.StrRef.slot()
 
 
 def job_of(page: nu.StrArg) -> nu.Str:
     """The job under a run page, ``""`` while it has none. Bare read."""
-    jobs = ops.children(page).iter().filter(lambda p: _made_by(p) == JOB)
-    return nu.str(jobs.first(default=""))
+    return nu.Str(nuspace.at.plane(id=page).state(Made).job.fallback(""))
 
 
 def job_cell(job: nu.StrArg) -> nu.Str:
-    """A job's one cell: its id with ``_main`` after it."""
-    return nu.Str(job) + "_main"
+    """A job's one cell, NULL for a job with none. Bare read: one seek."""
+    return nu.Str(nuspace.Space.planes[job].cells.first())
+
+
+def run_at(job: nu.StrArg) -> Run:
+    """A run's state, at its job's cell, typed as :class:`Run`."""
+    return nuspace.at.cell(id=job_cell(job)).state(Run)
 
 
 def runs_of(root: nu.StrArg) -> nu.List:
-    """``[[page, job, name], ...]``, every run under the MNIST plane, oldest first. Bare read."""
-    pages = ops.children(root).iter().filter(lambda p: _made_by(p) == PAGE)
+    """``[[page, job, name], ...]``, every run under the MNIST plane, oldest first. Bare read.
+
+    The pages the plane keeps (:class:`Runs`) that are still in the space.
+    """
+    pages = nuspace.at.plane(id=root).state(Runs).planes
+    kept = nu.list(nu.If(pages.exists(), nu.list(pages.keys()), []))
+    shown = kept.iter().filter(lambda p: nuspace.plane.exists(nu.Str(p)))
 
     def row(p: nu.Nu) -> nu.Nu:
         page = nu.Str(p)
-        return nu.List.of(page, job_of(page), ops.plane_title(page))
+        return nu.List.of(page, job_of(page), nuspace.plane.title(page))
 
-    return pages.map(row).to_list()
+    return shown.map(row).to_list()
+
+
+def runs_change(root: nu.StrArg) -> nu.Nu:
+    """A watch on the MNIST plane's runs: one launched (its list), one removed (its children)."""
+    pages = nuspace.at.plane(id=root).state(Runs).planes
+    return nu.OnAny(nuspace.Space.planes[root].children.on_change(), pages.on_change())
 
 
 def status_of(job: nu.StrArg) -> nu.Str:
     """A run's status, ``down`` for one that says it trains but has no live run. Bare read."""
-    said = ops.cell_state(job_cell(job), Run.status.fallback("starting"))
-    live = Space.kernel.planes_running.contains(job)
+    said = run_at(job).status.fallback("starting")
+    live = nu.If(nuspace.plane.exists(job), nuspace.plane_run.any_live(job), False)
     resting = (said == "done").or_(said == "stopped")
     return nu.Str(nu.If(resting.or_(live), said, "down"))

@@ -3,7 +3,7 @@
 Each is a headless plane under the root with one cell, run in its own
 process and kept up by the supervisor. Both write shards into the root's
 :class:`~.kit.Shop`, the same way the history was written, and move
-``Shop.beat``, which every dashboard follows.
+``SHOP.beat``, which every dashboard follows.
 
 - :data:`STREAM`: every two seconds, a few orders and web sessions at the
   pace the Sources page sets, sold at the prices the Products sheet holds
@@ -384,12 +384,11 @@ def pid() -> int:
 
 STREAM = """\
 import nu
+import nuspace
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.data import kit
 from nudemos.data.jobs import tick
-from nudemos.data.kit import Shop, at
+from nudemos.data.kit import SHOP
 
 #: Seconds between two ticks.
 EVERY = 2.0
@@ -399,47 +398,46 @@ def written(w):
     d = nu.Dict(w)
     each = lambda key, write: nu.ForEachDo(d[key], lambda x: write(nu.List(x)))
     return (
-        each("shards", lambda s: Shop.shards.set_item(nu.Int(s[0]), s[1]))
-        >> each("index", lambda e: Shop.index[nu.Str(e[0])].set(e[1]))
-        >> each("stock", lambda s: Shop.products[nu.Str(s[0])].stock.set(nu.Int(s[1])))
-        >> Shop.stream.set(d["stream"]) >> Shop.feed.set(d["feed"])
-        >> Shop.sold.set_item(nu.Int(d["at"]), nu.Float(d["sold"]))
-        >> nu.IfDo(nu.Bool(d["moved"]), Shop.beat.set(Shop.beat.fallback(0) + 1))
+        each("shards", lambda s: SHOP.shards.set_item(nu.Int(s[0]), s[1]))
+        >> each("index", lambda e: SHOP.index[nu.Str(e[0])].set(e[1]))
+        >> each("stock", lambda s: SHOP.products[nu.Str(s[0])].stock.set(nu.Int(s[1])))
+        >> SHOP.stream.set(d["stream"]) >> SHOP.feed.set(d["feed"])
+        >> SHOP.sold.set_item(nu.Int(d["at"]), nu.Float(d["sold"]))
+        >> nu.IfDo(nu.Bool(d["moved"]), SHOP.beat.set(SHOP.beat.fallback(0) + 1))
     )
 
 
 def turn(root):
     # The shards this process has not seen come in first, outside the commit; the tick reads and writes in one.
     def go(got):
-        index = Shop.index.extract()
-        step = tick(index, Shop.stream.fallback({}), Shop.products.extract(), Shop.feed.fallback([]),
-                    Shop.pace.fallback("Busy"), nustd.time.time())
-        return ops.atomic_state(at(root, nu.let(step, written)))
+        index = SHOP.index.extract()
+        step = tick(index, SHOP.stream.fallback({}), SHOP.products.extract(), SHOP.feed.fallback([]),
+                    SHOP.pace.fallback("Busy"), nustd.time.time())
+        return nuspace.atomic(nu.let(step, written))
 
-    return nu.let(snap(at(root, kit.loaded(("lines", "people", "events"))[1])), go)
+    return nu.let(nuspace.atomic(kit.loaded(("lines", "people", "events"))[1]), go)
 
 
 def said(root, status):
-    return ops.atomic_state(at(root, Shop.stream.set(kit.merged(Shop.stream.fallback({}), nu.Dict.of(status=status)))))
+    return nuspace.atomic(SHOP.stream.set(kit.merged(SHOP.stream.fallback({}), nu.Dict.of(status=status))))
 
 
 def out(plane):
     def run(root):
-        going = snap(at(root, Shop.stop.fallback(False)).not_())
+        going = nuspace.atomic(SHOP.stop.fallback(False).not_())
         return said(root, "running") >> nu.WhileDo(going, turn(root) >> nu.Delay(EVERY)) >> said(root, "stopped")
 
-    return nu.let(snap(kit.root_of(plane)), lambda root: run(nu.Str(root)))
+    return nu.let(nuspace.atomic(kit.ROOT_ID), lambda root: run(nu.Str(root)))
 """
 
 
 IMPORTER = """\
 import nu
+import nuspace
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.data import kit
 from nudemos.data.jobs import archive, ensure, ingest, pid, waiting
-from nudemos.data.kit import Shop, at
+from nudemos.data.kit import SHOP
 
 #: Seconds between two looks at the inbox.
 EVERY = 1.5
@@ -448,22 +446,22 @@ EVERY = 1.5
 def written(w):
     d = nu.Dict(w)
     each = lambda key, write: nu.ForEachDo(d[key], lambda x: write(nu.List(x)))
-    log = kit.prepend(d["log"], Shop.imports.fallback([]), 40)
+    log = kit.prepend(d["log"], SHOP.imports.fallback([]), 40)
     return (
-        each("shards", lambda s: Shop.shards.set_item(nu.Int(s[0]), s[1]))
-        >> each("index", lambda e: Shop.index[nu.Str(e[0])].set(e[1]))
-        >> Shop.imports.set(log) >> Shop.importer.set(d["importer"])
-        >> Shop.beat.set(Shop.beat.fallback(0) + 1)
+        each("shards", lambda s: SHOP.shards.set_item(nu.Int(s[0]), s[1]))
+        >> each("index", lambda e: SHOP.index[nu.Str(e[0])].set(e[1]))
+        >> SHOP.imports.set(log) >> SHOP.importer.set(d["importer"])
+        >> SHOP.beat.set(SHOP.beat.fallback(0) + 1)
     )
 
 
 def one(root, inbox, name):
     # Parsed and checked here, in this job's own process, loaded in one commit, then the file put away.
     def load(got):
-        made = ingest(inbox, name, Shop.index.extract(), Shop.importer.fallback({}), nustd.time.time())
-        return ops.atomic_state(at(root, nu.let(made, written))) >> archive(inbox, name)
+        made = ingest(inbox, name, SHOP.index.extract(), SHOP.importer.fallback({}), nustd.time.time())
+        return nuspace.atomic(nu.let(made, written)) >> nu.let(archive(inbox, name), lambda _: nu.Noop())
 
-    return nu.let(snap(at(root, kit.loaded(("people",))[1])), load)
+    return nu.let(nuspace.atomic(kit.loaded(("people",))[1]), load)
 
 
 def look(root, inbox):
@@ -472,14 +470,14 @@ def look(root, inbox):
 
 def out(plane):
     def run(root, inbox):
-        hello = ops.atomic_state(at(root, Shop.importer.set(
-            kit.merged(Shop.importer.fallback({}), nu.Dict.of(status="watching", pid=pid(), since=nustd.time.time()))
-        )))
-        return ensure(inbox) >> hello >> nu.ForeverDo(look(root, inbox))
+        hello = nuspace.atomic(SHOP.importer.set(
+            kit.merged(SHOP.importer.fallback({}), nu.Dict.of(status="watching", pid=pid(), since=nustd.time.time()))
+        ))
+        return nu.let(ensure(inbox), lambda _: hello) >> nu.ForeverDo(look(root, inbox))
 
     def landed(root):
         r = nu.Str(root)
-        return nu.let(snap(at(r, Shop.inbox.fallback(""))), lambda inbox: run(r, nu.Str(inbox)))
+        return nu.let(nuspace.atomic(SHOP.inbox.fallback("")), lambda inbox: run(r, nu.Str(inbox)))
 
-    return nu.let(snap(kit.root_of(plane)), landed)
+    return nu.let(nuspace.atomic(kit.ROOT_ID), landed)
 """

@@ -32,6 +32,7 @@ __all__ = [
     "history",
     "latest",
     "leaderboard",
+    "linked",
     "model_evidence",
     "notebook",
     "opening",
@@ -464,7 +465,20 @@ def leaderboard(runs: dict) -> list[dict[str, Any]]:
 # --- the week, and the notebook --------------------------------------------------------------
 
 
-def digest(desk: dict, base: str = "", now: float | None = None) -> str:
+def linked(desk: dict, label: str, kind: str, key: str) -> str:
+    """``label`` as a markdown link to the plane the desk made for ``key``, plain while it has none.
+
+    Args:
+        desk: The whole desk as read, its plane ids under ``planes``.
+        label: What the link reads.
+        kind: ``sections`` (by name), ``sources``, ``claims`` or ``runs`` (by key).
+        key: The section's name, or the item's key.
+    """
+    pid = (((desk or {}).get("planes") or {}).get(kind) or {}).get(key)
+    return f"[{label}](/{pid})" if pid else label
+
+
+def digest(desk: dict, now: float | None = None) -> str:
     """What changed on the desk in the last seven days, as markdown, from the whole store."""
     now = now or time.time()
     week = now - 7 * DAY
@@ -511,7 +525,7 @@ def digest(desk: dict, base: str = "", now: float | None = None) -> str:
             continue
         s = now_scores[key]
         way = "up" if d > 0 else "down"
-        name = f"[{claims[key]['label']}](/{base}.claim.{key})" if base else claims[key]["label"]
+        name = linked(desk, claims[key]["label"], "claims", key)
         lines.append(
             f"- {name} moved **{way} {abs(d):.2f}** to {s['score']:+.2f}, {s['status'].lower()}"
         )
@@ -525,7 +539,7 @@ def digest(desk: dict, base: str = "", now: float | None = None) -> str:
     return "\n".join(lines) or "A quiet week: nothing new on the desk."
 
 
-def activity(desk: dict, base: str, n: int = 10) -> str:
+def activity(desk: dict, n: int = 10) -> str:
     """The desk's latest doings, newest first, as markdown: who added, linked, ran, wrote; what the probe missed."""
     sources, claims, runs = desk["sources"], desk["claims"], desk["runs"]
     ev: list[tuple[float, str]] = []
@@ -533,7 +547,7 @@ def activity(desk: dict, base: str, n: int = 10) -> str:
         ev.append(
             (
                 s.get("at") or 0,
-                f"{s.get('by', 'Someone')} added [{_short_title(s)}](/{base}.src.{s['key']})",
+                f"{s.get('by', 'Someone')} added {linked(desk, _short_title(s), 'sources', s['key'])}",
             )
         )
     for e in desk["evidence"].values():
@@ -542,8 +556,8 @@ def activity(desk: dict, base: str, n: int = 10) -> str:
             ev.append(
                 (
                     e.get("at") or 0,
-                    f"{e.get('by') or s.get('by', 'Someone')} weighed [{_short_title(s)}](/{base}.src.{s['key']}) "
-                    f"{'for' if e['stance'] == 'for' else 'against'} [{c['label']}](/{base}.claim.{c['key']})",
+                    f"{e.get('by') or s.get('by', 'Someone')} weighed {linked(desk, _short_title(s), 'sources', s['key'])} "
+                    f"{'for' if e['stance'] == 'for' else 'against'} {linked(desk, c['label'], 'claims', c['key'])}",
                 )
             )
     for r in runs.values():
@@ -552,14 +566,14 @@ def activity(desk: dict, base: str, n: int = 10) -> str:
             ev.append(
                 (
                     r.get("done_at") or 0,
-                    f"[{title_of_run(r)}](/{base}.run.{r['key']}) finished, {right}/{asked}, run by {r.get('by', 'the desk')}",
+                    f"{linked(desk, title_of_run(r), 'runs', r['key'])} finished, {right}/{asked}, run by {r.get('by', 'the desk')}",
                 )
             )
         else:
             ev.append(
                 (
                     r.get("at") or 0,
-                    f"[{title_of_run(r)}](/{base}.run.{r['key']}) is running, {asked}/{len(evals.BY_ID)} answered",
+                    f"{linked(desk, title_of_run(r), 'runs', r['key'])} is running, {asked}/{len(evals.BY_ID)} answered",
                 )
             )
     for p in desk.get("probes") or []:
@@ -568,9 +582,9 @@ def activity(desk: dict, base: str, n: int = 10) -> str:
             ev.append(
                 (
                     p.get("at") or 0,
-                    f"[The probe](/{base}.watch) missed *{q}*, {'distracted' if p.get('context') == 'noisy' else 'clean'}: said {p.get('got'):g}"
+                    f"{linked(desk, 'The probe', 'sections', 'watch')} missed *{q}*, {'distracted' if p.get('context') == 'noisy' else 'clean'}: said {p.get('got'):g}"
                     if isinstance(p.get("got"), (int, float))
-                    else f"[The probe](/{base}.watch) got no answer to *{q}*",
+                    else f"{linked(desk, 'The probe', 'sections', 'watch')} got no answer to *{q}*",
                 )
             )
     for note in desk.get("notebook") or []:
@@ -578,14 +592,14 @@ def activity(desk: dict, base: str, n: int = 10) -> str:
             ev.append(
                 (
                     note.get("at") or 0,
-                    f"{note.get('by', 'Someone')} wrote [{note['title']}](/{base}.notebook) in the notebook",
+                    f"{note.get('by', 'Someone')} wrote {linked(desk, note['title'], 'sections', 'notebook')} in the notebook",
                 )
             )
     for c in claims.values():
         ev.append(
             (
                 c.get("at") or 0,
-                f"{c.get('by', 'Someone')} put [{c['label']}](/{base}.claim.{c['key']}) on the board",
+                f"{c.get('by', 'Someone')} put {linked(desk, c['label'], 'claims', c['key'])} on the board",
             )
         )
     ev.sort(key=lambda x: -x[0])

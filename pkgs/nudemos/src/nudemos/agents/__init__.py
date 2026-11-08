@@ -23,7 +23,7 @@ of nustd) and a logged-in ``claude`` CLI. No API key: it runs on the login.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import board, orchestrate
 
@@ -36,7 +36,7 @@ PLANE = PlaneSpec(
     "Agents",
     icon="bot",
     description="Claude Code sessions, run, steered and orchestrated from a space.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("intro", board.INTRO), ("new", board.NEW), ("board", board.BOARD)),
     children=(orchestrate.FANOUT_PLANE, orchestrate.CHAIN_PLANE, orchestrate.TASKS_PLANE),
     group="Demos",

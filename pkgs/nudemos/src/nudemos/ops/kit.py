@@ -1,10 +1,11 @@
 """What every ops cell and job shares: the writes they make, the moves they make, the pages they make.
 
 Bare terms (``logged``, ``job_started``, ``event``, ...) are writes over
-:class:`~.state.Ops`: the caller lands them at the root and brackets them,
-so one job's turn is one short commit. The moves (``deploy``,
-``pause``, ``incident``, ``rule``, ...) bracket themselves: each is a few
-commits and the supervisor calls it takes, safe from any cell or job.
+:data:`~.state.OPS`, the root's state: the caller brackets them with
+``nuspace.atomic``, so one job's turn is one short commit. The moves
+(``deploy``, ``pause``, ``incident``, ``rule``, ...) bracket themselves:
+each is a few commits and the supervisor calls it takes, safe from any
+cell or job.
 
 - Logs: :func:`logged`, a job's lines into its stream, nulog's layout.
 - Jobs: :func:`job_started`, :func:`job_finished`, :func:`ask`; and from a page
@@ -27,22 +28,23 @@ import nu
 import nuspace
 import nustd.itertools
 import nustd.time
-from nuspace import PlaneSpec, ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace import Space
+from nuspace.specs import PlaneSpec, WebOptions
+from nuspace.system.supervisor import ALWAYS, ON_FAILURE
+from nuspace.utils import MintId
 
+from .. import headless
 from . import model
 from .state import (
     INCIDENT,
     JOB_PAGE,
+    OPS,
     ROOT,
+    ROOT_ID,
     WORKER,
-    Ops,
-    at_root,
-    incident_page,
-    job_page,
-    job_plane,
-    root_of,
+    folder_of,
+    incident_view,
+    worker_of,
 )
 
 
@@ -53,7 +55,6 @@ if TYPE_CHECKING:
 __all__ = [
     "GATEWAY_PORT",
     "ask",
-    "at_root",
     "calm",
     "deploy",
     "event",
@@ -70,13 +71,15 @@ __all__ = [
     "run_now",
     "seed",
     "settle_incident",
-    "snap",
     "view",
 ]
 
 
 #: Where the gateway listens, on the loopback only.
 GATEWAY_PORT = 8242
+
+#: The metric series' slots on :class:`~.state.Ops`.
+SERIES_SLOTS = ("rps", "err", "p50", "p95", "cpu", "mem", "disk", "load1", "gw_rss", "orders")
 
 #: Who the space acts as when a person presses a button.
 YOU = "you"
@@ -91,13 +94,12 @@ def pid() -> int:
 
 
 def on_root(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
-    """``build(root)``, the Ops root this plane belongs to read once, bare: ``build`` lands what it reads."""
-    return nu.let(snap(root_of(plane)), lambda r: build(nu.Str(r)))
+    """``build(root)``, the Ops root's id read once: ``build`` brackets what it reads.
 
-
-def landed(root: nu.StrArg, term: nu.Nu) -> nu.Nu:
-    """``term`` over :class:`Ops`, at the root, in one commit."""
-    return ops.atomic_state(at_root(root, term))
+    ``plane`` is the plane the cell runs on; every plane finds the one root by its key.
+    """
+    del plane
+    return nu.let(nuspace.atomic(ROOT_ID), lambda r: build(nu.Str(r)))
 
 
 # --- logs and the feed ---------------------------------------------------------------------------
@@ -110,7 +112,7 @@ def _counted(counts: dict, name: str, n: int) -> dict:
 
 def logged(name: str | nu.Str, lines: nu.Nu) -> nu.Nu:
     """``lines`` (``{id, ts_us, level, msg, fields}`` each) into job ``name``'s stream. Bare."""
-    stream = Ops.logs[name].entries
+    stream = OPS.logs[name].entries
 
     def one(line: nu.Attr) -> nu.Nu:
         ln = nu.Dict(line)
@@ -121,7 +123,7 @@ def logged(name: str | nu.Str, lines: nu.Nu) -> nu.Nu:
     return nu.IfDo(
         many.len() > 0,
         nu.ForEachDo(many, one)
-        >> Ops.counts.set(_counted(Ops.counts.fallback({}), name, many.len())),
+        >> OPS.counts.set(_counted(OPS.counts.fallback({}), name, many.len())),
     )
 
 
@@ -150,7 +152,7 @@ def said(
 def event(kind: nu.StrArg, text: nu.StrArg, link: nu.StrArg = "") -> nu.Nu:
     """One entry on the feed, newest first: ``kind`` is ``deploy``, ``incident``, ``page``, ``job``, ``rule``. Bare."""
     entry = nu.Dict.of(at=nustd.time.time(), kind=kind, text=text, link=link)
-    return Ops.events.set(push(Ops.events.fallback([]), entry, 300))
+    return OPS.events.set(push(OPS.events.fallback([]), entry, 300))
 
 
 # --- jobs ----------------------------------------------------------------------------------------
@@ -162,7 +164,7 @@ _done = nu.host(model.job_done, name="JobDone")
 
 def job_started(name: str) -> nu.Nu:
     """Job ``name``'s record as a run starts in this process. Bare."""
-    rec = Ops.jobs[name]
+    rec = OPS.jobs[name]
     return rec.set(_up(rec.fallback({}), name, pid(), nustd.time.time()))
 
 
@@ -176,17 +178,17 @@ def job_finished(name: str, result: nu.Nu) -> nu.Nu:
 
     def write(both: nu.ObjectRef) -> nu.Nu:
         pair = nu.List(both)
-        runs = Ops.runs[name]
-        return Ops.jobs[name].set(pair[0]) >> runs.set(push(runs.fallback([]), pair[1], 40))
+        runs = OPS.runs[name]
+        return OPS.jobs[name].set(pair[0]) >> runs.set(push(runs.fallback([]), pair[1], 40))
 
     keep = {
-        "backup": Ops.backups.set(kept["archives"]),
-        "linkcheck": Ops.links.set(kept),
-        "digest": Ops.digest.set(nu.Str(kept["text"])),
+        "backup": OPS.backups.set(kept["archives"]),
+        "linkcheck": OPS.links.set(kept),
+        "digest": OPS.digest.set(nu.Str(kept["text"])),
     }.get(name, nu.Noop())
     failed = event("job", nu.Str(f"{name} failed: ") + nu.Str(res["summary"]), f"jobs.{name}")
     return (
-        nu.let(_done(Ops.jobs[name].fallback({}), name, res, nustd.time.time()), write)
+        nu.let(_done(OPS.jobs[name].fallback({}), name, res, nustd.time.time()), write)
         >> logged(name, res["lines"])
         >> nu.IfDo(nu.Bool(res["ok"]), keep, failed)
     )
@@ -212,23 +214,23 @@ def _ask(
 def ask() -> nu.Nu:
     """What a scheduled job is told: ``{data, port, state}``. Bare read."""
     return _ask(
-        Ops.settings.fallback({}),
-        Ops.gw.fallback({}),
-        Ops.release.fallback({}),
-        nu.Dict(Ops.jobs.extract()).fallback({}),
-        nu.Dict(Ops.incidents.extract()).fallback({}),
-        Ops.machine.fallback({}),
+        OPS.settings.fallback({}),
+        OPS.gw.fallback({}),
+        OPS.release.fallback({}),
+        nu.Dict(OPS.jobs.extract()).fallback({}),
+        nu.Dict(OPS.incidents.extract()).fallback({}),
+        OPS.machine.fallback({}),
     )
 
 
 def view() -> nu.Nu:
     """What rules and pages look at: ``{gw, jobs, release, load, machine, now}``. Bare read."""
     return nu.Dict.of(
-        gw=Ops.gw.fallback({}),
-        jobs=nu.Dict(Ops.jobs.extract()).fallback({}),
-        release=Ops.release.fallback({}),
-        load=Ops.load.fallback({}),
-        machine=Ops.machine.fallback({}),
+        gw=OPS.gw.fallback({}),
+        jobs=nu.Dict(OPS.jobs.extract()).fallback({}),
+        release=OPS.release.fallback({}),
+        load=OPS.load.fallback({}),
+        machine=OPS.machine.fallback({}),
         now=nustd.time.time(),
     )
 
@@ -239,18 +241,16 @@ def _merge(rec: dict | None, fields: dict) -> dict:
 
 
 def _job_note(root: nu.StrArg, name: nu.StrArg, fields: dict, text: nu.StrArg) -> nu.Nu:
-    rec = Ops.jobs[name]
-    return landed(
-        root,
-        rec.set(_merge(rec.fallback({}), fields)) >> event("job", text, nu.Str("jobs.") + name),
+    rec = OPS.jobs[name]
+    return nuspace.atomic(
+        rec.set(_merge(rec.fallback({}), fields)) >> event("job", text, nu.Str("jobs.") + name)
     )
 
 
 def run_now(root: nu.StrArg, name: nu.StrArg) -> nu.Nu:
     """Run job ``name`` once now, beside its schedule."""
-    jid = job_plane(root, name)
-    return ops.plane_run(jid, by="ops") >> landed(
-        root, event("job", nu.Str(name) + " run by hand", nu.Str("jobs.") + name)
+    return nuspace.atomic(nuspace.plane_run.add(worker_of(name), by="ops")) >> nuspace.atomic(
+        event("job", nu.Str(name) + " run by hand", nu.Str("jobs.") + name)
     )
 
 
@@ -259,27 +259,38 @@ def _every(name: str) -> float:
     return float(model.JOBS[name]["every"])
 
 
+def _scheduled(root: nu.StrArg, name: nu.StrArg, move: Callable[..., nu.Nu]) -> nu.Nu:
+    """``move(job, policy, delay)`` on job ``name`` with its schedule's policy.
+
+    A scheduled job runs again its interval after each run (``always``),
+    a service is restarted when it fails (``on-failure``, the backoff). The
+    job's plane id is read once, from :class:`~.state.Made`.
+    """
+
+    def moved(held: nu.ObjectRef) -> nu.Nu:
+        jid = nu.Str(held)
+        if isinstance(name, str):
+            every = float(model.JOBS[name]["every"])
+            return move(jid, ALWAYS, every) if every else move(jid, ON_FAILURE, None)
+        every = nu.Float(_every(name))
+        return nu.IfDo(every > 0.0, move(jid, ALWAYS, every), move(jid, ON_FAILURE, None))
+
+    return nu.let(nuspace.atomic(worker_of(name)), moved)
+
+
 def _supervise(root: nu.StrArg, name: nu.StrArg) -> nu.Nu:
-    jid = job_plane(root, name)
-    if isinstance(name, str):
-        every = float(model.JOBS[name]["every"])
-        return (
-            nuspace.supervise(jid, "always", every)
-            if every
-            else nuspace.supervise(jid, "on-failure")
-        )
-    every = nu.Float(_every(name))
-    return nu.IfDo(
-        every > 0.0, nuspace.supervise(jid, "always", every), nuspace.supervise(jid, "on-failure")
-    )
+    """Job ``name`` under the supervisor on its schedule, or kept there."""
+    return _scheduled(root, name, headless.supervise)
 
 
 def pause(root: nu.StrArg, name: nu.StrArg, why: nu.StrArg = "by hand") -> nu.Nu:
-    """Take job ``name`` off its schedule: it runs no more until resumed."""
+    """Take job ``name`` off its schedule and stop its run: it runs no more until resumed."""
     note = _job_note(
         root, name, {"paused": True, "status": "paused"}, nu.Str(name) + " paused " + why
     )
-    return nuspace.unsupervise(job_plane(root, name)) >> note
+    return (
+        nu.let(nuspace.atomic(worker_of(name)), lambda j: headless.unsupervise(nu.Str(j))) >> note
+    )
 
 
 def resume(root: nu.StrArg, name: nu.StrArg) -> nu.Nu:
@@ -291,7 +302,7 @@ def resume(root: nu.StrArg, name: nu.StrArg) -> nu.Nu:
 def restart(root: nu.StrArg, name: nu.StrArg) -> nu.Nu:
     """Stop job ``name``'s run and start a fresh one: a new process for a service."""
     note = _job_note(root, name, {"status": "restarting"}, nu.Str(name) + " restarted")
-    return note >> nuspace.unsupervise(job_plane(root, name)) >> _supervise(root, name)
+    return note >> _scheduled(root, name, headless.restart)
 
 
 # --- releases ------------------------------------------------------------------------------------
@@ -311,13 +322,13 @@ def deploy(root: nu.StrArg, version: nu.StrArg, who: nu.StrArg = YOU, why: nu.St
         pair = nu.List(both)
         text = nu.Str("Deployed ") + nu.Str(version) + " by " + nu.Str(who)
         return (
-            Ops.release.set(pair[0]) >> Ops.deploys.set(pair[1]) >> event("deploy", text, "deploys")
+            OPS.release.set(pair[0]) >> OPS.deploys.set(pair[1]) >> event("deploy", text, "deploys")
         )
 
     made = _deployed(
-        Ops.release.fallback({}), Ops.deploys.fallback([]), version, who, why, nustd.time.time()
+        OPS.release.fallback({}), OPS.deploys.fallback([]), version, who, why, nustd.time.time()
     )
-    return landed(root, nu.let(made, write)) >> restart(root, "gateway")
+    return nuspace.atomic(nu.let(made, write)) >> restart(root, "gateway")
 
 
 # --- incidents and people ------------------------------------------------------------------------
@@ -342,11 +353,11 @@ def page(root: nu.StrArg, role: nu.StrArg, text: nu.StrArg, incident: nu.StrArg 
         n = nu.Str(name)
         sent = nu.Dict.of(at=nustd.time.time(), to=n, role=role, text=text, incident=incident)
         line = nu.Str("Paged ") + n + " (" + nu.Str(role) + "): " + nu.Str(text)
-        return Ops.pager.set(push(Ops.pager.fallback([]), sent, 100)) >> event(
+        return OPS.pager.set(push(OPS.pager.fallback([]), sent, 100)) >> event(
             "page", line, nu.Str("incident.") + incident
         )
 
-    return landed(root, nu.let(_who(Ops.oncall.fallback([]), role), write))
+    return nuspace.atomic(nu.let(_who(OPS.oncall.fallback([]), role), write))
 
 
 def incident(
@@ -363,23 +374,26 @@ def incident(
                 nu.Str("Opened ") + iid + ": " + nu.Str(title),
                 iid + ": " + nu.Str(detail),
             )
+            # A new incident's page id, minted with it: its page is made after.
+            minted = nu.IfDo(nu.Bool(m[2]), OPS.made.incidents[iid].init(MintId("p")))
             return (
-                Ops.incidents[iid].set(m[0])
+                OPS.incidents[iid].set(m[0])
+                >> minted
                 >> held.set(m)
                 >> event("incident", nu.Str(text), nu.Str("incident.") + iid)
             )
 
         made = _open(
-            nu.Dict(Ops.incidents.extract()).fallback({}),
+            nu.Dict(OPS.incidents.extract()).fallback({}),
             key,
             title,
             sev,
             detail,
-            nu.Str(Ops.release.fallback({})["version"]),
+            nu.Str(OPS.release.fallback({})["version"]),
             nustd.time.time(),
         )
         h = nu.List(held)
-        return landed(root, nu.let(made, write)) >> nu.IfDo(
+        return nuspace.atomic(nu.let(made, write)) >> nu.IfDo(
             nu.Bool(h[2]), incident_made(root, nu.Str(h[1]), title)
         )
 
@@ -387,20 +401,16 @@ def incident(
 
 
 def incident_made(root: nu.StrArg, iid: nu.Str, title: nu.StrArg) -> nu.Nu:
-    """An incident's page under Incidents, made once."""
+    """An incident's page under Incidents, made once, at the id minted when it opened."""
     from .cells import INCIDENT_CELLS
 
-    return _page(
-        incident_page(root, iid),
-        root,
-        nu.Str(root) + ".incidents",
-        iid,
-        INCIDENT,
-        "incident",
-        iid,
-        "lucide:flame",
-        INCIDENT_CELLS,
-    )
+    del root, title
+
+    def made(ids: nu.ObjectRef) -> nu.Nu:
+        pid, parent = nu.Str(nu.List(ids)[0]), nu.Str(nu.List(ids)[1])
+        return _page(pid, parent, iid, INCIDENT, "incident", iid, "lucide:flame", INCIDENT_CELLS)
+
+    return nu.let(nuspace.atomic(nu.List.of(incident_view(iid), folder_of("incidents"))), made)
 
 
 @nu.host
@@ -419,7 +429,7 @@ def calm(root: nu.StrArg, key: nu.StrArg, text: nu.StrArg) -> nu.Nu:
     """The open incident for ``key``, if any, to monitoring, with ``text`` on its timeline."""
 
     def write(iid: nu.ObjectRef) -> nu.Nu:
-        inc = Ops.incidents[nu.Str(iid)]
+        inc = OPS.incidents[nu.Str(iid)]
         moved = _note(
             _merge(inc.fallback({}), {"status": "monitoring"}), text, nustd.time.time(), "rule"
         )
@@ -428,8 +438,8 @@ def calm(root: nu.StrArg, key: nu.StrArg, text: nu.StrArg) -> nu.Nu:
         )
         return nu.IfDo(nu.Str(iid) != "", inc.set(moved) >> said)
 
-    return landed(
-        root, nu.let(_open_key(nu.Dict(Ops.incidents.extract()).fallback({}), key), write)
+    return nuspace.atomic(
+        nu.let(_open_key(nu.Dict(OPS.incidents.extract()).fallback({}), key), write)
     )
 
 
@@ -437,23 +447,22 @@ def settle_incident(
     root: nu.StrArg, iid: nu.StrArg, status: nu.StrArg, who: nu.StrArg = YOU
 ) -> nu.Nu:
     """Incident ``iid`` to ``status`` (``acked``, ``resolved``, ...), by ``who``, on its timeline and the feed."""
-    inc = Ops.incidents[iid]
+    inc = OPS.incidents[iid]
     text = nu.Str(iid) + " " + nu.Str(status) + " by " + nu.Str(who)
-    return landed(
-        root,
+    return nuspace.atomic(
         nu.IfDo(
             inc.exists(),
             inc.set(_settle(inc.fallback({}), status, who, nustd.time.time()))
             >> event("incident", text, nu.Str("incident.") + iid),
-        ),
+        )
     )
 
 
 def remark(root: nu.StrArg, iid: nu.StrArg, text: nu.StrArg, who: nu.StrArg = YOU) -> nu.Nu:
     """``text`` on incident ``iid``'s timeline."""
-    inc = Ops.incidents[iid]
-    return landed(
-        root, nu.IfDo(inc.exists(), inc.set(_note(inc.fallback({}), text, nustd.time.time(), who)))
+    inc = OPS.incidents[iid]
+    return nuspace.atomic(
+        nu.IfDo(inc.exists(), inc.set(_note(inc.fallback({}), text, nustd.time.time(), who)))
     )
 
 
@@ -480,7 +489,7 @@ def rule(
 
     Args:
         plane: The plane the rule's cell is on, to find its Ops root.
-        name: The rule's name, its record in ``Ops.rules``.
+        name: The rule's name, its record in ``OPS.rules``.
         check: The live numbers (:func:`view`) to a reason, ``""`` when all is well.
         act: What it does when it fires, given the root and the reason.
         hold: Turns in a row the reason must hold before it fires.
@@ -497,7 +506,7 @@ def rule(
             why = nu.Str(reason)
 
             def judged(verdict: nu.ObjectRef) -> nu.Nu:
-                rec = Ops.rules[name]
+                rec = OPS.rules[name]
                 had = _merge(rec.fallback({}), words) if words else rec.fallback({})
                 decided = _decide(had, why, hold, nustd.time.time())
                 write = nu.let(
@@ -506,15 +515,15 @@ def rule(
                 said = nu.Str(verdict)
                 fired = nu.IfDo(
                     said == "fire",
-                    landed(root, event("rule", nu.Str(name) + " fired: " + why, "rules"))
+                    nuspace.atomic(event("rule", nu.Str(name) + " fired: " + why, "rules"))
                     >> act(root, why),
                 )
                 cleared = nu.IfDo(said == "clear", clear(root)) if clear is not None else nu.Noop()
-                return landed(root, write) >> fired >> cleared
+                return nuspace.atomic(write) >> fired >> cleared
 
             return nu.let("", judged)
 
-        step = nu.let(check(snap(at_root(root, view()))), turn)
+        step = nu.let(check(nuspace.atomic(view())), turn)
         return nu.ForeverDo(step >> nu.Delay(every))
 
     return on_root(plane, run)
@@ -525,23 +534,31 @@ def rule(
 
 def _page(
     pid_: nu.Nu,
-    base: nu.Nu,
     parent: nu.Nu,
     name: nu.Nu,
-    made_by: str,
+    spec: str,
     kind: str,
     subject: nu.Nu,
     icon: nu.StrArg,
     cells: tuple[tuple[str, str], ...],
     wide: bool = True,
 ) -> nu.Nu:
-    """A page under ``parent`` with its cells, made once: a page already there is left alone."""
-    spec = PlaneSpec(made_by, kind.title(), cells=tuple(cells), backend="async")
-    meta = nu.Dict.of(base=base, icon=icon, editable=True, full_width=wide, **{kind: subject})
-    make = ops.create_plane(spec, parent=parent, name=name, plane_id=pid_) >> ops.set_plane_meta(
-        pid_, meta
+    """A page under ``parent`` with its cells, made once: a page already there, or removed, is left alone.
+
+    Made from a spec named ``spec``, on the web; its icon and what it is
+    about (``kind`` for its subject) written after, in one commit.
+    """
+    page = PlaneSpec(
+        spec,
+        kind.title(),
+        cells=tuple(cells),
+        web=WebOptions(editable=True, full_width=wide),
+        backend="async",
     )
-    return nu.IfDo(nu.Bool(snap(ops.plane_exists(pid_))).not_(), make)
+    about = nu.Dict.of(**{kind: subject})
+    marked = nuspace.plane.set_icon(pid_, icon) >> nuspace.plane.set_meta(pid_, about)
+    make = nuspace.specs.add_plane(page, pid_, parent=parent, name=name) >> nuspace.atomic(marked)
+    return headless.once(pid_, make)
 
 
 @nu.host
@@ -583,11 +600,11 @@ def seed(root: nu.Str) -> nu.Nu:
 
     def knobs() -> nu.Nu:
         now = nustd.time.time()
-        data = _data_dir(nu.Str(Space.state.info.path.fallback("")))
+        data = _data_dir(nu.Str(Space.info.path.fallback("")))
         first = model.HISTORY[-1]
         return (
-            Ops.settings.set(nu.Dict.of(port=GATEWAY_PORT, data=data))
-            >> Ops.release.set(
+            OPS.settings.set(nu.Dict.of(port=GATEWAY_PORT, data=data))
+            >> OPS.release.set(
                 nu.Dict.of(
                     version=first[0],
                     at=now - first[1] * 3600,
@@ -596,23 +613,38 @@ def seed(root: nu.Str) -> nu.Nu:
                     **{"from": model.HISTORY[0][0]},
                 )
             )
-            >> Ops.deploys.set(_history(now))
-            >> Ops.load.set({"users": 16})
-            >> Ops.oncall.set(model.ONCALL)
-            >> nu.Sequential(*(Ops.jobs[k].set(v) for k, v in _jobs_seed().items()))
-            >> nu.Sequential(*(Ops.rules[k].set(v) for k, v in _rules_seed().items()))
-            >> Ops.events.set([])
-            >> Ops.counts.set({})
-            >> Ops.pager.set([])
-            >> Ops.steps.set([])
+            >> OPS.deploys.set(_history(now))
+            >> OPS.load.set({"users": 16})
+            >> OPS.oncall.set(model.ONCALL)
+            >> nu.Sequential(*(OPS.jobs[k].set(v) for k, v in _jobs_seed().items()))
+            >> nu.Sequential(*(OPS.rules[k].set(v) for k, v in _rules_seed().items()))
+            >> OPS.events.set([])
+            >> OPS.counts.set({})
+            >> OPS.pager.set([])
+            >> OPS.steps.set([])
+            >> made()
         )
 
-    def folders() -> nu.Nu:
+    def made() -> nu.Nu:
+        # Every series and every job's stream made empty, so a page reading one before its job writes finds it.
+        series = (getattr(OPS, slot) for slot in SERIES_SLOTS)
+        streams = (OPS.logs[name].entries for name in model.JOBS)
+        return nu.Sequential(*(ref.init(nu.Dict.create()) for ref in (*series, *streams)))
+
+    def minted() -> nu.Nu:
+        # Every plane's id, minted with the knobs: the planes are made after, at these ids.
+        made = OPS.made
+        return nu.Sequential(
+            *(made.folders[key].set(MintId("p")) for key, _, _, _ in FOLDERS),
+            *(made.views[name].set(MintId("p")) for name in model.JOBS),
+            *(made.workers[name].set(MintId("p")) for name in model.JOBS),
+        )
+
+    def folders(ids: nu.Dict) -> nu.Nu:
         return nu.Sequential(
             *(
                 _page(
-                    nu.Str(root) + "." + key,
-                    root,
+                    nu.Str(ids["folders"][key]),
                     root,
                     label,
                     ROOT + "_" + key,
@@ -625,13 +657,12 @@ def seed(root: nu.Str) -> nu.Nu:
             )
         )
 
-    def job_pages() -> nu.Nu:
+    def job_pages(ids: nu.Dict) -> nu.Nu:
         return nu.Sequential(
             *(
                 _page(
-                    job_page(root, name),
-                    root,
-                    nu.Str(root) + ".jobs",
+                    nu.Str(ids["views"][name]),
+                    nu.Str(ids["folders"]["jobs"]),
                     spec["title"],
                     JOB_PAGE,
                     "job",
@@ -643,33 +674,33 @@ def seed(root: nu.Str) -> nu.Nu:
             )
         )
 
-    def jobs() -> nu.Nu:
+    def jobs(ids: nu.Dict) -> nu.Nu:
         def one(name: str, spec: dict) -> nu.Nu:
-            jid = job_plane(root, name)
-            made = ops.add_plane(
+            jid = nu.Str(ids["workers"][name])
+            made = headless.make(
                 jid,
-                backend=spec["backend"],
-                name=name,
                 parent=root,
-                ui=False,
-                made_by=WORKER,
-                meta=nu.Dict.of(base=root, job=name),
+                name=name,
+                backend=spec["backend"],
+                spec=WORKER,
+                cells=list(SOURCES[name]),
+                meta=nu.Dict.of(job=name),
             )
-            cells = SOURCES[name]
-            add = nu.Sequential(
-                *(
-                    ops.add_cell(jid, src, cell_id=nu.Str(jid) + "_" + cell, name=cell)
-                    for cell, src in cells
-                )
-            )
-            return made >> add >> _supervise(root, name)
+            return headless.once(jid, made) >> _supervise(root, name)
 
         return nu.Sequential(*(one(n, s) for n, s in model.JOBS.items()))
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
-        take = nu.IfDo(Ops.booted.is_null(), Ops.booted.set(True) >> mine.set(True) >> knobs())
-        build = folders() >> job_pages() >> jobs()
-        return landed(root, take) >> nu.IfDo(nu.Bool(mine), build)
+        take = nu.IfDo(
+            OPS.booted.is_null(), OPS.booted.set(True) >> mine.set(True) >> knobs() >> minted()
+        )
+
+        def build(held: nu.ObjectRef) -> nu.Nu:
+            ids = nu.Dict(held)
+            return folders(ids) >> job_pages(ids) >> jobs(ids)
+
+        made = nu.let(nuspace.atomic(OPS.made.extract()), build)
+        return nuspace.atomic(take) >> nu.IfDo(nu.Bool(mine), made)
 
     return nu.let(False, first)
 
@@ -678,19 +709,19 @@ def seed(root: nu.Str) -> nu.Nu:
 
 
 def on_ops(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
-    """``build(root)`` with :class:`Ops` landed at the root, bracketed step by step: a page cell's body."""
-    return on_root(plane, lambda r: ops.bracketed(at_root(r, build(r))))
+    """``build(root)``, bracketed step by step: a page cell's body over :data:`~.state.OPS`."""
+    return on_root(plane, lambda r: nuspace.bracketed(build(r)))
 
 
 def on_subject(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
     """``build(root, subject)`` on a job or incident page, the subject read from the page's meta ``kind``."""
     about = nu.str(Space.planes[plane].meta[kind].fallback(""))
-    return nu.let(snap(about), lambda s: on_ops(plane, lambda r: build(r, nu.Str(s))))
+    return nu.let(nuspace.atomic(about), lambda s: on_ops(plane, lambda r: build(r, nu.Str(s))))
 
 
 def tail(name: nu.StrArg, n: nu.IntArg) -> nu.List:
     """The newest ``n`` lines of job ``name``'s stream, newest first: a read the size of ``n``. Bare."""
-    newest = Ops.logs[name].entries.reversed_values()
+    newest = OPS.logs[name].entries.reversed_values()
     row = lambda e: nu.Dict.of(ts_us=e["ts_us"], level=e["level"], msg=e["msg"], fields=e["fields"])  # noqa: E731
     return nu.Iterator(nustd.itertools.islice(newest, n)).map(row).to_list()
 
@@ -701,21 +732,21 @@ merged = _merge
 
 def paused(name: nu.StrArg) -> nu.Bool:
     """Whether job ``name`` is off its schedule. Bare read."""
-    return nu.Bool(nu.Dict(Ops.jobs[name].fallback({})).get_item("paused", False))
+    return nu.Bool(nu.Dict(OPS.jobs[name].fallback({})).get_item("paused", False))
 
 
 def ran(step: nu.StrArg, said: nu.Nu) -> nu.Nu:
     """A runbook step into the steps log: ``said`` is ``[ok, what it found]``. Bare."""
     s = nu.List(said)
     entry = nu.Dict.of(at=nustd.time.time(), step=step, ok=s[0], said=s[1])
-    return Ops.steps.set(push(Ops.steps.fallback([]), entry, 60)) >> event(
+    return OPS.steps.set(push(OPS.steps.fallback([]), entry, 60)) >> event(
         "runbook", nu.Str(step) + ": " + nu.Str(s[1]), "runbooks"
     )
 
 
 def resolve_open(root: nu.StrArg, key: nu.StrArg, who: nu.StrArg = YOU) -> nu.Nu:
     """Resolve the open incident for ``key``, if there is one."""
-    iid = snap(at_root(root, _open_key(nu.Dict(Ops.incidents.extract()).fallback({}), key)))
+    iid = nuspace.atomic(_open_key(nu.Dict(OPS.incidents.extract()).fallback({}), key))
     return nu.let(
         iid, lambda i: nu.IfDo(nu.Str(i) != "", settle_incident(root, nu.Str(i), "resolved", who))
     )

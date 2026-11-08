@@ -9,8 +9,9 @@ A page's body is markdown plus a few marks, all of them read live:
 - ``{{query name arg}}`` on a line of its own: a live table over the whole base.
 
 Everything here takes the base as plain dicts (``docs`` by slug, ``facts`` by
-key) and returns markdown or rows, so the cells stay short and the logic is
-tested on its own.
+key, and ``pages``, the page ids it keeps, ``{doc, view}``, for links) and
+returns markdown or rows, so the cells stay short and the logic is tested on
+its own.
 """
 
 from __future__ import annotations
@@ -124,16 +125,24 @@ def ago(t: float, now: float) -> str:
     return f"{round(days / 30)} months ago"
 
 
-def _href(base: str, slug: str) -> str:
-    return f"/{base}.doc.{slug}"
+def _href(pages: dict, slug: str) -> str:
+    """A doc page's link, from the page ids the base keeps (``{doc, view}``); ``""`` while it has none."""
+    pid = ((pages or {}).get("doc") or {}).get(slug)
+    return f"/{pid}" if pid else ""
+
+
+def _view(pages: dict, name: str) -> str:
+    """A folder or tool page's link, as :func:`_href`: ``facts``, ``tasks``."""
+    pid = ((pages or {}).get("view") or {}).get(name)
+    return f"/{pid}" if pid else ""
 
 
 def _name(docs: dict, slug: str) -> str:
     return (docs.get(slug) or {}).get("title") or slug
 
 
-def _who(docs: dict, base: str, slug: str) -> str:
-    return f"[{_name(docs, slug)}]({_href(base, slug)})" if slug in docs else slug
+def _who(docs: dict, pages: dict, slug: str) -> str:
+    return f"[{_name(docs, slug)}]({_href(pages, slug)})" if slug in docs else slug
 
 
 def _first(docs: dict, slug: str) -> str:
@@ -244,24 +253,24 @@ def _mentions(docs: dict, slug: str) -> list[str]:
 # --- rendering a body -----------------------------------------------------------------------
 
 
-def inline(text: str, docs: dict, facts: dict, base: str) -> str:
+def inline(text: str, docs: dict, facts: dict, pages: dict) -> str:
     """One line of a body as plain markdown: links, facts and people drawn in."""
 
     def link(m: re.Match) -> str:
         slug, label = m.group(1).strip(), m.group(2)
         if slug in docs:
-            return f"[{label or docs[slug]['title']}]({_href(base, slug)})"
+            return f"[{label or docs[slug]['title']}]({_href(pages, slug)})"
         return f"~~{label or slug}~~"
 
     def fact(m: re.Match) -> str:
         f = facts.get(m.group(1))
-        return f"[{f['value']}](/{base}.facts)" if f else f"`{m.group(1)}?`"
+        return f"[{f['value']}]({_view(pages, 'facts')})" if f else f"`{m.group(1)}?`"
 
     def person(m: re.Match) -> str:
         slug = m.group(1)
         d = docs.get(slug)
         return (
-            f"[{d['title']}]({_href(base, slug)})"
+            f"[{d['title']}]({_href(pages, slug)})"
             if d and d.get("kind") == "person"
             else m.group(0)
         )
@@ -271,7 +280,7 @@ def inline(text: str, docs: dict, facts: dict, base: str) -> str:
     return MENTION.sub(person, text)
 
 
-def _task_line(line: str, docs: dict, facts: dict, base: str, today: dt.date) -> str:
+def _task_line(line: str, docs: dict, facts: dict, pages: dict, today: dt.date) -> str:
     m = TASK.match(line)
     if not m:
         return line
@@ -282,11 +291,11 @@ def _task_line(line: str, docs: dict, facts: dict, base: str, today: dt.date) ->
         when = dt.date.fromisoformat(due.group(1))
         late = m.group(2) == " " and when < today
         tail = f"  · _{'overdue, ' if late else 'due '}{short_date(due.group(1))}_"
-    body = inline(DUE.sub("", rest).rstrip(), docs, facts, base)
+    body = inline(DUE.sub("", rest).rstrip(), docs, facts, pages)
     return f"{m.group(1)}- [{m.group(2).lower()}] {body}{tail}"
 
 
-def render(slug: str, docs: dict, facts: dict, base: str, now: float) -> str:
+def render(slug: str, docs: dict, facts: dict, pages: dict, now: float) -> str:
     """A page's body as plain markdown: links, facts, people, tasks and queries drawn in."""
     today = day(now)
     out, fence = [], False
@@ -297,11 +306,11 @@ def render(slug: str, docs: dict, facts: dict, base: str, now: float) -> str:
         elif fence:
             out.append(line)
         elif q := QUERY.match(line.strip()):
-            out.append(query(q.group(1), (q.group(2) or "").strip(), docs, facts, base, now, slug))
+            out.append(query(q.group(1), (q.group(2) or "").strip(), docs, facts, pages, now, slug))
         elif TASK.match(line):
-            out.append(_task_line(line, docs, facts, base, today))
+            out.append(_task_line(line, docs, facts, pages, today))
         else:
-            out.append(inline(line, docs, facts, base))
+            out.append(inline(line, docs, facts, pages))
     return "\n".join(out)
 
 
@@ -309,7 +318,7 @@ def render(slug: str, docs: dict, facts: dict, base: str, now: float) -> str:
 
 
 def _task_rows(
-    tasks: list[dict], docs: dict, base: str, today: dt.date, who: bool = True
+    tasks: list[dict], docs: dict, pages: dict, today: dt.date, who: bool = True
 ) -> list[list[str]]:
     rows = []
     for t in tasks:
@@ -317,16 +326,16 @@ def _task_rows(
         due = ("**overdue** " if late else "") + short_date(t["due"]) if t["due"] else ""
         row = [
             t["text"],
-            _who(docs, base, t["owner"]) if who else "",
+            _who(docs, pages, t["owner"]) if who else "",
             due,
-            _who(docs, base, t["doc"]),
+            _who(docs, pages, t["doc"]),
         ]
         rows.append([c for i, c in enumerate(row) if who or i != 1])
     return rows
 
 
 def query(
-    name: str, arg: str, docs: dict, facts: dict, base: str, now: float, here: str = ""
+    name: str, arg: str, docs: dict, facts: dict, pages: dict, now: float, here: str = ""
 ) -> str:
     """A live table: one of the queries a page can hold. An unknown one says so."""
     today = day(now)
@@ -334,8 +343,8 @@ def query(
     if name == "open-decisions":
         rows = [
             [
-                _who(docs, base, k),
-                _who(docs, base, d.get("owner", "")),
+                _who(docs, pages, k),
+                _who(docs, pages, d.get("owner", "")),
                 ago(d.get("updated") or 0, now),
             ]
             for k, d in sorted(docs.items())
@@ -351,14 +360,14 @@ def query(
         ]
         return _table(
             ["Task", "Owner", "Due", "In"],
-            _task_rows(due, docs, base, today),
+            _task_rows(due, docs, pages, today),
             f"Nothing due in the next {n} days.",
         )
     if name == "tasks":
         mine = [t for t in open_tasks if t["owner"] == arg]
         return _table(
             ["Open task", "Due", "In"],
-            _task_rows(mine, docs, base, today, who=False),
+            _task_rows(mine, docs, pages, today, who=False),
             "No open tasks.",
         )
     if name == "project":
@@ -366,12 +375,12 @@ def query(
         mine = [t for t in open_tasks if t["doc"] in linked]
         return _table(
             ["Open task", "Owner", "Due", "In"],
-            _task_rows(mine, docs, base, today),
+            _task_rows(mine, docs, pages, today),
             "No open tasks on this project.",
         )
     if name == "mentions":
         rows = [
-            [_who(docs, base, k), day(docs[k].get("date") or 0).strftime("%b %-d")]
+            [_who(docs, pages, k), day(docs[k].get("date") or 0).strftime("%b %-d")]
             for k in _mentions(docs, arg or here)
         ]
         return _table(["Meeting", "Date"], rows, "No meeting has mentioned it yet.")
@@ -382,7 +391,7 @@ def query(
         )
         rows = [
             [
-                _who(docs, base, k),
+                _who(docs, pages, k),
                 KINDS.get(d.get("kind", ""), {}).get("one", ""),
                 ago(d.get("updated") or 0, now),
             ]
@@ -391,7 +400,7 @@ def query(
         return _table(["Page", "Kind", "Edited"], rows, "Owns no pages yet.")
     if name == "stale":
         rows = [
-            [_who(docs, base, s["doc"]), _who(docs, base, s["owner"]), f"{s['days']} days"]
+            [_who(docs, pages, s["doc"]), _who(docs, pages, s["owner"]), f"{s['days']} days"]
             for s in health(docs, facts, now)["stale"]
         ]
         return _table(["Stale page", "Owner", "Untouched for"], rows, "Nothing is stale.")
@@ -400,7 +409,7 @@ def query(
         recent = sorted(docs.items(), key=lambda kv: -(kv[1].get("updated") or 0))[:n]
         rows = [
             [
-                _who(docs, base, k),
+                _who(docs, pages, k),
                 _first(docs, d.get("editor") or d.get("owner", "")),
                 ago(d.get("updated") or 0, now),
             ]
@@ -409,7 +418,11 @@ def query(
         return _table(["Page", "By", "Edited"], rows, "Nothing yet.")
     if name == "facts":
         rows = [
-            [f["label"], f"[{f['value']}](/{base}.facts)", _first(docs, f.get("owner", ""))]
+            [
+                f["label"],
+                f"[{f['value']}]({_view(pages, 'facts')})",
+                _first(docs, f.get("owner", "")),
+            ]
             for f in facts.values()
         ]
         return _table(["Fact", "Value", "Owner"], rows, "No facts yet.")
@@ -464,7 +477,7 @@ def health(docs: dict, facts: dict, now: float) -> dict[str, Any]:
     }
 
 
-def search(docs: dict, facts: dict, q: str, base: str, limit: int = 8) -> list[dict[str, str]]:
+def search(docs: dict, facts: dict, q: str, pages: dict, limit: int = 8) -> list[dict[str, str]]:
     """Pages and facts matching ``q``: title hits first, then body hits, each with its line."""
     words = [w for w in q.lower().split() if w]
     if not words:
@@ -487,7 +500,7 @@ def search(docs: dict, facts: dict, q: str, base: str, limit: int = 8) -> list[d
                 score,
                 {
                     "title": d["title"],
-                    "href": _href(base, k),
+                    "href": _href(pages, k),
                     "kind": KINDS.get(d.get("kind", ""), {}).get("one", ""),
                     "excerpt": " ".join(excerpt.split())[:140],
                 },
@@ -500,7 +513,7 @@ def search(docs: dict, facts: dict, q: str, base: str, limit: int = 8) -> list[d
                     (0, 0),
                     {
                         "title": f["label"],
-                        "href": f"/{base}.facts",
+                        "href": _view(pages, "facts"),
                         "kind": "Fact",
                         "excerpt": f["value"],
                     },
@@ -509,7 +522,7 @@ def search(docs: dict, facts: dict, q: str, base: str, limit: int = 8) -> list[d
     return [h for _, h in sorted(hits, key=lambda h: h[0])][:limit]
 
 
-def graph(docs: dict, base: str) -> dict[str, Any]:
+def graph(docs: dict, pages: dict) -> dict[str, Any]:
     """Every page as a node and every link as an edge, as an ECharts graph option's data."""
     degree: dict[str, int] = dict.fromkeys(docs, 0)
     edges = []
@@ -540,7 +553,7 @@ def graph(docs: dict, base: str) -> dict[str, Any]:
     }
 
 
-def digest(docs: dict, facts: dict, log: list[dict], base: str, now: float, days: int = 7) -> str:
+def digest(docs: dict, facts: dict, log: list[dict], pages: dict, now: float, days: int = 7) -> str:
     """This week at Larkspur, written from the pages and what happened to them."""
     since = now - days * DAY
     today = day(now)
@@ -580,7 +593,7 @@ def digest(docs: dict, facts: dict, log: list[dict], base: str, now: float, days
     h = health(docs, facts, now)
 
     def lst(keys: list[str], n: int = 6) -> str:
-        shown = ", ".join(_who(docs, base, k) for k in keys[:n])
+        shown = ", ".join(_who(docs, pages, k) for k in keys[:n])
         return shown + (f" and {len(keys) - n} more" if len(keys) > n else "")
 
     lines = [
@@ -595,7 +608,7 @@ def digest(docs: dict, facts: dict, log: list[dict], base: str, now: float, days
         else "- No meetings this week.",
         f"- **Decided**: {lst(decided)}." if decided else "- Nothing was decided this week.",
         f"- **Still open**: {lst(open_d)}." if open_d else "- No decision is waiting.",
-        f"- Most active: {', '.join(f'{_who(docs, base, w)} ({n})' for w, n in busiest)}."
+        f"- Most active: {', '.join(f'{_who(docs, pages, w)} ({n})' for w, n in busiest)}."
         if busiest
         else "",
         "",
@@ -603,7 +616,7 @@ def digest(docs: dict, facts: dict, log: list[dict], base: str, now: float, days
         "",
         _table(
             ["Task", "Owner", "Due", "In"],
-            _task_rows(coming[:10], docs, base, today),
+            _task_rows(coming[:10], docs, pages, today),
             "Nothing due.",
         ),
         "",
@@ -611,7 +624,7 @@ def digest(docs: dict, facts: dict, log: list[dict], base: str, now: float, days
         "",
         _table(
             ["Task", "Owner", "Due", "In"],
-            _task_rows(late[:8], docs, base, today),
+            _task_rows(late[:8], docs, pages, today),
             "Nothing is late.",
         ),
         "",

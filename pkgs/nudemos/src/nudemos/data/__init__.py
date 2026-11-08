@@ -17,9 +17,10 @@ what-ifs, a cell per metric, a million web events queried as you type.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells, pages
+from .kit import KEY
 
 
 __all__ = ["PLANE"]
@@ -30,9 +31,10 @@ PLANE = PlaneSpec(
     "Owlbridge",
     icon="chart-line",
     description="Owlbridge Coffee Roasters: a shop's numbers, live, every chart a cell.",
-    meta={"editable": True, "full_width": True},
     cells=cells.ROOT,
     children=pages.PAGES,
     group="Demos",
+    key=KEY,
+    web=WebOptions(editable=True, full_width=True),
     backend="async",
 )

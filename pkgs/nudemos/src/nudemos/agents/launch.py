@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import nu
 import nuspace
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace.specs import add_plane
+from nuspace.utils import MintId
 
+from .. import headless
 from .job import launch_source
 from .page import PAGE
-from .state import JOB, Agent, at, job_cell
+from .state import JOB, RUN_CELL, agent, agents_at, job_of, page_at
 
 
 __all__ = ["launch", "resume", "say", "stop"]
@@ -34,62 +34,79 @@ def launch(
 ) -> nu.Nu:
     """An agent made from ``spec`` (see :func:`~.views.spec_from`) under ``root``, started.
 
+    The page, then its job's id minted and kept on the page, then the job
+    under the page, then who finds whom in plane state (``root`` its
+    agents) with the agent's inbox and log, one commit, then the
+    supervisor, which starts it.
+
     Args:
         root: The Agents plane.
         spec: The agent's spec, a dict term: ``name``, ``cwd``, ``model``, ``mode``, ``brief``.
         page: Set to the new page's id, for a caller that opens it or keeps it.
         job: Set to the new job's id, for a caller that follows it.
-        plane_id: The page's id, its job's that with ``_run`` after it. Given, a
-            launch run again makes only what the last one did not get to, so
-            a flow that restarts halfway through making an agent makes it once.
+        plane_id: The page's id. Given, a launch run again makes only what
+            the last one did not get to, so a flow that restarts halfway
+            through making an agent makes it once: the job's id is kept on
+            the page before the job is made.
     """
 
-    def made(s: nu.Ref, p: nu.Ref, j: nu.Ref) -> nu.Nu:
-        kept = [r.set(nu.Str(v)) for r, v in ((page, p), (job, j)) if r is not None]
-        fixed = plane_id is not None
-        new_page = ops.create_plane(
-            PAGE, parent=root, name=nu.Dict(s)["name"], plane_id=plane_id, into=None if fixed else p
-        )
-        new_job = ops.add_plane(
-            None if not fixed else f"{plane_id}_run",
-            backend="mp",
-            name="run",
-            parent=nu.Str(p),
-            ui=False,
-            made_by=JOB,
-            into=None if fixed else j,
-        ) >> ops.add_cell(nu.Str(j), launch_source(s), cell_id=job_cell(nu.Str(j)), name="run")
-        if fixed:
-            new_page = nu.IfDo(snap(ops.plane_exists(plane_id).not_()), new_page)
-            new_job = nu.IfDo(snap(ops.plane_exists(f"{plane_id}_run").not_()), new_job)
-        # Its inbox and log, made with it: the page and the flow read them from the start.
-        lists = Agent.inbox.init(nu.List.create()) >> Agent.log.init(nu.List.create())
-        listed = ops.atomic_state(at(nu.Str(j), lists))
-        return nu.Sequential(new_page, new_job, listed, nuspace.supervise(nu.Str(j)), *kept)
+    def made(s: nu.Ref, p: nu.Ref) -> nu.Nu:
+        pid = nu.Str(p)
+        new_page = add_plane(PAGE, plane_id, parent=root, name=nu.Dict(s)["name"], into=p)
+        if plane_id is not None:
+            new_page = headless.once(plane_id, new_page)
+        # The job's id, minted once and kept on the page first: a launch run again finds it there.
+        claimed = nuspace.atomic(page_at(pid).job.init(MintId("p")))
 
-    ids = ("", "") if plane_id is None else (plane_id, f"{plane_id}_run")
+        def run(j: nu.Ref) -> nu.Nu:
+            jid = nu.Str(j)
+            kept = [r.set(v) for r, v in ((page, pid), (job, jid)) if r is not None]
+            cells = [(RUN_CELL, launch_source(s))]
+            new_job = headless.make(
+                jid, parent=pid, name="run", backend="mp", spec=JOB, cells=cells
+            )
+            # Who finds whom, and its inbox and log, made with it: the page and the flow read them from the start.
+            a = agent(jid)
+            found = (
+                agents_at(root).jobs.set_item(pid, jid)
+                >> a.inbox.init(nu.List.create())
+                >> a.log.init(nu.List.create())
+            )
+            return nu.Sequential(
+                headless.once(jid, new_job),
+                nuspace.atomic(found),
+                headless.supervise(jid),
+                *kept,
+            )
+
+        return new_page >> claimed >> nu.let(nuspace.atomic(job_of(pid)), run)
+
     # The spec is read once: it may make a folder, or read state that moves.
-    return nu.let(spec, lambda s: nu.let(ids[0], lambda p: nu.let(ids[1], lambda j: made(s, p, j))))
+    first = "" if plane_id is None else plane_id
+    return nu.let(spec, lambda s: nu.let(first, lambda p: made(s, p)))
 
 
 def say(job: nu.StrArg, text: nu.StrArg) -> nu.Nu:
     """``text`` queued for agent ``job``, which is brought up if it is down or stopped."""
-    told = at(job, Agent.inbox.append(nu.Str(text)) >> Agent.stop.set(False))
-    return ops.atomic_state(told) >> nuspace.supervise(job)
+    a = agent(job)
+    told = a.inbox.append(nu.Str(text)) >> a.stop.set(False)
+    return nuspace.atomic(told) >> headless.supervise(job)
 
 
 def stop(job: nu.StrArg) -> nu.Nu:
     """Ask agent ``job`` to stop: a turn under way is cut, and the loop ends. One already down is stopped now."""
-    live = snap(Space.kernel.planes_running.contains(job))
+    live = nuspace.atomic(headless.live(job))
+    a = agent(job)
 
     def asked(up: nu.Nu) -> nu.Nu:
         said = nu.Str(nu.If(up, "stopping", "stopped"))
-        return ops.atomic_state(at(job, Agent.stop.set(True) >> Agent.status.set(said)))
+        return nuspace.atomic(a.stop.set(True) >> a.status.set(said))
 
     return nu.let(live, asked)
 
 
 def resume(job: nu.StrArg) -> nu.Nu:
     """Bring agent ``job`` back: its conversation reopened, a cut turn carried on."""
-    cleared = at(job, Agent.stop.set(False) >> Agent.status.set("resuming"))
-    return ops.atomic_state(cleared) >> nuspace.supervise(job)
+    a = agent(job)
+    cleared = a.stop.set(False) >> a.status.set("resuming")
+    return nuspace.atomic(cleared) >> headless.supervise(job)

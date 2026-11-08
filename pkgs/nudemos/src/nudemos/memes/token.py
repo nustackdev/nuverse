@@ -24,7 +24,7 @@ __all__ = ["CELLS", "CHART", "HEAD", "NUMBERS", "TRADES"]
 
 #: What every token cell adds to the shared imports: where its token is, and how to read it.
 _PAGE = """\
-from nuspace.shapes import Space
+from nuspace import Space
 
 
 def mint_of(plane):
@@ -32,22 +32,22 @@ def mint_of(plane):
 
 
 def view_of(root, mint):
-    m = Memes
+    m = memes_at(root)
     return views.token_view(
-        at_root(root, m.tokens[mint].fallback({})), at_root(root, m.trades[mint].fallback([])),
-        at_root(root, m.candles[mint].fallback([])), at_root(root, m.quotes.fallback({})), nustd.time.time(),
-        at_root(root, Control.images.fallback(False)),
+        m.tokens[mint].fallback({}), m.trades[mint].fallback([]),
+        m.candles[mint].fallback([]), m.quotes.fallback({}), nustd.time.time(),
+        control_at(root).images.fallback(False),
     )
 
 
 def on_token(plane, body):
     # body(root, mint), once the page knows both.
-    return nu.let(snap(root_of(plane)), lambda root: nu.let(snap(mint_of(plane)), lambda mint: body(nu.Str(root), nu.Str(mint))))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: nu.let(nuspace.atomic(mint_of(plane)), lambda mint: body(nu.Str(root), nu.Str(mint))))
 
 
 def following(root, mint, draw, every=2.0):
-    moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.images.on_change())]
-    return nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(view_of(root, mint)), draw), every=every)
+    moves = [memes_at(root).beat.on_change(), control_at(root).images.on_change()]
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(view_of(root, mint)), draw), every=every)
 """
 
 
@@ -87,8 +87,8 @@ def draw(v):
 def out(plane):
     def build(root, mint):
         # The page named after the coin's ticker, once it is known.
-        first = snap(view_of(root, mint))
-        named = nu.let(first, lambda v: nu.IfDo(nu.Bool(v["found"]), ops.rename_plane(plane, v["symbol"])))
+        first = nuspace.atomic(view_of(root, mint))
+        named = nu.let(first, lambda v: nu.IfDo(nu.Bool(v["found"]), nuspace.atomic(nuspace.plane.rename(plane, v["symbol"]))))
         return named >> following(root, mint, draw)
 
     return on_token(plane, build)
@@ -159,12 +159,12 @@ def paint(root, mint):
         )
         return nu.IfDo(nu.Bool(v["found"]), drawn)
 
-    return nu.let(snap(view_of(root, mint)), draw)
+    return nu.let(nuspace.atomic(view_of(root, mint)), draw)
 
 
 def out(plane):
     def build(root, mint):
-        beat = snap(at_root(root, Memes.beat.on_change()))
+        beat = nuspace.atomic(memes_at(root).beat.on_change())
         return nu.Reconcile(beat, paint(root, mint) >> nu.Delay(EVERY), every=10.0)
 
     return on_token(plane, build)

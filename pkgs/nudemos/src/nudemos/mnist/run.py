@@ -1,8 +1,8 @@
 """The run page: one training run, live, steered from here.
 
 Launch makes one per run, and the run's job right under it. Every cell
-finds the job as the page's child (:func:`~.views.with_job`) and reads the
-job's state from there: the page holds no state of its own.
+finds the job by the id the page keeps (:func:`~.views.with_job`) and reads
+the job's state from there: the page holds nothing else.
 
 - ``status``: the run's name, status, hyperparameters, progress and tiles.
 - ``steer``: the learning rate, live, and stop or resume.
@@ -13,7 +13,7 @@ job's state from there: the page holds no state of its own.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
 __all__ = ["CURVES", "DIGITS", "DISTS", "PAGE", "STATUS", "STEER"]
@@ -23,11 +23,10 @@ _IMPORTS = """\
 import nu
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuspace.system.utils import snap
+import nuspace.system.supervisor
 from nudemos.mnist import views
-from nudemos.mnist.state import Run
-from nudemos.mnist.views import at, with_job
+from nudemos.mnist.state import run_at
+from nudemos.mnist.views import with_job
 """
 
 
@@ -67,8 +66,8 @@ def draw(s):
 
 
 def follow(job):
-    moves = [at(job, Run.step.on_change()), at(job, Run.status.on_change())]
-    return nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(views.summary(views.run_view(job))), draw), every=3.0)
+    moves = [run_at(job).step.on_change(), run_at(job).status.on_change()]
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(views.summary(views.run_view(job))), draw), every=3.0)
 
 
 def out(plane):
@@ -112,9 +111,11 @@ def button(status):
 
 def press(job):
     # Stop asks the loop to save and end. Resume clears it and brings the job up again.
-    status = snap(at(job, Run.status.fallback("")))
-    stop = ops.atomic_state(at(job, Run.stop.set(True) >> Run.status.set("stopping")))
-    resume = ops.atomic_state(at(job, Run.stop.set(False) >> Run.status.set("resuming"))) >> nuspace.supervise(job)
+    run = run_at(job)
+    status = nuspace.atomic(run.status.fallback(""))
+    stop = nuspace.atomic(run.stop.set(True) >> run.status.set("stopping"))
+    up = nuspace.system.supervisor.supervise(job, policy=nuspace.system.supervisor.ON_FAILURE, exists_ok=True)
+    resume = nuspace.atomic(run.stop.set(False) >> run.status.set("resuming")) >> nuspace.atomic(up)
     return nu.let(status, lambda s: nu.IfDo(nu.Str(s) == "stopped", resume, nu.IfDo(nu.Str(s) == "training", stop)))
 
 
@@ -124,14 +125,14 @@ def show(lr):
 
 def follow(job):
     # The slider writes the run's lr; the job reads it on its next chunk. Every tab follows.
-    lr = at(job, Run.lr)
-    steer = nu.let(lr_of(S.lr), lambda v: ops.atomic_state(lr.set(nu.Float(v))))
-    status = at(job, Run.status)
+    lr = run_at(job).lr
+    steer = nu.let(lr_of(S.lr), lambda v: nuspace.atomic(lr.set(nu.Float(v))))
+    status = run_at(job).status
     # Slots show in the order first written: slider, then its value, then the button.
     placed = S.lr.set(-3.0) >> S.shown.set("lr") >> S.stop.set("Stop")
     return placed >> nu.ParallelAsync(
-        nu.Reconcile(snap(nu.OnAny(*[lr.on_change()])), nu.let(snap(lr.fallback(0.0)), show)),
-        nu.Reconcile(snap(nu.OnAny(*[status.on_change()])), nu.let(snap(status.fallback("")), button)),
+        nu.Reconcile(nuspace.atomic(nu.OnAny(*[lr.on_change()])), nu.let(nuspace.atomic(lr.fallback(0.0)), show)),
+        nu.Reconcile(nuspace.atomic(nu.OnAny(*[status.on_change()])), nu.let(nuspace.atomic(status.fallback("")), button)),
         nu.ReactEvery(S.lr.on_change(), steer),
         nu.ReactEvery(S.stop.on_click(), press(job)),
     )
@@ -158,17 +159,15 @@ class View(nustd.ui.Column):
 
 
 def paint(job):
-    def sample(series):
-        return at(job, series.sample(POINTS))
-
-    read = views.curves(*(sample(s) for s in (Run.loss, Run.test_loss, Run.acc, Run.test_acc, Run.lrs)))
+    r = run_at(job)
+    read = views.curves(*(s.sample(POINTS) for s in (r.loss, r.test_loss, r.acc, r.test_acc, r.lrs)))
     c = View.charts
-    return nu.let(snap(read), lambda d: c.loss.set(d["loss"]) >> c.acc.set(d["acc"]) >> c.lr.set(d["lr"]))
+    return nu.let(nuspace.atomic(read), lambda d: c.loss.set(d["loss"]) >> c.acc.set(d["acc"]) >> c.lr.set(d["lr"]))
 
 
 def follow(job):
     # One pass at a time: steps landing while it paints merge into one more.
-    return nu.Reconcile(snap(at(job, Run.step.on_change())), paint(job) >> nu.Delay(EVERY), every=5.0)
+    return nu.Reconcile(nuspace.atomic(run_at(job).step.on_change()), paint(job) >> nu.Delay(EVERY), every=5.0)
 
 
 def out(plane):
@@ -212,8 +211,8 @@ def draw(v):
 
 def follow(job):
     # Each look the job takes moves ``looked``: the digits and what it reads in them.
-    read = views.cards(at(job, Run.digits.fallback([])), at(job, Run.preds.fallback([])))
-    return nu.Reconcile(snap(nu.OnAny(*[at(job, Run.looked.on_change())])), nu.let(snap(read), draw))
+    read = views.cards(run_at(job).digits.fallback([]), run_at(job).preds.fallback([]))
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*[run_at(job).looked.on_change()])), nu.let(nuspace.atomic(read), draw))
 
 
 def out(plane):
@@ -256,12 +255,12 @@ def paint(job):
     def draw(h):
         return nu.Sequential(*(getattr(getattr(View, k).maps, l).merge(h[k][l]) for k in "wg" for l in LAYERS))
 
-    return nu.let(snap(views.heatmaps(at(job, Run.hists.sample(SNAPSHOTS)))), draw)
+    return nu.let(nuspace.atomic(views.heatmaps(run_at(job).hists.sample(SNAPSHOTS))), draw)
 
 
 def follow(job):
     # The job bins the layers on each look it takes.
-    looked = snap(at(job, Run.looked.on_change()))
+    looked = nuspace.atomic(run_at(job).looked.on_change())
     return nu.Reconcile(looked, paint(job) >> nu.Delay(EVERY), every=10.0)
 
 
@@ -275,7 +274,7 @@ PAGE = PlaneSpec(
     "Run",
     icon="activity",
     description="One MNIST training run: live curves, digits and distributions, steered from here.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(
         ("status", STATUS),
         ("steer", STEER),

@@ -15,17 +15,20 @@ from pathlib import Path
 import pytest
 
 import nu
+import nuspace
+import nuspace.devices.web
+import nuspace.places
+import nuspace.specs
 import nustd.http
-import nustd.kv
-from nudemos.memes import PLANE, cells, token
+import nustd.ui
+from nudemos.memes import PLANE, cells, control
 from nudemos.memes.book import Book
 from nudemos.memes.chain import decode_block
 from nudemos.memes.job import written
-from nudemos.memes.state import TOKEN, at_root, token_page
-from nuspace import PlaneSpec, ops
-from nuspace.shapes import Reroot, Space
-from nuspace.system.devices.web.env import session_env
-from nuspace.system.kernel.body import Rewrites
+from nudemos.memes.state import OVERVIEW, TOKEN, made_at, memes_at, overview_of, root_of
+from nuspace import Space
+from nuspace.devices.web.env import session_env
+from nuspace.specs import PlaneSpec, SpecCells
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.session import Session
 
@@ -78,29 +81,30 @@ SMALL = _small(PLANE)
 
 async def _seed(store) -> None:
     """The root ``m`` and its children, and the state a sync over the fixtures writes."""
-    await store.run(ops.create_plane(SMALL, plane_id="m"))
+    await store.run(nuspace.specs.add_plane(SMALL, "m"))
     book = Book(clock=lambda: 1791888300.0)
     book.tip, book.tip_at, book.epoch = 456413700, book.clock(), 0
     for slot, block in BLOCKS.items():
         book.cursor = slot
         book.on_reply({"what": "block", "slot": slot, "sent": book.clock()}, {"result": block})
-    await store.run(ops.atomic_state(at_root("m", written(book.flush()))))
+    await store.run(nuspace.atomic(written(memes_at("m"), book.flush())))
 
 
 async def _cells(store, plane: str) -> dict:
-    return {c["name"]: c["id"] for c in await store.read(ops.cell_rows(plane))}
+    """``{cell name: cell id}`` of a plane made from a spec."""
+    return await store.read(nuspace.at.plane(id=plane).state(SpecCells).ids.extract())
+
+
+async def _kids(store, plane: str) -> list[str]:
+    return await store.read(nu.list(Space.planes[plane].children.keys()))
 
 
 async def _drive(store, plane: str, cell: str, quiet: float = 0.25, most: float = 8.0) -> _Browser:
     """Run the cell as the kernel would till it draws and goes quiet, then cancel it. Raises what it raised."""
     browser = _Browser()
     env = session_env("127.0.0.1:9")("s1")
-    load = Space.cells[cell].prog.load(
-        scope={"plane": plane, "cell": cell}, rewrite=Rewrites(Reroot(plane, cell), env.rewrite)
-    )
-    term = nu.Frame(
-        ops.Here, await store.run(nustd.kv.Snapshot(load, scope=Space)), plane=plane, cell=cell
-    )
+    load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=env.rewrite)
+    term = nuspace.places.inside(await store.run(nuspace.atomic(load)), plane=plane, cell=cell)
     task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
     loop = asyncio.get_running_loop()
     deadline, seen, still = loop.time() + most, -1, loop.time()
@@ -120,8 +124,11 @@ async def _drive(store, plane: str, cell: str, quiet: float = 0.25, most: float 
 async def test_every_cell_runs_and_draws(store):
     # One seed for every plane: making the memes tree is most of a test's time.
     await _seed(store)
-    kids = await store.read(ops.children("m"))
+    kids = await _kids(store, "m")
     planes = [(SMALL, "m"), *zip(SMALL.children, kids, strict=True)]
+    # Every plane finds its root: the root itself, and those its spec hangs under it.
+    for _, plane in planes:
+        assert await store.read(root_of(plane)) == "m"
     runs = []
     for spec, plane in planes:
         ids = await _cells(store, plane)
@@ -149,21 +156,36 @@ async def test_every_cell_runs_and_draws(store):
     assert settings.drawn("show")[-1] is False
 
 
+async def test_opening_a_token_makes_its_page_once_under_the_overview(store):
+    await _seed(store)
+    history = nustd.ui.HistoryRef("history")
+    session = store.ctx.bind(Session, _Browser())
+    await nu.arun(control.open_token("m", CAP, history), session)
+    page = await store.read(made_at("m").token_planes[CAP])
+    overview = await store.read(overview_of("m"))
+    assert await store.read(Space.planes[overview].spec) == OVERVIEW
+    assert await store.read(Space.planes[page].parent) == overview
+    assert await store.read(Space.planes[page].spec) == TOKEN
+    assert await store.read(Space.planes[page].meta.extract()) == {"mint": CAP}
+    assert await store.read(Space.planes[page].icon) == "lucide:coins"
+    assert await store.read(nuspace.devices.web.Web.planes[page].full_width) is True
+    assert await store.read(root_of(page)) == "m"
+    await nu.arun(control.open_token("m", CAP, history), session)
+    assert await _kids(store, overview) == [page]
+
+
 async def test_a_token_page_shows_its_token(store):
     await _seed(store)
-    page = await store.read(token_page("m", CAP))
-    spec = PlaneSpec(TOKEN, "Token", cells=token.CELLS, backend="async")
-    await store.run(
-        ops.create_plane(spec, parent="m", name=CAP, plane_id=page)
-        >> ops.set_plane_meta(page, nu.Dict.of(base="m", mint=CAP))
-    )
+    history = nustd.ui.HistoryRef("history")
+    await nu.arun(control.open_token("m", CAP, history), store.ctx.bind(Session, _Browser()))
+    page = await store.read(made_at("m").token_planes[CAP])
     ids = await _cells(store, page)
     head, numbers, trades = await asyncio.gather(
         *(_drive(store, page, ids[name]) for name in ("head", "numbers", "trades"))
     )
     assert head.drawn("title")[-1]["label"] == "dog wif cap"
     assert head.drawn("face")[0]["src"].startswith("data:image/svg+xml")
-    assert await store.read(ops.plane_title(page)) == "cap"
+    assert await store.read(nuspace.plane.title(page)) == "cap"
     assert numbers.drawn("mc")[-1]["value"].endswith(" SOL")
     rows = [p["rows"] for p in trades.drawn("table") if isinstance(p, dict) and "rows" in p][-1]
     assert [r["side"] for r in rows] == ["▲ BUY"]

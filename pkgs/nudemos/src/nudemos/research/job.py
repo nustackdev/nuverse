@@ -171,32 +171,26 @@ def asking(probe: dict | None, ask: dict) -> dict:
 
 RUN = """\
 import nu
+import nuspace
 import nustd.cc
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.research import evals, job
 from nudemos.research.claude import Claude, options
-from nudemos.research.kit import Desk
+from nudemos.research.kit import DESK
 
-#: The desk this run writes into, and the run, baked in at launch.
-BASE = ""
+#: The run, baked in at launch. The desk is found by its key, the run's page in it.
 RUN = {}
 
-ME = Desk.runs[RUN["key"]]
+ME = DESK.runs[RUN["key"]]
 todo, started, answered, failed, finished = (
     nu.host(job.todo), nu.host(job.started), nu.host(job.answered), nu.host(job.failed), nu.host(job.finished),
 )
 prompt = nu.host(evals.prompt)
 
 
-def desk(term):
-    return ops.plane_state(BASE, term)
-
-
 def kept(update):
     # Read, changed, written back, in one commit: pages see each answer land.
-    return ops.atomic_state(desk(ME.set(update(ME))))
+    return nuspace.atomic(ME.set(update(ME)))
 
 
 def one(qid):
@@ -211,13 +205,13 @@ def one(qid):
 
 def icon(name):
     # The run's page wears a timer while it runs.
-    return ops.set_plane_meta(BASE + ".run." + RUN["key"], {"icon": name})
+    return nuspace.atomic(nuspace.plane.set_icon(DESK.planes.runs[RUN["key"]], name))
 
 
 def out(cell):
-    done = snap(desk(ME.fallback({}))["status"] == "done")
+    done = nuspace.atomic(ME.fallback({})["status"] == "done")
     work = (
-        kept(started) >> icon("lucide:timer") >> nu.ForEachDo(snap(desk(todo(ME.fallback({})))), one)
+        kept(started) >> icon("lucide:timer") >> nu.ForEachDo(nuspace.atomic(todo(ME.fallback({}))), one)
         >> kept(finished) >> icon("lucide:chart-column")
     )
     asking = nu.With(nustd.cc.bind(Claude, **options(RUN["model"], evals.SYSTEM[RUN["style"]])), body=work)
@@ -227,48 +221,40 @@ def out(cell):
 
 PROBE = """\
 import nu
+import nuspace
 import nustd.cc
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.research import evals, job
 from nudemos.research.claude import Claude, options
-from nudemos.research.kit import Desk
-
-#: The desk this probe writes into, baked in when the desk was made.
-BASE = ""
+from nudemos.research.kit import DESK
 
 due, probe_next, probed, asking = nu.host(job.due), nu.host(job.probe_next), nu.host(job.probed), nu.host(job.asking)
 prompt = nu.host(evals.prompt)
 
 
-def desk(term):
-    return ops.plane_state(BASE, term)
-
-
 def wait():
     # Level wait: woken by Probe now, re-checked every few seconds for the clock and the pause.
-    now = due(Desk.probe.fallback({}), Desk.asked.fallback(0), Desk.paused.fallback(False), nustd.time.time())
-    return nu.WaitUntil(snap(desk(Desk.asked.on_change())), snap(desk(now)), every=3.0)
+    now = due(DESK.probe.fallback({}), DESK.asked.fallback(0), DESK.paused.fallback(False), nustd.time.time())
+    return nu.WaitUntil(nuspace.atomic(DESK.asked.on_change()), nuspace.atomic(now), every=3.0)
 
 
 def ask():
     def go(a, t0):
         ask = nu.Dict(a)
-        mark = ops.atomic_state(desk(Desk.probe.set(asking(Desk.probe.fallback({}), ask))))
+        mark = nuspace.atomic(DESK.probe.set(asking(DESK.probe.fallback({}), ask)))
 
         def landed(r):
             after = probed(
-                Desk.probe.fallback({}), Desk.probes.extract(), Desk.asked.fallback(0), ask, r,
+                DESK.probe.fallback({}), DESK.probes.extract(), DESK.asked.fallback(0), ask, r,
                 nustd.time.time() - nu.Float(t0), nustd.time.time(),
             )
-            write = lambda v: Desk.probe.set(nu.Dict(v)["probe"]) >> Desk.probes.set(nu.Dict(v)["probes"])
-            return ops.atomic_state(desk(nu.let(after, write)))
+            write = lambda v: DESK.probe.set(nu.Dict(v)["probe"]) >> DESK.probes.set(nu.Dict(v)["probes"])
+            return nuspace.atomic(nu.let(after, write))
 
         reply = nu.TryCatch(Claude.ask(prompt(ask["q"], ask["context"])), catch=lambda e: nu.Dict.of(text=nu.Str("Error: ") + nu.Str(e)))
         return mark >> nu.let(reply, landed)
 
-    nxt = snap(desk(probe_next(Desk.probe.fallback({}))))
+    nxt = nuspace.atomic(probe_next(DESK.probe.fallback({})))
     return nu.let(nxt, lambda a: nu.let(nustd.time.time(), lambda t0: go(a, t0)))
 
 
@@ -278,12 +264,12 @@ def out(cell):
 """
 
 
-def job_source(base: str, run: dict[str, Any]) -> str:
-    """:data:`RUN` with the desk and the run's arm baked in."""
+def job_source(run: dict[str, Any]) -> str:
+    """:data:`RUN` with the run's arm baked in."""
     arm = {k: run[k] for k in ("key", "model", "style", "context")}
-    return RUN.replace('BASE = ""', f"BASE = {base!r}").replace("RUN = {}", f"RUN = {arm!r}")
+    return RUN.replace("RUN = {}", f"RUN = {arm!r}")
 
 
-def probe_source(base: str) -> str:
-    """:data:`PROBE` with the desk baked in."""
-    return PROBE.replace('BASE = ""', f"BASE = {base!r}")
+def probe_source() -> str:
+    """:data:`PROBE`: it finds the desk by its key, so nothing is baked in."""
+    return PROBE

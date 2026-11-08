@@ -26,7 +26,7 @@ its facts can bring a new person's page into People.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells
 
@@ -39,7 +39,7 @@ PLANE = PlaneSpec(
     "Movies",
     icon="film",
     description="The cinematheque: films, people and timelines as a web of live pages.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=cells.ROOT,
     group="Demos",
     backend="async",

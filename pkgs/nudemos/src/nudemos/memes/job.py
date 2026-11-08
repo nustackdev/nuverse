@@ -33,13 +33,14 @@ from nu.engine.structure import Declared
 from nu.lang import ScalarAction
 
 from .book import RATE, Book
-from .state import Control, Memes
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from nu.lang.runtime import Runtime
+
+    from .state import Control, Memes
 
 
 __all__ = [
@@ -181,9 +182,12 @@ class Stopped(_Call):
     method = "on_stop"
 
 
-def made() -> nu.Nu:
-    """The per token mappings, made where missing, so the first load and flush find them. Bare."""
-    m = Memes
+def made(m: Memes) -> nu.Nu:
+    """The per token mappings, made where missing, so the first load and flush find them. Bare.
+
+    Args:
+        m: The root's :class:`Memes`, eg ``memes_at(root)``.
+    """
     return (
         m.tokens.init(nu.Dict.create())
         >> m.trades.init(nu.Dict.create())
@@ -191,9 +195,8 @@ def made() -> nu.Nu:
     )
 
 
-def saved() -> nu.Nu:
-    """Everything :meth:`.Book.load` reads, as one dict, over :class:`Memes`. Bare."""
-    m = Memes
+def saved(m: Memes) -> nu.Nu:
+    """Everything :meth:`.Book.load` reads, as one dict, over the root's :class:`Memes`. Bare."""
     return nu.Dict.of(
         tokens=nu.Dict(m.tokens.extract()).fallback({}),
         trades=nu.Dict(m.trades.extract()).fallback({}),
@@ -208,9 +211,8 @@ def saved() -> nu.Nu:
     )
 
 
-def control() -> nu.Nu:
-    """The Sync plane's knobs, as one dict, over :class:`Control`. Bare."""
-    c = Control
+def control(c: Control) -> nu.Nu:
+    """The Sync plane's knobs, as one dict, over the root's :class:`Control`. Bare."""
     return nu.Dict.of(
         rpc=c.rpc.fallback(""),
         rate=c.rate.fallback(RATE),
@@ -219,12 +221,12 @@ def control() -> nu.Nu:
     )
 
 
-def written(d: nu.Nu) -> nu.Nu:
-    """The writes of one :meth:`.Book.flush`, over :class:`Memes`. Bare: the job brackets it.
+def written(m: Memes, d: nu.Nu) -> nu.Nu:
+    """The writes of one :meth:`.Book.flush`, over the root's :class:`Memes`. Bare: the job brackets it.
 
     Each key of the flush is a list, so each is one loop, empty when nothing changed.
     """
-    m, f = Memes, nu.Dict(d)
+    f = nu.Dict(d)
 
     def each(key: str, write: Callable[[nu.List], nu.Nu]) -> nu.Nu:
         return nu.ForEachDo(nu.List(f[key]), lambda v: write(nu.List(v)))
@@ -274,14 +276,13 @@ def written(d: nu.Nu) -> nu.Nu:
 SYNC = """\
 import nu
 import nustd.http
-from nuspace import ops
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.memes.book import Book
 from nudemos.memes.job import (
     Failed, Flush, Load, Offchain, Picture, Pictured, Plan, Reply, Rpc, Stopped, Unpictured, control, made, saved,
     written,
 )
-from nudemos.memes.state import Control, at_root, root_of
+from nudemos.memes.state import control_at, memes_at, root_of
 
 #: Seconds one call may take, one metadata fetch, and what the book is told about the chain and its memory.
 TIMEOUT, OFFCHAIN = 10.0, 8.0
@@ -290,7 +291,7 @@ BOOK = {"keep_hours": 6.0, "max_tokens": 4000}
 
 def commit(root):
     # One short write per turn, only when something moved.
-    return nu.let(Flush(), lambda d: nu.IfDo(nu.Bool(d["moved"]), ops.atomic_state(at_root(root, written(d)))))
+    return nu.let(Flush(), lambda d: nu.IfDo(nu.Bool(d["moved"]), nuspace.atomic(written(memes_at(root), d))))
 
 
 def call(p):
@@ -304,7 +305,7 @@ def turn(root):
         calls = nu.ForEachParAsync(nu.List(p["calls"]), call)
         return nu.IfDo(nu.Str(p["do"]) == "wait", nu.Delay(nu.Float(p["wait"])), calls)
 
-    return nu.let(Plan(snap(at_root(root, control()))), act) >> commit(root)
+    return nu.let(Plan(nuspace.atomic(control(control_at(root)))), act) >> commit(root)
 
 
 def pictures():
@@ -320,13 +321,13 @@ def pictures():
 
 def out(plane):
     def run(root):
-        going = snap(at_root(root, Control.stop.fallback(False)).not_())
+        going = nuspace.atomic(control_at(root).stop.fallback(False).not_())
         chain = nu.WhileDo(going, turn(root))
         # The chain's loop ends the run: the fetchers go with it.
-        ready = ops.atomic_state(at_root(root, made()))
-        loop = ready >> Load(snap(at_root(root, saved()))) >> nu.Race(chain, pictures()) >> Stopped() >> commit(root)
+        ready = nuspace.atomic(made(memes_at(root)))
+        loop = ready >> Load(nuspace.atomic(saved(memes_at(root)))) >> nu.Race(chain, pictures()) >> Stopped() >> commit(root)
         transport = (nustd.http.bind(Rpc, timeout=TIMEOUT), nustd.http.bind(Offchain, timeout=OFFCHAIN))
         return nu.With(*transport, nu.Provide(Book, BOOK), body=loop)
 
-    return nu.let(snap(root_of(plane)), lambda root: run(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: run(nu.Str(root)))
 """

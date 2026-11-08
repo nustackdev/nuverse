@@ -26,13 +26,13 @@ from claude_agent_sdk import (
 )
 
 import nu
+from nudemos import headless
 from nudemos.agents.job import CARRY, job_source
-from nudemos.agents.state import JOB, Agent
+from nudemos.agents.state import JOB, agent
 from nudemos.agents.views import events_of
-from nuspace import ops
-from nuspace.shapes import Reroot, Space, reroot
+from nuspace import Space
+from nuspace.places import inside
 from nustd.cc import fabric
-from nustd.kv import Snapshot
 
 
 SPEC = {
@@ -116,32 +116,31 @@ def claude(monkeypatch: pytest.MonkeyPatch) -> Claude:
 async def _job(store, idle: float, **spec: object) -> str:
     source = job_source({**SPEC, **spec}, idle=idle)
     await store.run(
-        ops.add_plane("job", backend="mp", ui=False, made_by=JOB)
-        >> ops.add_cell("job", source, cell_id="job_main", name="run")
+        headless.make(
+            "job", parent="root", name="job", backend="mp", spec=JOB, cells=[("run", source)]
+        )
     )
-    return "job_main"
+    return await store.read(headless.cell_of("job", "run"))
 
 
 async def _start(store, cell: str) -> asyncio.Task:
-    load = Space.cells[cell].prog.load(
-        scope={"plane": "job", "cell": cell}, rewrite=Reroot("job", cell)
-    )
-    term = nu.Frame(ops.Here, await store.run(Snapshot(load, scope=Space)), plane="job", cell=cell)
+    load = Space.cells[cell].prog.load(scope={"plane": "job", "cell": cell})
+    term = inside(await store.read(load), plane="job", cell=cell)
     return asyncio.create_task(nu.arun(term, store.ctx))
 
 
+#: The job's agent state, as the test reads it.
+AGENT = agent("job")
+
+
 async def _log(store) -> list[dict]:
-    return events_of(await store.read(nu.list(_state(Agent.log))))
-
-
-def _state(ref: nu.Nu) -> nu.Nu:
-    return reroot(ref, "job", "job_main")
+    return events_of(await store.read(nu.list(AGENT.log)))
 
 
 async def _until(store, ref: nu.Nu, check, timeout: float = 10.0) -> object:
     deadline = asyncio.get_running_loop().time() + timeout
     while True:
-        value = await store.read(_state(ref))
+        value = await store.read(ref)
         if check(value):
             return value
         assert asyncio.get_running_loop().time() < deadline, f"timed out at {value!r}"
@@ -151,21 +150,21 @@ async def _until(store, ref: nu.Nu, check, timeout: float = 10.0) -> object:
 async def test_the_brief_is_the_first_turn_and_every_event_lands(store, claude):
     cell = await _job(store, idle=0.3)
     await asyncio.wait_for(await _start(store, cell), 10)
-    assert await store.read(_state(Agent.status)) == "idle"
+    assert await store.read(AGENT.status) == "idle"
     log = await _log(store)
     assert [e["type"] for e in log] == ["user", "init", "text", "tool_use", "tool_result", "result"]
     assert log[0]["text"] == "build it"
-    assert await store.read(_state(Agent.n)) == len(log)
-    assert await store.read(_state(Agent.answer)) == "did: build it"
-    assert await store.read(_state(Agent.answered)) == 1
-    assert await store.read(_state(Agent.turns)) == 2
-    assert await store.read(_state(Agent.calls)) == 1
-    assert await store.read(_state(Agent.tokens_in)) == 100
-    assert await store.read(_state(Agent.tokens_out)) == 20
-    assert await store.read(_state(Agent.cost)) == 0.25
-    assert await store.read(_state(Agent.spec)) == SPEC
+    assert await store.read(AGENT.n) == len(log)
+    assert await store.read(AGENT.answer) == "did: build it"
+    assert await store.read(AGENT.answered) == 1
+    assert await store.read(AGENT.turns) == 2
+    assert await store.read(AGENT.calls) == 1
+    assert await store.read(AGENT.tokens_in) == 100
+    assert await store.read(AGENT.tokens_out) == 20
+    assert await store.read(AGENT.cost) == 0.25
+    assert await store.read(AGENT.spec) == SPEC
     (client,) = claude.clients
-    assert client.options.session_id == await store.read(_state(Agent.sid))
+    assert client.options.session_id == await store.read(AGENT.sid)
     assert client.options.model == "fake"
     assert client.disconnected
 
@@ -173,27 +172,27 @@ async def test_the_brief_is_the_first_turn_and_every_event_lands(store, claude):
 async def test_saying_something_is_the_next_turn_on_the_same_process(store, claude):
     cell = await _job(store, idle=30.0)
     task = await _start(store, cell)
-    await _until(store, Agent.answered.fallback(0), lambda n: n == 1)
-    await store.run(ops.atomic_state(_state(Agent.inbox.append("now add a footer"))))
-    await _until(store, Agent.answered.fallback(0), lambda n: n == 2)
-    assert await store.read(_state(Agent.answer)) == "did: now add a footer"
-    assert await store.read(_state(Agent.prompts)) == 2
+    await _until(store, AGENT.answered.fallback(0), lambda n: n == 1)
+    await store.do(AGENT.inbox.append("now add a footer"))
+    await _until(store, AGENT.answered.fallback(0), lambda n: n == 2)
+    assert await store.read(AGENT.answer) == "did: now add a footer"
+    assert await store.read(AGENT.prompts) == 2
     (client,) = claude.clients
     assert client.prompts == ["build it", "now add a footer"]
-    await store.run(ops.atomic_state(_state(Agent.stop.set(True))))
+    await store.do(AGENT.stop.set(True))
     await asyncio.wait_for(task, 10)
-    assert await store.read(_state(Agent.status)) == "stopped"
+    assert await store.read(AGENT.status) == "stopped"
 
 
 async def test_a_stop_cuts_the_turn_and_a_resume_carries_it_on(store, claude):
     cell = await _job(store, idle=0.3, brief="a slow one")
     task = await _start(store, cell)
-    await _until(store, Agent.n.fallback(0), lambda n: n >= 3)
-    assert await store.read(_state(Agent.status)) == "working"
-    await store.run(ops.atomic_state(_state(Agent.stop.set(True))))
+    await _until(store, AGENT.n.fallback(0), lambda n: n >= 3)
+    assert await store.read(AGENT.status) == "working"
+    await store.do(AGENT.stop.set(True))
     await asyncio.wait_for(task, 10)
-    assert await store.read(_state(Agent.status)) == "stopped"
-    assert await store.read(_state(Agent.cut)) is True
+    assert await store.read(AGENT.status) == "stopped"
+    assert await store.read(AGENT.cut) is True
     (cut,) = claude.clients
     assert cut.disconnected
 
@@ -202,13 +201,13 @@ async def test_a_stop_cuts_the_turn_and_a_resume_carries_it_on(store, claude):
     assert len(claude.clients) == 1
 
     # Resumed: the same conversation, the cut turn carried on first.
-    await store.run(ops.atomic_state(_state(Agent.stop.set(False))))
+    await store.do(AGENT.stop.set(False))
     await asyncio.wait_for(await _start(store, cell), 10)
     _, resumed = claude.clients
     assert resumed.options.resume == cut.sid
     assert resumed.prompts == [CARRY]
-    assert await store.read(_state(Agent.cut)) is False
-    assert await store.read(_state(Agent.answer)) == f"did: {CARRY}"
+    assert await store.read(AGENT.cut) is False
+    assert await store.read(AGENT.answer) == f"did: {CARRY}"
 
 
 async def test_a_failed_turn_is_logged_and_the_agent_goes_on(store, claude, monkeypatch):
@@ -221,6 +220,6 @@ async def test_a_failed_turn_is_logged_and_the_agent_goes_on(store, claude, monk
     await asyncio.wait_for(await _start(store, cell), 10)
     log = await _log(store)
     assert [e["type"] for e in log] == ["user", "error"]
-    assert "the api fell over" in await store.read(_state(Agent.error))
-    assert await store.read(_state(Agent.answered)) == 1
-    assert await store.read(_state(Agent.status)) == "idle"
+    assert "the api fell over" in await store.read(AGENT.error)
+    assert await store.read(AGENT.answered) == 1
+    assert await store.read(AGENT.status) == "idle"

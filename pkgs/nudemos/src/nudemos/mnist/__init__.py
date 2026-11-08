@@ -19,7 +19,7 @@ first step. It comes with the ``mnist`` extra: ``pip install "nudemos[mnist]"``.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import compare, launch, read
 
@@ -29,10 +29,9 @@ __all__ = ["INTRO", "PLANE"]
 
 INTRO = '''\
 import nu
-import nuspace.ui
+import nuspace
+import nuspace.devices.web
 import nustd.ui
-from nuspace import ops
-from nuspace.system.utils import snap
 
 TEXT = """\\
 ### MNIST, trained and tracked here
@@ -61,7 +60,7 @@ class View(nustd.ui.Column):
 def links(kids):
     # Launch, Compare and Read, the first three planes under this one.
     def to(i):
-        return nuspace.ui.href(nu.List(kids)[i])
+        return nuspace.devices.web.href(nu.List(kids)[i])
 
     L = View.links
     return (
@@ -71,7 +70,8 @@ def links(kids):
 
 
 def out(plane):
-    return View.text.set(TEXT) >> nu.let(snap(ops.children(plane)), links) >> nu.ForeverDo(nu.Delay(3600.0))
+    first = nuspace.Space.planes[plane].children.keys(limit=3)
+    return View.text.set(TEXT) >> nu.let(nuspace.atomic(first), links) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
@@ -80,7 +80,7 @@ PLANE = PlaneSpec(
     "MNIST",
     icon="network",
     description="Train a CNN on MNIST, steer it live, track the runs, and read digits you draw.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("intro", INTRO), ("leader", compare.LEADER)),
     children=(launch.PLANE, compare.PLANE, read.PLANE),
     group="Demos",

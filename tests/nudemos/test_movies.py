@@ -9,13 +9,14 @@ from typing import TYPE_CHECKING
 import pytest
 
 import nu
-import nustd.kv
+import nuspace
+import nuspace.devices.web
+import nuspace.places
+import nuspace.specs
 from nudemos.movies import PLANE, cells, kit
 from nudemos.movies.data import FILMS, slug
-from nuspace import ops
-from nuspace.shapes import Reroot, Space
-from nuspace.system.devices.web.env import session_env
-from nuspace.system.kernel.body import Rewrites
+from nuspace import Space
+from nuspace.devices.web.env import session_env
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_NOTIFY
 from nustd.ui.core.session import Session
@@ -64,17 +65,22 @@ async def _until(check: Callable[[], object], timeout: float = 20.0) -> None:
 
 
 async def _cells(store, plane: str) -> dict:
-    """``{cell name: cell id}`` of a plane."""
-    return {c["name"]: c["id"] for c in await store.read(ops.cell_rows(plane))}
+    """``{cell name: cell id}`` of a plane made from a spec: the ids it keeps in its state."""
+    ids = nuspace.at.plane(id=plane).state(nuspace.specs.SpecCells).ids
+    return await store.read(ids.extract())
+
+
+async def _names(store, plane: str) -> list[str]:
+    """A plane's cells' names, in order."""
+    ids = await store.read(nu.list(Space.planes[plane].cells.keys()))
+    return [await store.read(Space.cells[c].name) for c in ids]
 
 
 async def _run(store, plane: str, cell: str, browser: _Browser) -> asyncio.Task:
     """The cell's program run as the kernel runs it, inside its ``Here`` frame."""
     env = session_env("127.0.0.1:9")("s1")
-    rewrite = Rewrites(Reroot(plane, cell), env.rewrite)
-    load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=rewrite)
-    term = await store.run(nustd.kv.Snapshot(load, scope=Space))
-    term = nu.Frame(ops.Here, term, plane=plane, cell=cell)
+    load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=env.rewrite)
+    term = nuspace.places.inside(await store.run(nuspace.atomic(load)), plane=plane, cell=cell)
     return asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
 
 
@@ -86,23 +92,30 @@ async def _stop(*tasks: asyncio.Task) -> None:
 
 
 async def _films(store, base: str) -> dict:
-    return await store.read(ops.plane_state(base, kit.Catalog.films.extract()))
+    return await store.read(kit.catalog(base).films.extract())
 
 
-async def _made(store, page: str, n: int) -> bool:
-    return len(await store.read(ops.cells(page))) == n
+async def _pages(store, base: str) -> dict:
+    """The plane ids the catalog keeps: ``{film, person, folder}``."""
+    return await store.read(kit.catalog(base).planes.extract())
+
+
+async def _made(store, base: str, kind: str, key: str, n: int) -> bool:
+    """The catalog holds the page and the page has ``n`` cells."""
+    page = ((await _pages(store, base)) or {}).get(kind, {}).get(key)
+    return bool(page) and len(await store.read(nu.list(Space.planes[page].cells.keys()))) == n
 
 
 @pytest.fixture
 async def seeded(store):
     """A cinematheque at ``m``, its ``add`` cell run once: the films, their pages, the people."""
-    await store.run(ops.create_plane(PLANE, plane_id="m"))
+    await store.run(nuspace.specs.add_plane(PLANE, "m"))
     tab = _Browser()
     task = await _run(store, "m", (await _cells(store, "m"))["add"], tab)
     try:
         # The last page the first run makes, with its cells.
-        last = "m.person." + slug("Samuel L. Jackson")
-        await _until(lambda: _made(store, last, len(cells.PERSON)), timeout=60.0)
+        last = slug("Samuel L. Jackson")
+        await _until(lambda: _made(store, "m", "person", last, len(cells.PERSON)), timeout=60.0)
     finally:
         await _stop(task)
     return store
@@ -130,17 +143,24 @@ def test_the_opening_films_connect():
     "source",
     [
         s
-        for group in (cells.FILM, cells.PERSON, cells.PEOPLE, cells.TIMELINE, cells.ATLAS)
+        for group in (
+            cells.ROOT,
+            cells.FILM,
+            cells.PERSON,
+            cells.PEOPLE,
+            cells.TIMELINE,
+            cells.ATLAS,
+        )
         for _, s in group
     ],
     ids=lambda s: s.split("class ", 1)[-1][:12],
 )
 async def test_every_page_cell_loads_and_draws(store, source):
-    await store.run(ops.add_plane("p", backend="async") >> ops.add_cell("p", source, cell_id="c"))
-    (row,) = await store.read(ops.cell_rows("p"))
-    assert row["props"]["has_ui"]
-    load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"}, rewrite=Reroot("p", "c"))
-    nu.validate(nu.compile(await store.run(nustd.kv.Snapshot(load, scope=Space))))
+    await store.do(nuspace.plane.add("p", backend="async"))
+    await store.do(nuspace.cell.add("p", source, id="c"))
+    assert await store.read(Space.cells["c"].fabrics) == ["ui"]
+    load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"})
+    nu.validate(nu.compile(await store.run(nuspace.atomic(load))))
 
 
 def test_typed_film_reads_a_year():
@@ -165,20 +185,40 @@ async def test_the_first_run_builds_the_tree(seeded):
     films = await _films(store, "m")
     assert len(films) == 20
     assert films["dune"]["director"] == "Denis Villeneuve"
-    kids = await store.read(ops.children("m"))
-    assert kids[:3] == ["m.people", "m.timeline", "m.atlas"]
-    assert {f"m.film.{slug(f['title'])}" for f in FILMS} <= set(kids)
-    people = await store.read(ops.children("m.people"))
-    assert "m.person.christopher-nolan" in people
-    assert "m.person.amy-adams" not in people
-    rows = {r["id"]: r for r in await store.read(ops.plane_rows())}
-    assert rows["m.film.dune"]["meta"]["film"] == "dune"
-    assert rows["m.film.dune"]["meta"]["base"] == "m"
-    assert rows["m.person.michael-caine"]["meta"]["person"] == "Michael Caine"
-    for page, spec in (("m.film.dune", cells.FILM), ("m.person.michael-caine", cells.PERSON)):
-        made = await store.read(ops.cell_rows(page))
-        assert [c["name"] for c in made] == [name for name, _ in spec]
-        assert all(c["props"]["has_ui"] for c in made)
+    pages = await _pages(store, "m")
+    kids = await store.read(nu.list(Space.planes["m"].children.keys()))
+    folders = pages["folder"]
+    assert kids[:3] == [folders["people"], folders["timeline"], folders["atlas"]]
+    assert set(pages["film"]) == {slug(f["title"]) for f in FILMS}
+    assert set(pages["film"].values()) <= set(kids)
+    people = await store.read(nu.list(Space.planes[folders["people"]].children.keys()))
+    assert pages["person"]["christopher-nolan"] in people
+    assert "amy-adams" not in pages["person"]
+    dune, caine = pages["film"]["dune"], pages["person"]["michael-caine"]
+    assert await store.read(Space.planes[dune].meta.extract()) == {"film": "dune"}
+    # Each page records its cinematheque in its own plane state, read back checked.
+    assert await store.read(kit.base_of(dune)) == "m"
+    assert await store.read(kit.base_of(folders["people"])) == "m"
+    assert await store.read(kit.base_of("m")) == "m"
+    assert await store.read(Space.planes[caine].meta["person"]) == "Michael Caine"
+    assert await store.read(Space.planes[dune].icon) == "emoji:🚀"
+    assert await store.read(nuspace.devices.web.Web.planes[dune].full_width) is False
+    for page, spec in ((dune, cells.FILM), (caine, cells.PERSON)):
+        assert await _names(store, page) == [name for name, _ in spec]
+        for c in (await _cells(store, page)).values():
+            assert await store.read(Space.cells[c].fabrics) == ["ui"]
+
+
+async def test_a_page_of_a_removed_cinematheque_raises_never_reads_another(seeded):
+    store = seeded
+    dune = (await _pages(store, "m"))["film"]["dune"]
+    # A plane the cinematheque never made recorded no base.
+    await store.do(nuspace.plane.add("stray", backend="async"))
+    with pytest.raises(nuspace.errors.Missing):
+        await store.read(kit.base_of("stray"))
+    await store.do(nuspace.plane.remove("m"))
+    with pytest.raises(nuspace.errors.Removed):
+        await store.read(kit.base_of(dune))
 
 
 async def test_the_first_run_happens_once(seeded):
@@ -190,8 +230,9 @@ async def test_the_first_run_happens_once(seeded):
         await asyncio.sleep(0.3)
     finally:
         await _stop(task)
-    assert len(await store.read(ops.children("m"))) == 23
-    assert len(await store.read(ops.cells("m.film.dune"))) == len(cells.FILM)
+    assert len(await store.read(nu.list(Space.planes["m"].children.keys()))) == 23
+    dune = (await _pages(store, "m"))["film"]["dune"]
+    assert len(await store.read(nu.list(Space.planes[dune].cells.keys()))) == len(cells.FILM)
 
 
 # --- reactions -------------------------------------------------------------------------------
@@ -200,10 +241,11 @@ async def test_the_first_run_happens_once(seeded):
 async def test_a_rating_on_a_film_page_moves_the_shelf(seeded):
     store = seeded
     page, shelf = _Browser(), _Browser()
-    film = await _cells(store, "m.film.parasite")
+    parasite = (await _pages(store, "m"))["film"]["parasite"]
+    film = await _cells(store, parasite)
     root = await _cells(store, "m")
     tasks = [
-        await _run(store, "m.film.parasite", film["ours"], page),
+        await _run(store, parasite, film["ours"], page),
         await _run(store, "m", root["films"], shelf),
         await _run(store, "m", root["stats"], shelf),
     ]
@@ -228,10 +270,11 @@ async def test_an_edit_in_the_table_moves_the_film_page(seeded):
     store = seeded
     page, shelf = _Browser(), _Browser()
     root = await _cells(store, "m")
-    film = await _cells(store, "m.film.heat")
+    heat = (await _pages(store, "m"))["film"]["heat"]
+    film = await _cells(store, heat)
     tasks = [
         await _run(store, "m", root["films"], shelf),
-        await _run(store, "m.film.heat", film["ours"], page),
+        await _run(store, heat, film["ours"], page),
     ]
     try:
         await _until(lambda: shelf.drawn("table") and page.drawn("rating"))
@@ -252,8 +295,9 @@ async def test_an_edit_in_the_table_moves_the_film_page(seeded):
 async def test_notes_are_kept_as_typed(seeded):
     store = seeded
     page = _Browser()
-    film = await _cells(store, "m.film.alien")
-    task = await _run(store, "m.film.alien", film["notes"], page)
+    alien = (await _pages(store, "m"))["film"]["alien"]
+    film = await _cells(store, alien)
+    task = await _run(store, alien, film["notes"], page)
     try:
         await _until(lambda: page.drawn("notes"))
         text = "In space **no one** can hear you scream."
@@ -275,21 +319,21 @@ async def test_adding_a_film_makes_its_page(seeded):
         await _until(lambda: tab.drawn("add"))
         tab.values["title"] = "Oppenheimer (2023)"
         tab.touch("add", None, {})
-        await _until(lambda: store.read(ops.plane_exists("m.film.oppenheimer")))
+        await _until(lambda: _made(store, "m", "film", "oppenheimer", len(cells.FILM)))
     finally:
         await _stop(task)
     film = (await _films(store, "m"))["oppenheimer"]
     assert (film["title"], film["year"]) == ("Oppenheimer", 2023)
-    assert [c["name"] for c in await store.read(ops.cell_rows("m.film.oppenheimer"))] == [
-        n for n, _ in cells.FILM
-    ]
+    page = (await _pages(store, "m"))["film"]["oppenheimer"]
+    assert await _names(store, page) == [n for n, _ in cells.FILM]
 
 
 async def test_facts_saved_credit_a_new_person(seeded):
     store = seeded
     page = _Browser()
-    film = await _cells(store, "m.film.parasite")
-    task = await _run(store, "m.film.parasite", film["facts"], page)
+    parasite = (await _pages(store, "m"))["film"]["parasite"]
+    film = await _cells(store, parasite)
+    task = await _run(store, parasite, film["facts"], page)
     try:
         await _until(lambda: page.drawn("save"))
         page.values.update(
@@ -312,5 +356,8 @@ async def test_facts_saved_credit_a_new_person(seeded):
         await _stop(task)
     assert (await _films(store, "m"))["parasite"]["genres"] == ["Thriller"]
     # Song Kang-ho is in one film only: no page. Bong Joon-ho directs: a page, already there.
-    assert not await store.read(ops.plane_exists("m.person.song-kang-ho"))
-    assert await store.read(ops.plane_exists("m.person.bong-joon-ho"))
+    people = (await _pages(store, "m"))["person"]
+    assert "song-kang-ho" not in people
+    assert await store.read(nuspace.plane.exists(people["bong-joon-ho"]))
+    # The genre picked the page's icon.
+    assert await store.read(Space.planes[parasite].icon) == "emoji:🗝️"

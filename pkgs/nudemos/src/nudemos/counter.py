@@ -9,7 +9,7 @@ kept beside the count, holds them to one tick a second between them.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
 __all__ = ["ABOUT", "COUNT", "PLANE"]
@@ -21,25 +21,26 @@ import nustd.kv
 import nustd.time
 import nustd.ui
 import nuspace
-from nuspace import ops
-from nuspace.system.utils import snap
 
 #: Seconds between ticks.
 EVERY = 1.0
 
 
-class Counter(nuspace.CellState):
+class Counter(nu.Shape):
     value = nustd.kv.IntRef.slot()
     at = nustd.kv.FloatRef.slot()
 
+
+#: The count, in this cell's own state.
+count = nuspace.here(Counter)
 
 tile = nustd.ui.StatRef("count")
 
 
 def tick(now):
     # Due only when no tab ticked in the last second, so two tabs still count one.
-    due = nu.Float(now) - Counter.at.fallback(0.0) >= EVERY * 0.9
-    step = Counter.value.set(Counter.value.fallback(0) + 1) >> Counter.at.set(nu.Float(now))
+    due = nu.Float(now) - count.at.fallback(0.0) >= EVERY * 0.9
+    step = count.value.set(count.value.fallback(0) + 1) >> count.at.set(nu.Float(now))
     return nu.IfDo(due, step)
 
 
@@ -47,8 +48,8 @@ def show(n):
     return tile.set_value(nu.str(n))
 
 
-ticks = nu.ForeverDo(nu.DelayedDo(EVERY, ops.atomic_state(nu.let(nustd.time.time(), tick))))
-shows = nu.Reconcile(snap(nu.OnAny(*[Counter.value.on_change()])), nu.let(snap(Counter.value.fallback(0)), show))
+ticks = nu.ForeverDo(nu.DelayedDo(EVERY, nuspace.atomic(nu.let(nustd.time.time(), tick))))
+shows = nu.Reconcile(nuspace.atomic(count.value.on_change()), nu.let(nuspace.atomic(count.value.fallback(0)), show))
 out = tile.set_label("Count") >> nu.ParallelAsync(ticks, shows)
 """
 
@@ -77,7 +78,7 @@ PLANE = PlaneSpec(
     "Counter",
     icon="hash",
     description="A count ticking once a second, kept in its cell's state.",
-    meta={"editable": True, "full_width": False},
+    web=WebOptions(editable=True, full_width=False),
     cells=(("count", COUNT), ("about", ABOUT)),
     group="Demos",
     backend="async",

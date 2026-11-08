@@ -15,10 +15,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import nu
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+import nuspace
 
-from .state import Agent, agents_of, at, job_of, status_of
+from .state import agent, agents_of, job_of, page_at, status_of
 
 
 if TYPE_CHECKING:
@@ -87,28 +86,27 @@ CUT = 4000
 
 def with_job(plane: nu.StrArg, body: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     """``body(job)`` once the agent page ``plane`` has its job: the launch makes it right after the page."""
-    found = snap(job_of(plane) != "")
-    wait = nu.WaitUntil(snap(Space.planes[plane].children.on_change()), found, every=2.0)
-    return wait >> nu.let(snap(job_of(plane)), lambda job: body(nu.Str(job)))
+    found = nuspace.atomic(job_of(plane) != "")
+    wait = nu.WaitUntil(nuspace.atomic(page_at(plane).job.on_change()), found, every=2.0)
+    return wait >> nu.let(nuspace.atomic(job_of(plane)), lambda job: body(nu.Str(job)))
 
 
 def agent_view(job: nu.StrArg) -> nu.Nu:
     """Everything an agent's header and card show, in one dict. Bare."""
-    a = Agent
     return nu.Dict.of(
         status=status_of(job),
-        spec=at(job, a.spec.fallback({})),
-        doing=at(job, a.doing.fallback("")),
-        prompts=at(job, a.prompts.fallback(0)),
-        turns=at(job, a.turns.fallback(0)),
-        calls=at(job, a.calls.fallback(0)),
-        tokens_in=at(job, a.tokens_in.fallback(0)),
-        tokens_out=at(job, a.tokens_out.fallback(0)),
-        cost=at(job, a.cost.fallback(0.0)),
-        seconds=at(job, a.seconds.fallback(0.0)),
-        answer=at(job, a.answer.fallback("")),
-        error=at(job, a.error.fallback("")),
-        queued=at(job, a.inbox.fallback([]).len()),
+        spec=agent(job).spec.fallback({}),
+        doing=agent(job).doing.fallback(""),
+        prompts=agent(job).prompts.fallback(0),
+        turns=agent(job).turns.fallback(0),
+        calls=agent(job).calls.fallback(0),
+        tokens_in=agent(job).tokens_in.fallback(0),
+        tokens_out=agent(job).tokens_out.fallback(0),
+        cost=agent(job).cost.fallback(0.0),
+        seconds=agent(job).seconds.fallback(0.0),
+        answer=agent(job).answer.fallback(""),
+        error=agent(job).error.fallback(""),
+        queued=agent(job).inbox.fallback([]).len(),
     )
 
 

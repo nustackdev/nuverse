@@ -148,7 +148,7 @@ def test_history_ends_now_at_the_current_score() -> None:
 
 def test_digest_and_notebook_read_the_desk() -> None:
     d = desk()
-    assert "eval runs" in views.digest(d, "base")
+    assert "eval runs" in views.digest(d)
     live = views.notebook(d)[0]
     assert live["live"]
     assert "{" not in live["text"]
@@ -220,8 +220,78 @@ def test_cell_sources_compile() -> None:
         for name, source in group:
             compile(source, name, "exec")
     compile(
-        job.job_source("b", {"key": "k", "model": "haiku", "style": "direct", "context": "clean"}),
+        job.job_source({"key": "k", "model": "haiku", "style": "direct", "context": "clean"}),
         "run",
         "exec",
     )
-    compile(job.probe_source("b"), "probe", "exec")
+    compile(job.probe_source(), "probe", "exec")
+
+
+# --- the first open, on a store ----------------------------------------------------------------
+
+
+async def test_the_first_open_fills_the_desk_and_makes_its_pages_once(store):
+    import nu
+    import nuspace
+    from nudemos.research import kit
+    from nuspace import Space
+    from nuspace.system import supervisor
+
+    await store.run(nuspace.specs.add_plane(PLANE, "d"))
+    assert await store.read(kit.BASE_ID) == "d"
+    await store.run(kit.seed(nu.Str("d")))
+    await store.run(kit.seed(nu.Str("d")))
+    assert set(await store.read(kit.DESK.sources.extract())) == {s["key"] for s in data.SOURCES}
+    kids = await store.read(Space.planes["d"].children.keys(limit=20))
+    # Every plane at a minted id the desk keeps.
+    made = await store.read(kit.DESK.planes.extract())
+    names = ("reading", "claims", "models", "evals", "watch", "notebook")
+    assert kids == [made["sections"][n] for n in names]
+    first = data.SOURCES[0]["key"]
+    page = made["sources"][first]
+    assert await store.read(Space.planes[page].parent) == made["sections"]["reading"]
+    assert await store.read(Space.planes[page].meta.extract()) == {"subject": first}
+    # The probe: a headless job under Watch, supervised.
+    probe = made["probe"]
+    assert await store.read(Space.planes[probe].parent) == made["sections"]["watch"]
+    assert await store.read(Space.planes[probe].spec) == kit.PROBE_JOB
+    assert await store.read(supervisor.supervised()[probe].policy) == supervisor.ON_FAILURE
+    # Links go to the planes the desk made.
+    desk = await store.read(kit.whole())
+    assert f"](/{page})" in views.activity(desk, 100)
+    # A status set wears its icon on the page.
+    await store.run(kit.set_status(nu.Str("d"), nu.Str(first), nu.Str("reading")))
+    assert await store.read(Space.planes[page].icon) == "lucide:book-open"
+    assert await store.read(kit.DESK.sources[first]["status"]) == "reading"
+
+
+async def test_a_run_is_a_page_and_a_job_under_it(store):
+    import nu
+    import nuspace
+    from nudemos import headless
+    from nudemos.research import kit
+    from nuspace import Space
+    from nuspace.system import supervisor
+
+    await store.run(nuspace.specs.add_plane(PLANE, "d"))
+    await store.run(kit.seed(nu.Str("d")))
+    run = {
+        "key": "rk",
+        "model": "haiku",
+        "style": "direct",
+        "context": "clean",
+        "status": "queued",
+        "at": 1.0,
+        "done_at": 0.0,
+        "answers": {},
+        "by": "me",
+    }
+    await store.run(kit.launch_run(nu.Str("d"), nu.Dict(nu.Literal(run))))
+    made = await store.read(kit.DESK.planes.extract())
+    page, job = made["runs"]["rk"], made["jobs"]["rk"]
+    assert await store.read(Space.planes[page].parent) == made["sections"]["evals"]
+    assert await store.read(Space.planes[job].parent) == page
+    cell = await store.read(headless.cell_of(job, "ask"))
+    assert await store.read(Space.planes[job].cells.keys(limit=3)) == [cell]
+    assert await store.read(supervisor.supervised()[job].policy) == supervisor.ON_FAILURE
+    assert await store.read(kit.DESK.runs["rk"]["model"]) == "haiku"

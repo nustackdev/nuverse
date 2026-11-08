@@ -1,7 +1,8 @@
 """What the cells read, shaped for the widgets: one host function per view.
 
-Each takes the base as plain dicts (and the time, for anything that ages),
-and returns what one cell draws: markdown, table rows, tiles, a chart's data.
+Each takes the base as plain dicts (``pages``, the page ids it keeps, for
+links, and the time, for anything that ages), and returns what one cell
+draws: markdown, table rows, tiles, a chart's data.
 """
 
 from __future__ import annotations
@@ -52,8 +53,8 @@ __all__ = [
 ]
 
 
-def _href(base: str, slug: str) -> str:
-    return f"/{base}.doc.{slug}"
+def _href(pages: dict, slug: str) -> str:
+    return text._href(pages, slug)
 
 
 def _name(docs: dict, slug: str) -> str:
@@ -74,15 +75,15 @@ def _due_word(iso: str, today: dt.date) -> str:
 
 
 @nu.host
-def page(docs: dict, facts: dict, slug: str, base: str, now: float) -> str:
+def page(docs: dict, facts: dict, slug: str, pages: dict, now: float) -> str:
     """A doc's body, rendered: links, facts, people, tasks and queries drawn in."""
     if slug not in (docs or {}):
         return "_This page is not in the base any more._"
-    return text.render(slug, docs, facts or {}, base, now)
+    return text.render(slug, docs, facts or {}, pages, now)
 
 
 @nu.host
-def doc_head(docs: dict, health: dict, slug: str, base: str, now: float) -> dict[str, Any]:
+def doc_head(docs: dict, health: dict, slug: str, pages: dict, now: float) -> dict[str, Any]:
     """A doc's header line: kind, status, freshness, who owns and who edited it, and its tags."""
     d = (docs or {}).get(slug) or {}
     kind = KINDS.get(d.get("kind", ""), {}).get("one", "Page")
@@ -116,13 +117,13 @@ def doc_head(docs: dict, health: dict, slug: str, base: str, now: float) -> dict
         "fresh": fresh[0] or kind,
         "fresh_tone": fresh[1],
         "owner": _name(docs, d.get("owner", "")),
-        "owner_href": _href(base, d.get("owner", "")),
+        "owner_href": _href(pages, d.get("owner", "")),
         "when": when + (f"  ·  {tags}" if tags else ""),
     }
 
 
 @nu.host
-def doc_links(docs: dict, facts: dict, slug: str, base: str) -> str:
+def doc_links(docs: dict, facts: dict, slug: str, pages: dict) -> str:
     """What links here, with the line that does, and where this page links to."""
     docs = docs or {}
     back = text.backlinks(docs, slug)
@@ -138,13 +139,13 @@ def doc_links(docs: dict, facts: dict, slug: str, base: str) -> str:
 
     lines = [f"### Linked from {len(back)} {'page' if len(back) == 1 else 'pages'}", ""]
     lines += [
-        f"- [{_name(docs, k)}]({_href(base, k)}): {excerpt(line)}" for k, line in back[:12]
+        f"- [{_name(docs, k)}]({_href(pages, k)}): {excerpt(line)}" for k, line in back[:12]
     ] or ["_Nothing links here yet._"]
     known = [s for s in out if s in docs]
     missing = [s for s in out if s not in docs]
     lines += ["", f"### Links to {len(known)}", ""]
     lines += [
-        "  ·  ".join(f"[{_name(docs, s)}]({_href(base, s)})" for s in known) or "_No links out._"
+        "  ·  ".join(f"[{_name(docs, s)}]({_href(pages, s)})" for s in known) or "_No links out._"
     ]
     if missing:
         lines += ["", "Broken: " + ", ".join(f"~~{s}~~" for s in missing)]
@@ -233,25 +234,25 @@ def tasks_chart(docs: dict, now: float) -> dict[str, list]:
 
 
 @nu.host
-def activity(log: list, docs: dict, base: str, now: float, n: int = 12) -> str:
+def activity(log: list, docs: dict, pages: dict, now: float, n: int = 12) -> str:
     """What happened lately, newest first, each line linking its page."""
     lines = []
     for e in (log or [])[:n]:
         who = e.get("who", "")
         name = {"checker": "The checker", "importer": "The importer"}.get(who) or _name(docs, who)
         doc = e.get("doc", "")
-        page = f" [{_name(docs, doc)}]({_href(base, doc)})" if doc in (docs or {}) else ""
+        page = f" [{_name(docs, doc)}]({_href(pages, doc)})" if doc in (docs or {}) else ""
         lines.append(f"- **{name}** {e.get('what', '')}{page}  ·  _{ago(e.get('t') or 0, now)}_")
     return "\n".join(lines) or "_Nothing has happened yet._"
 
 
 @nu.host
-def search(docs: dict, facts: dict, q: str, base: str) -> str:
+def search(docs: dict, facts: dict, q: str, pages: dict) -> str:
     """Search results as markdown, or nothing when nothing is asked."""
     q = (q or "").strip()
     if not q:
         return ""
-    hits = text.search(docs or {}, facts or {}, q, base)
+    hits = text.search(docs or {}, facts or {}, q, pages)
     if not hits:
         return f"_Nothing matches **{q}**._"
     return "\n".join(
@@ -421,7 +422,7 @@ def person_view(docs: dict, slug: str, now: float) -> dict[str, str]:
 
 
 @nu.host
-def people_cards(docs: dict, now: float, base: str) -> list[dict[str, str]]:
+def people_cards(docs: dict, now: float, pages: dict) -> list[dict[str, str]]:
     """Everyone, with what they own and what is on them."""
     docs, out = docs or {}, []
     tasks = [t for t in all_tasks(docs) if not t["done"]]
@@ -432,7 +433,7 @@ def people_cards(docs: dict, now: float, base: str) -> list[dict[str, str]]:
             {
                 "i": str(i),
                 "name": name,
-                "href": _href(base, slug),
+                "href": _href(pages, slug),
                 "role": role,
                 "note": f"owns {owns} pages  ·  {open_t} open tasks",
             }
@@ -552,13 +553,13 @@ def facts_rows(docs: dict, facts: dict, now: float) -> list[dict[str, Any]]:
 
 
 @nu.host
-def fact_uses(docs: dict, facts: dict, base: str) -> str:
+def fact_uses(docs: dict, facts: dict, pages: dict) -> str:
     """Where each fact is cited, as markdown."""
     lines = []
     for k, f in (facts or {}).items():
         where = [s for s, d in (docs or {}).items() if k in text.facts_of(d.get("body", ""))]
         if where:
-            links = ", ".join(f"[{_name(docs, s)}]({_href(base, s)})" for s in where)
+            links = ", ".join(f"[{_name(docs, s)}]({_href(pages, s)})" for s in where)
             lines.append(f"- **{f['label']}** ({f['value']}): {links}")
     return "\n".join(lines) or "_No page cites a fact yet._"
 
@@ -583,9 +584,9 @@ def glossary_rows(docs: dict) -> list[dict[str, Any]]:
 
 
 @nu.host
-def graph_option(docs: dict, base: str) -> dict[str, Any]:
+def graph_option(docs: dict, pages: dict) -> dict[str, Any]:
     """The whole base as a force graph: pages as nodes, links as edges, coloured by kind."""
-    g = text.graph(docs or {}, base)
+    g = text.graph(docs or {}, pages)
     return {
         "color": [KINDS[k]["color"] for k in KINDS],
         "legend": [{"data": [c["name"] for c in g["categories"]], "top": 0, "left": 0}],
@@ -620,15 +621,15 @@ def graph_option(docs: dict, base: str) -> dict[str, Any]:
 
 
 @nu.host
-def graph_side(docs: dict, base: str) -> str:
+def graph_side(docs: dict, pages: dict) -> str:
     """The graph in words: the hubs, the islands."""
-    g = text.graph(docs or {}, base)
+    g = text.graph(docs or {}, pages)
     hubs = sorted(g["nodes"], key=lambda n: -n["value"])[:6]
     alone = [n for n in g["nodes"] if n["value"] == 0]
     lines = [f"**{len(g['nodes'])} pages, {len(g['edges'])} links.**", "", "Most connected:", ""]
-    lines += [f"- [{n['name']}]({_href(base, n['slug'])}) · {n['value']}" for n in hubs]
+    lines += [f"- [{n['name']}]({_href(pages, n['slug'])}) · {n['value']}" for n in hubs]
     lines += ["", f"Islands, linked to nothing ({len(alone)}):", ""]
-    lines += [f"- [{n['name']}]({_href(base, n['slug'])})" for n in alone[:6]] or ["_None._"]
+    lines += [f"- [{n['name']}]({_href(pages, n['slug'])})" for n in alone[:6]] or ["_None._"]
     return "\n".join(lines)
 
 
@@ -743,15 +744,15 @@ def imports_view(imports: dict, live: bool, now: float) -> dict[str, Any]:
 
 
 @nu.host
-def page_query(name: str, arg: str, docs: dict, facts: dict, base: str, now: float) -> str:
+def page_query(name: str, arg: str, docs: dict, facts: dict, pages: dict, now: float) -> str:
     """One of the queries a page can hold, on its own."""
-    return text.query(name, arg, docs or {}, facts or {}, base, now)
+    return text.query(name, arg, docs or {}, facts or {}, pages, now)
 
 
 @nu.host
-def digest(docs: dict, facts: dict, log: list, base: str, now: float) -> str:
+def digest(docs: dict, facts: dict, log: list, pages: dict, now: float) -> str:
     """This week, written from the base."""
-    return text.digest(docs or {}, facts or {}, log or [], base, now)
+    return text.digest(docs or {}, facts or {}, log or [], pages, now)
 
 
 @nu.host
@@ -767,10 +768,10 @@ def first(rows: list, n: int) -> list:
 
 
 @nu.host
-def more(rows: list, n: int, base: str) -> str:
+def more(rows: list, n: int, pages: dict) -> str:
     """A line saying how many rows are not shown, linking where they all are."""
     left = len(rows or []) - n
-    return f"_And {left} more on [Tasks](/{base}.tasks)._" if left > 0 else ""
+    return f"_And {left} more on [Tasks]({text._view(pages, 'tasks')})._" if left > 0 else ""
 
 
 @nu.host
@@ -811,11 +812,11 @@ def launch_in(value: str, now: float) -> int | None:
 
 
 @nu.host
-def welcome(facts: dict, base: str, now: float) -> str:
+def welcome(facts: dict, pages: dict, now: float) -> str:
     """Home's opening lines, the launch date read from its fact."""
     launch = ((facts or {}).get("launch-date") or {}).get("value", "")
     n = launch_in(launch, now) if launch else None
-    when = f"[{launch}](/{base}.facts)"
+    when = f"[{launch}]({text._view(pages, 'facts')})"
     if n is None:
         line = f"Fieldnote v2 launches on {when}."
     elif n > 1:
@@ -832,8 +833,8 @@ def welcome(facts: dict, base: str, now: float) -> str:
         "This is where the team keeps how it works and what it is doing, and where I keep my own notes. "
         "Every page is a small program over one base: a fact is written once and cited everywhere, "
         "tables inside pages are live queries, links run both ways, and a checker in its own process keeps it honest. "
-        f"Start with the [handbook](/{base}.handbook), this week's [digest](/{base}.digest), the [graph](/{base}.graph), "
-        f"or [ask the base](/{base}.ask)."
+        f"Start with the [handbook]({text._view(pages, 'handbook')}), this week's [digest]({text._view(pages, 'digest')}), the [graph]({text._view(pages, 'graph')}), "
+        f"or [ask the base]({text._view(pages, 'ask')})."
     )
 
 

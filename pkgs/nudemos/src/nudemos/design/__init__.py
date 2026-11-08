@@ -29,7 +29,7 @@ checks at once:
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells
 
@@ -37,7 +37,7 @@ from . import cells
 __all__ = ["PLANE"]
 
 
-_WIDE = {"editable": True, "full_width": True, "compact": True}
+_WIDE = WebOptions(editable=True, full_width=True, compact=True)
 
 
 def _page(
@@ -47,7 +47,7 @@ def _page(
         f"design_{name}",
         label,
         icon=icon,
-        meta=_WIDE,
+        web=_WIDE,
         cells=page_cells,
         children=children,
         backend="async",
@@ -59,7 +59,7 @@ PLANE = PlaneSpec(
     "Design",
     icon="palette",
     description="The nustack design system: one live spec, and every swatch, control, mock and asset drawn from it.",
-    meta=_WIDE,
+    web=_WIDE,
     cells=cells.ROOT,
     children=(
         _page(

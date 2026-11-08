@@ -26,7 +26,7 @@ way the research desk makes its own: the group's index cell makes each one
 once, under itself, at ``<index id>.<recipe>``, and a page's cell works its
 siblings' ids out of its own (``out(plane)`` gets it as a string). The
 index draws a tile per page, titled and marked off the store with
-``nuspace.ui.page_link``.
+``nuspace.devices.web.link``.
 """
 
 from __future__ import annotations
@@ -36,8 +36,10 @@ import inspect
 from typing import TYPE_CHECKING
 
 import nu
-from nuspace import PlaneSpec, ops
-from nuspace.system.utils import snap
+import nuspace
+from nuspace.specs import PlaneSpec, WebOptions
+
+from .. import headless
 
 
 if TYPE_CHECKING:
@@ -78,7 +80,7 @@ _PAGES = (
     ("landing", "Landing", "rocket"),
 )
 
-_META = {"editable": True, "full_width": True}
+_WEB = WebOptions(editable=True, full_width=True)
 
 
 def page_id(base: str, recipe: str) -> str:
@@ -96,7 +98,7 @@ def _source(recipe: str) -> str:
 # The pages are siblings under one index, at ``<index id>.<recipe>``, each
 # opened at its pane URL, ``/<plane id>``: this page's own id says where the
 # others are. A recipe takes its links as plain strings, before it builds a
-# Ref, so they are spelled here rather than by ``nuspace.ui.href``; a plane id
+# Ref, so they are spelled here rather than by ``web.href``; a plane id
 # of letters and dots reads the same either way.
 
 RECIPES = {RECIPES!r}
@@ -124,8 +126,8 @@ PAGES = {
         label,
         icon=icon,
         description=_summary(recipe),
-        meta=_META,
         cells=((recipe, _source(recipe)),),
+        web=_WEB,
         backend="async",
     )
     for recipe, label, icon in _PAGES
@@ -133,23 +135,23 @@ PAGES = {
 
 
 def make_pages(base: nu.StrArg) -> nu.Nu:
-    """Every page under the index ``base``, each made only when it is missing.
+    """Every page under the index ``base``, each made only when no row has its id.
 
     Made on every run of the index, so a first run cut short is finished by
-    the next, and a page someone deleted comes back.
+    the next. A page someone removed stays removed: ids are never reused.
     """
     made = []
     for recipe, spec in PAGES.items():
         pid = nu.Str(base) + "." + recipe
-        create = ops.create_plane(spec, parent=base, plane_id=pid)
-        made.append(nu.IfDo(nu.Bool(snap(ops.plane_exists(pid))).not_(), create))
+        made.append(headless.once(pid, nuspace.specs.add_plane(spec, pid, parent=base)))
     return nu.Sequential(*made)
 
 
 INDEX = f'''\
 import nu
+import nuspace
+import nuspace.devices.web as web
 import nustd.ui
-import nuspace.ui
 from nudemos import recipes
 
 RECIPES = {RECIPES!r}
@@ -168,7 +170,7 @@ def out(plane):
     def tile(name):
         ref = nustd.ui.PageLinkRef(name, parent_ref=tiles, props={{"variant": "tile"}})
         about = recipes.PAGES[name].description
-        return nuspace.ui.page_link(ref, recipes.page_id(plane, name), description=about)
+        return nuspace.atomic(web.link(ref, recipes.page_id(plane, name), description=about))
 
     drawn = intro.set(TEXT) >> nu.Sequential(*(tile(name) for name in RECIPES))
     return recipes.make_pages(plane) >> drawn >> nu.ForeverDo(nu.Delay(3600.0))
@@ -180,8 +182,8 @@ PLANE = PlaneSpec(
     "Recipes",
     icon="compass",
     description="Whole pages from the kit in plain Python: a dashboard, a detail page, a catalog, settings, a landing.",
-    meta=_META,
     cells=(("index", INDEX),),
+    web=_WEB,
     group="Recipes",
     backend="async",
 )

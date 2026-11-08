@@ -22,7 +22,7 @@ from . import checks
 from . import spec as specs
 
 
-__all__ = ["PAST", "PEOPLE", "POOL", "STUDIO", "arrive", "history", "job_cell", "job_of", "verdict"]
+__all__ = ["PAST", "PEOPLE", "POOL", "STUDIO", "arrive", "history", "verdict"]
 
 
 #: Who is on the team, and what they look after.
@@ -168,26 +168,15 @@ def wait(pace: float, first: bool) -> float:
     return 6.0 if first else max(4.0, pace * random.uniform(0.8, 1.2))  # noqa: S311
 
 
-def job_of(root: nu.StrArg) -> nu.Str:
-    """The studio's plane id: fixed under the root."""
-    return nu.Str(root) + ".studio"
-
-
-def job_cell(job: nu.StrArg) -> nu.Str:
-    """The studio's one cell."""
-    return nu.Str(job) + "_main"
-
-
 #: Arrivals the studio starts with, seconds apart, before it settles into its pace.
 PACE = 24.0
 
 
 STUDIO = """\
 import nu
+import nuspace
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
-from nudemos.design.kit import System, root_of
+from nudemos.design.kit import root_of, system
 from nudemos.design.studio import PACE, arrive, wait
 
 #: The inbox holds this many at most: past it the studio waits for decisions.
@@ -200,26 +189,24 @@ def roomy(inbox):
 
 
 def deliver(root):
-    def put():
-        room = roomy(System.inbox.fallback([]))
-        ready = System.paused.fallback(False).not_().and_(room)
-        land = (
-            System.inbox.set(arrive(System.inbox.fallback([]), System.cursor.fallback(0), nustd.time.time()))
-            >> System.cursor.set(System.cursor.fallback(0) + 1)
-            >> System.mail.set(System.mail.fallback(0) + 1)
-        )
-        return nu.IfDo(ready, land)
-
-    return ops.atomic_state(ops.plane_state(root, put()))
+    s = system(root)
+    room = roomy(s.inbox.fallback([]))
+    ready = s.paused.fallback(False).not_().and_(room)
+    land = (
+        s.inbox.set(arrive(s.inbox.fallback([]), s.cursor.fallback(0), nustd.time.time()))
+        >> s.cursor.set(s.cursor.fallback(0) + 1)
+        >> s.mail.set(s.mail.fallback(0) + 1)
+    )
+    return nuspace.atomic(nu.IfDo(ready, land))
 
 
 def out(plane):
     def run(root):
-        pace = snap(ops.plane_state(root, System.pace.fallback(PACE)))
+        pace = nuspace.atomic(system(root).pace.fallback(PACE))
         first = nu.Delay(wait(PACE, True)) >> deliver(root)
         return first >> nu.ForeverDo(nu.Delay(wait(pace, False)) >> deliver(root))
 
-    return nu.let(snap(root_of(plane)), lambda root: run(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: run(nu.Str(root)))
 """
 
 

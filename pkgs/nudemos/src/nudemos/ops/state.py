@@ -1,6 +1,7 @@
 """The state every ops plane shares, and how each plane finds it.
 
-Everything lives in the root Ops plane's state (:class:`Ops`): the jobs write
+Everything lives in the root Ops plane's state (:data:`OPS`, typed as
+:class:`Ops`): the jobs write
 their side (their records, runs, logs, metrics), the pages write the knobs
 (the release, the load, the rules, the rota). One class, imported by every
 cell and every job, so the slots are declared once.
@@ -14,10 +15,16 @@ what is read, never of how long the stream is.
 
 The planes hang as the root makes them::
 
-    Ops                     the root, made from :data:`nudemos.ops.PLANE`
-      Jobs                  every job, and a page per job (made_by ``ops_job``)
+    Ops                     the root, made from :data:`nudemos.ops.PLANE`, keyed :data:`KEY`
+      Jobs                  every job, and a page per job (spec ``ops_job``)
       Traffic, Logs, Machine, Deploys, Incidents, Runbooks, Rules, Status
-      <root>.job.<name>     the jobs themselves, headless, made_by ``ops_worker``
+      <job>                 the jobs themselves, headless, spec ``ops_worker``
+
+One Ops per space: its gateway listens on a fixed port. The root is keyed
+:data:`KEY`, so every cell and job finds it, and :data:`OPS`, its state, in
+one index read. Every plane under it has a minted id, kept in :class:`Made`
+when it is minted: a cell finds a folder, a job or an incident's page with
+one read of :data:`OPS`, never by building an id.
 """
 
 from __future__ import annotations
@@ -26,32 +33,35 @@ import nu
 import nuspace
 import nustd.kv
 from nulog.messages.shapes import MessageStream
-from nuspace import ops
-from nuspace.shapes import Space
+from nuspace import Space
 
 
 __all__ = [
     "INCIDENT",
     "JOB_PAGE",
-    "MADE_BY",
+    "KEY",
+    "OPS",
     "ROOT",
+    "ROOT_ID",
     "SERIES",
     "WORKER",
+    "Made",
     "Ops",
-    "at_root",
-    "incident_page",
-    "job_cell",
-    "job_page",
-    "job_plane",
-    "root_of",
+    "folder_of",
+    "incident_view",
+    "job_view",
+    "worker_of",
 ]
 
 
-#: ``made_by`` of the root, a job's page, a job's headless plane, an incident's page.
+#: ``spec`` of a job's page, a job's headless plane, an incident's page; ``ROOT`` names the demo.
 ROOT, JOB_PAGE, WORKER, INCIDENT = "ops", "ops_job", "ops_worker", "ops_incident"
 
-#: What a root records as ``made_by``, the name the space registers it under.
-MADE_BY = f"nudemos.{ROOT}"
+#: The root's key: one Ops per space.
+KEY = "nudemos_ops"
+
+#: The root's id, one index read. NULL while the space has no Ops.
+ROOT_ID = Space.indexes.plane_keys[KEY]
 
 #: The metric series, by slot: what each one is, for charts and the rules.
 SERIES = {
@@ -68,8 +78,25 @@ SERIES = {
 }
 
 
-class Ops(nuspace.PlaneState):
-    """The whole ops space: jobs, releases, incidents, logs, metrics, knobs."""
+class Made(nu.Shape):
+    """The ids of the planes the root made, each minted before its plane is made.
+
+    ``folders``: Jobs, Traffic, ... by key. ``views``: each job's page under
+    Jobs, by job name. ``workers``: each job's headless plane, by job name.
+    ``incidents``: each incident's page, by incident id.
+    """
+
+    folders = nustd.kv.DictRef.slot(str)
+    views = nustd.kv.DictRef.slot(str)
+    workers = nustd.kv.DictRef.slot(str)
+    incidents = nustd.kv.DictRef.slot(str)
+
+
+class Ops(nu.Shape):
+    """The whole ops space: jobs, releases, incidents, logs, metrics, knobs, and the planes it made."""
+
+    # The ids of the planes the root made (:class:`Made`).
+    made = nustd.kv.ShapeRef.slot(Made)
 
     # A record per job (what it is, its schedule, its process, its last run), and its newest runs.
     jobs = nustd.kv.DictRef.slot(nustd.kv.PrimitiveDictRef)
@@ -113,36 +140,25 @@ class Ops(nuspace.PlaneState):
     orders = nustd.kv.Kh57Ref.slot(float)
 
 
-def _made_by(plane: nu.StrArg) -> nu.Str:
-    return Space.planes[plane].props.made_by.fallback("")
+#: The whole ops space, in the root's state: what every cell and job reads and writes.
+OPS = nuspace.at.plane(KEY).state(Ops)
 
 
-def root_of(plane: nu.StrArg) -> nu.Str:
-    """The Ops root a plane belongs to: itself, its meta's ``base``, or its parent. Bare read."""
-    base = nu.str(Space.planes[plane].meta["base"].fallback(ops.parent(plane)))
-    return nu.Str(nu.If(_made_by(plane) == MADE_BY, plane, base))
+def worker_of(name: nu.StrArg) -> nu.Str:
+    """Job ``name``'s headless plane, NULL before the first open mints it. Bare read."""
+    return nu.Str(OPS.made.workers[name])
 
 
-def at_root(root: nu.StrArg, term: nu.Nu) -> nu.Nu:
-    """``term`` over :class:`Ops`, landed on the root's state. Bare."""
-    return ops.plane_state(root, term)
+def job_view(name: nu.StrArg) -> nu.Str:
+    """Job ``name``'s page under Jobs, NULL before the first open mints it. Bare read."""
+    return nu.Str(OPS.made.views[name])
 
 
-def job_plane(root: nu.StrArg, name: nu.StrArg) -> nu.Str:
-    """A job's headless plane: fixed under the root, so every cell finds it without a look."""
-    return nu.Str(root) + ".job." + nu.Str(name)
+def folder_of(key: nu.StrArg) -> nu.Str:
+    """The folder ``key`` (``jobs``, ``incidents``, ``runbooks``, ...), NULL before the first open. Bare read."""
+    return nu.Str(OPS.made.folders[key])
 
 
-def job_cell(job: nu.StrArg) -> nu.Str:
-    """A job's one cell: its plane id with ``_main`` after it."""
-    return nu.Str(job) + "_main"
-
-
-def job_page(root: nu.StrArg, name: nu.StrArg) -> nu.Str:
-    """A job's page, under Jobs."""
-    return nu.Str(root) + ".jobs." + nu.Str(name)
-
-
-def incident_page(root: nu.StrArg, iid: nu.StrArg) -> nu.Str:
-    """An incident's page, under Incidents."""
-    return nu.Str(root) + ".incident." + nu.Str(iid)
+def incident_view(iid: nu.StrArg) -> nu.Str:
+    """Incident ``iid``'s page under Incidents, NULL before it is opened. Bare read."""
+    return nu.Str(OPS.made.incidents[iid])

@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
 __all__ = ["FORM", "PLANE", "RUNS"]
@@ -22,15 +22,15 @@ FORM = """\
 import importlib.util
 
 import nu
-import nuspace.ui
-import nustd.ui
 import nuspace
-from nuspace import ops
-from nuspace.system.utils import snap
+import nuspace.devices.web
+import nuspace.specs
+import nuspace.system.supervisor
+import nustd.ui
 from nudemos.mnist import views
 from nudemos.mnist.job import launch_source
 from nudemos.mnist.run import PAGE
-from nudemos.mnist.state import JOB, job_cell, runs_of
+from nudemos.mnist.state import JOB, Made, Runs, runs_of
 
 OPTIMIZERS = ["adam", "adamw", "sgd"]
 RATES = ["0.0001", "0.0003", "0.001", "0.003", "0.01", "0.03"]
@@ -84,12 +84,21 @@ def asked():
 
 def launch(root, hp, name):
     # A run page under the MNIST plane, the headless job under the page, supervised: it starts now.
+    # Three commits: the page, then the job and its cell (it draws nothing), then its id kept, the run listed and the job supervised.
     def made(page, job):
+        p, j = nu.Str(page), nu.Str(job)
+        add = nuspace.plane.add(parent=p, name="train", backend="mp", spec=JOB, into=job) >> nuspace.cell.add(
+            j, launch_source(hp), name="train", fabrics=[]
+        )
+        ids = nuspace.at.plane(id=p).state(Made)
+        kept = ids.job.set(j)
+        listed = nuspace.at.plane(id=root).state(Runs).planes.set_item(p, True)
+        policy = nuspace.system.supervisor.ON_FAILURE
+        up = nuspace.system.supervisor.supervise(j, policy=policy, exists_ok=True)
         return (
-            ops.create_plane(PAGE, parent=root, name=name, into=page)
-            >> ops.add_plane(backend="mp", name="train", parent=nu.Str(page), ui=False, made_by=JOB, into=job)
-            >> ops.add_cell(nu.Str(job), launch_source(hp), cell_id=job_cell(job), name="train")
-            >> nuspace.supervise(nu.Str(job))
+            nuspace.specs.add_plane(PAGE, parent=root, name=name, into=page)
+            >> nuspace.atomic(add)
+            >> nuspace.atomic(kept >> listed >> up)
         )
 
     return nu.let("", lambda page: nu.let("", lambda job: made(page, job)))
@@ -99,12 +108,12 @@ def runs(root, how):
     # One run, or three for a sweep, named and counted on from the runs there are.
     def start(plan):
         each = nu.ForEachDo(nu.List(plan), lambda p: launch(root, nu.List(p)[0], nu.List(p)[1]))
-        newest = snap(nu.List(runs_of(root))[-1][0])
-        opened = View.history.push(nuspace.ui.href(newest))
+        newest = nuspace.atomic(nu.List(runs_of(root))[-1][0])
+        opened = View.history.push(nuspace.devices.web.href(newest))
         return each >> View.go.name.set("") >> nu.IfDo(nu.Str(how) == "one", opened)
 
     typed = nu.Str(View.go.name).strip()
-    plan = views.plan(asked(), snap(runs_of(root).len()), typed, how)
+    plan = views.plan(asked(), nuspace.atomic(runs_of(root).len()), typed, how)
     return nu.let(plan, start)
 
 
@@ -126,18 +135,17 @@ def out(plane):
 
     if not READY:
         return View.notice.set(MISSING) >> nu.ForeverDo(nu.Delay(3600.0))
-    return defaults() >> nu.let(snap(ops.parent(plane)), clicks)
+    return defaults() >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), clicks)
 """
 
 
 RUNS = """\
 import nu
-import nuspace.ui
+import nuspace.devices.web
+import nuspace
 import nustd.ui
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
 from nudemos.mnist import views
+from nudemos.mnist.state import runs_change
 
 COLUMNS = [{"key": "run", "label": "Run"}, "status", "lr", "progress", {"key": "best", "label": "Best test"}]
 
@@ -150,11 +158,11 @@ class View(nustd.ui.Column):
 
 def out(plane):
     def follow(root):
-        runs = Space.planes[nu.Str(root)].children.on_change()
-        opened = nu.ReactEvery(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"])))
-        return nu.ParallelAsync(nu.Reconcile(snap(nu.OnAny(*[runs])), nu.let(snap(views.rows(views.board(nu.Str(root)))), View.runs.set_rows), every=2.0), opened)
+        runs = runs_change(nu.Str(root))
+        opened = nu.ReactEvery(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.devices.web.href(ev["key"])))
+        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.rows(views.board(nu.Str(root)))), View.runs.set_rows), every=2.0), opened)
 
-    return View.head.set("Runs, newest first") >> nu.let(snap(ops.parent(plane)), follow)
+    return View.head.set("Runs, newest first") >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
 """
 
 
@@ -163,7 +171,7 @@ PLANE = PlaneSpec(
     "Launch",
     icon="rocket",
     description="Start MNIST training runs from a form.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("form", FORM), ("runs", RUNS)),
     backend="async",
 )

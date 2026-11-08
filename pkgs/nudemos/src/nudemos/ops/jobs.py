@@ -25,13 +25,14 @@ __all__ = ["GATEWAY", "RULES", "SOURCES", "TELEMETRY", "TRAFFIC", "scheduled"]
 
 GATEWAY = """\
 import nu
+import nuspace
 import nustd.time
 from nudemos.ops import kit
 from nudemos.ops.calls import Drain, Open
 from nudemos.ops.gateway import Gateway
-from nudemos.ops.state import Ops
+from nudemos.ops.state import OPS
 
-SERIES = {"rps": Ops.rps, "err": Ops.err, "p50": Ops.p50, "p95": Ops.p95, "gw_rss": Ops.gw_rss, "orders": Ops.orders}
+SERIES = {"rps": OPS.rps, "err": OPS.err, "p50": OPS.p50, "p95": OPS.p95, "gw_rss": OPS.gw_rss, "orders": OPS.orders}
 
 
 @nu.host
@@ -42,21 +43,19 @@ def crashed(rec, gw, now):
 
 def flush(root, d):
     d, t = nu.Dict(d), nu.Int(nu.Dict(d)["point"]["t"])
-    me = Ops.jobs["gateway"]
+    me = OPS.jobs["gateway"]
     dying = nu.Str(nu.Dict(d["gw"])["dying"]) != ""
-    return kit.landed(root,
-        kit.logged("gateway", d["lines"]) >> Ops.gw.set(d["gw"])
+    return nuspace.atomic(kit.logged("gateway", d["lines"]) >> OPS.gw.set(d["gw"])
         >> nu.Sequential(*(ref.set_item(t, nu.Float(d["point"][k])) for k, ref in SERIES.items()))
         >> nu.IfDo(dying, me.set(crashed(me.fallback({}), d["gw"], nustd.time.time())))
-        >> Ops.beat.set(Ops.beat.fallback(0) + 1)
-    )
+        >> OPS.beat.set(OPS.beat.fallback(0) + 1))
 
 
 def out(plane):
     def serve(root):
-        cfg = nu.Dict(kit.snap(kit.at_root(root, nu.Dict.of(settings=Ops.settings.fallback({}), release=Ops.release.fallback({})))))
+        cfg = nu.Dict(nuspace.atomic(nu.Dict.of(settings=OPS.settings.fallback({}), release=OPS.release.fallback({}))))
         opened = Open(cfg["settings"]["port"], cfg["release"]["version"], cfg["settings"]["data"])
-        up = kit.landed(root, kit.job_started("gateway"))
+        up = nuspace.atomic(kit.job_started("gateway"))
         # Once a second, what it served: lines, numbers, a point per series. Out of memory, Drain raises.
         loop = nu.ForeverDo(nu.Delay(1.0) >> nu.let(Drain(), lambda d: flush(root, d)))
         return up >> nu.Provide(Gateway, {}, nu.let(opened, lambda d: flush(root, d)) >> loop)
@@ -67,9 +66,10 @@ def out(plane):
 
 TRAFFIC = """\
 import nu
+import nuspace
 from nudemos.ops import kit
 from nudemos.ops.calls import Shop
-from nudemos.ops.state import Ops
+from nudemos.ops.state import OPS
 from nudemos.ops.work import Shoppers
 
 
@@ -80,15 +80,15 @@ def tallied(load, shop):
 
 
 def turn(root):
-    knobs = kit.snap(kit.at_root(root, nu.Dict.of(users=Ops.load.fallback({})["users"], port=Ops.settings.fallback({})["port"])))
+    knobs = nuspace.atomic(nu.Dict.of(users=OPS.load.fallback({})["users"], port=OPS.settings.fallback({})["port"]))
     shop = nu.let(knobs, lambda k: Shop(nu.Dict(k)["port"], nu.Dict(k)["users"]))
-    write = lambda s: kit.landed(root, Ops.load.set(tallied(Ops.load.fallback({}), s)) >> kit.logged("traffic", nu.Dict(s)["lines"]))
+    write = lambda s: nuspace.atomic(OPS.load.set(tallied(OPS.load.fallback({}), s)) >> kit.logged("traffic", nu.Dict(s)["lines"]))
     return nu.let(shop, write)
 
 
 def out(plane):
     def shoppers(root):
-        up = kit.landed(root, kit.job_started("traffic") >> kit.said("traffic", "info", "shoppers starting"))
+        up = nuspace.atomic(kit.job_started("traffic") >> kit.said("traffic", "info", "shoppers starting"))
         return up >> nu.Provide(Shoppers, {}, nu.ForeverDo(turn(root)))
 
     return kit.on_root(plane, shoppers)
@@ -97,14 +97,15 @@ def out(plane):
 
 TELEMETRY = """\
 import nu
+import nuspace
 import nustd.time
 from nudemos.ops import kit
 from nudemos.ops.calls import Read
 from nudemos.ops.machine import Machine
-from nudemos.ops.state import Ops
+from nudemos.ops.state import OPS
 
 EVERY = 2.0
-SERIES = {"cpu": Ops.cpu, "mem": Ops.mem, "disk": Ops.disk, "load1": Ops.load1}
+SERIES = {"cpu": OPS.cpu, "mem": OPS.mem, "disk": OPS.disk, "load1": OPS.load1}
 
 
 @nu.host
@@ -131,20 +132,18 @@ def lost(jobs, m):
 def write(root, m):
     p = nu.Dict(point(m))
     t = nu.Int(p["t"])
-    downs = lost(nu.Dict(Ops.jobs.extract()), m)
-    return kit.landed(root,
-        Ops.machine.set(m)
+    downs = lost(nu.Dict(OPS.jobs.extract()), m)
+    return nuspace.atomic(OPS.machine.set(m)
         >> nu.Sequential(*(ref.set_item(t, nu.Float(p[k])) for k, ref in SERIES.items()))
-        >> nu.ForEachDo(nu.Dict(downs).items(), lambda kv: Ops.jobs[nu.Str(kv[0])].set(kv[1]))
-        >> Ops.tick.set(Ops.tick.fallback(0) + 1)
-    )
+        >> nu.ForEachDo(nu.Dict(downs).items(), lambda kv: OPS.jobs[nu.Str(kv[0])].set(kv[1]))
+        >> OPS.tick.set(OPS.tick.fallback(0) + 1))
 
 
 def out(plane):
     def watch(root):
-        asked = kit.snap(kit.at_root(root, nu.Dict.of(pids=pids(nu.Dict(Ops.jobs.extract())), disk=Ops.settings.fallback({})["data"])))
+        asked = nuspace.atomic(nu.Dict.of(pids=pids(nu.Dict(OPS.jobs.extract())), disk=OPS.settings.fallback({})["data"]))
         read = nu.let(asked, lambda a: nu.let(Read(nu.Dict(a)["pids"], nu.Dict(a)["disk"]), lambda m: write(root, m)))
-        up = kit.landed(root, kit.job_started("telemetry"))
+        up = nuspace.atomic(kit.job_started("telemetry"))
         return up >> nu.Provide(Machine, {}, nu.ForeverDo(read >> nu.Delay(EVERY)))
 
     return kit.on_root(plane, watch)
@@ -216,8 +215,9 @@ def out(plane):
 """,
     "memory": """\
 import nu
+import nuspace
 from nudemos.ops import kit
-from nudemos.ops.state import Ops
+from nudemos.ops.state import OPS
 
 
 # The gateway holds more than 220 MB: say so on the feed, once per climb.
@@ -228,7 +228,7 @@ def check(v):
 
 
 def act(root, why):
-    return kit.landed(root, kit.event("rule", why, "machine") >> kit.said("gateway", "warning", why))
+    return nuspace.atomic(kit.event("rule", why, "machine") >> kit.said("gateway", "warning", why))
 
 
 def out(plane):
@@ -259,20 +259,22 @@ def out(plane):
 
 WATCHDOG = """\
 import nu
+import nuspace
 from nudemos.ops import kit
 
 
 def out(plane):
     # The rules beside this cell are the watchdog's work; this one says it is up.
-    return kit.on_root(plane, lambda root: kit.landed(root, kit.job_started("watchdog")) >> nu.ForeverDo(nu.Delay(3600.0)))
+    return kit.on_root(plane, lambda root: nuspace.atomic(kit.job_started("watchdog")) >> nu.ForeverDo(nu.Delay(3600.0)))
 """
 
 
 SCHEDULED = """\
 import nu
+import nuspace
 from nudemos.ops import kit
 from nudemos.ops.calls import Work
-from nudemos.ops.state import Ops
+from nudemos.ops.state import OPS
 from nudemos.ops.work import Worker
 
 NAME = "backup"
@@ -283,10 +285,10 @@ def out(plane):
     def once(root):
         # One run: say it started, do the work in this process, write what came of it.
         # The very first run waits for the gateway to take some orders: there is nothing to back up before.
-        first = kit.snap(kit.at_root(root, nu.Dict(Ops.jobs[NAME].fallback({})).get_item("runs_ok", -1) < 0))
-        up = nu.IfDo(first, nu.Delay(WARMUP)) >> kit.landed(root, kit.job_started(NAME))
-        work = nu.let(kit.snap(kit.at_root(root, kit.ask())), lambda a: Work(NAME, a))
-        return up >> nu.Provide(Worker, {}, nu.let(work, lambda r: kit.landed(root, kit.job_finished(NAME, r))))
+        first = nuspace.atomic(nu.Dict(OPS.jobs[NAME].fallback({})).get_item("runs_ok", -1) < 0)
+        up = nu.IfDo(first, nu.Delay(WARMUP)) >> nuspace.atomic(kit.job_started(NAME))
+        work = nu.let(nuspace.atomic(kit.ask()), lambda a: Work(NAME, a))
+        return up >> nu.Provide(Worker, {}, nu.let(work, lambda r: nuspace.atomic(kit.job_finished(NAME, r))))
 
     return kit.on_root(plane, once)
 """

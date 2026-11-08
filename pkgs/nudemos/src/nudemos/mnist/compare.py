@@ -12,7 +12,7 @@ every tab overlays the same runs.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
 __all__ = ["LEADER", "OVERLAY", "PLANE", "TABLE"]
@@ -20,13 +20,14 @@ __all__ = ["LEADER", "OVERLAY", "PLANE", "TABLE"]
 
 _IMPORTS = """\
 import nu
-import nuspace.ui
+import nuspace
+import nuspace.devices.web
 import nustd.ui
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
 from nudemos.mnist import views
-from nudemos.mnist.state import Pick
+from nudemos.mnist.state import Pick, runs_change
+
+#: The runs ticked, in this plane's state.
+PICK = nuspace.at.plane.state(Pick)
 """
 
 
@@ -47,11 +48,11 @@ def draw(d):
 def out(plane):
     # On the MNIST plane, or on Compare under it: the runs hang from the root either way.
     def follow(root):
-        runs = Space.planes[nu.Str(root)].children.on_change()
-        return nu.Reconcile(snap(nu.OnAny(*[runs])), nu.let(snap(views.leader(views.board(nu.Str(root)))), draw), every=2.0)
+        runs = runs_change(nu.Str(root))
+        return nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.leader(views.board(nu.Str(root)))), draw), every=2.0)
 
-    made_by = Space.planes[plane].props.made_by.fallback("")
-    root = snap(nu.If(made_by == "nudemos.mnist", plane, ops.parent(plane)))
+    row = nuspace.Space.planes[plane]
+    root = nuspace.atomic(nu.If(row.spec.fallback("") == "mnist_compare", row.parent, plane))
     return nu.let(root, follow)
 """)
 
@@ -77,24 +78,24 @@ class View(nustd.ui.Column):
 def plot(ev):
     # Tick or untick a run's Plot box: the overlay below follows every tab's ticks.
     page = nu.Str(ev["key"])
-    picked = nu.list(Pick.pages.fallback([]))
+    picked = nu.list(PICK.planes.fallback([]))
     kept = picked.iter().filter(lambda p: nu.Str(p) != page).to_list()
-    return ops.atomic_state(Pick.pages.set(nu.If(nu.Bool(ev["value"]), kept + nu.List.of(page), kept)))
+    return nuspace.atomic(PICK.planes.set(nu.If(nu.Bool(ev["value"]), kept + nu.List.of(page), kept)))
 
 
 def out(plane):
     t = View.table
 
     def follow(root):
-        runs = [Space.planes[nu.Str(root)].children.on_change(), Pick.pages.on_change()]
-        read = views.rows(views.board(nu.Str(root)), nu.list(Pick.pages.fallback([])))
+        runs = [runs_change(nu.Str(root)), PICK.planes.on_change()]
+        read = views.rows(views.board(nu.Str(root)), nu.list(PICK.planes.fallback([])))
         return nu.ParallelAsync(
-            nu.Reconcile(snap(nu.OnAny(*runs)), nu.let(snap(read), t.set_rows), every=2.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*runs)), nu.let(nuspace.atomic(read), t.set_rows), every=2.0),
             nu.ReactEvery(t.on_edit(), plot),
-            nu.ReactEvery(t.on_row_click(), lambda ev: View.history.push(nuspace.ui.href(ev["key"]))),
+            nu.ReactEvery(t.on_row_click(), lambda ev: View.history.push(nuspace.devices.web.href(ev["key"]))),
         )
 
-    return nu.let(snap(ops.parent(plane)), follow)
+    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
 """)
 
 
@@ -119,10 +120,10 @@ def draw(d):
 
 def out(plane):
     def follow(root):
-        read = views.overlay(views.series(nu.Str(root)), nu.list(Pick.pages.fallback([])))
-        return nu.Reconcile(snap(nu.OnAny(*[Pick.pages.on_change()])), nu.let(snap(read), draw), every=2.0)
+        read = views.overlay(views.series(nu.Str(root)), nu.list(PICK.planes.fallback([])))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[PICK.planes.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
 
-    return nu.let(snap(ops.parent(plane)), follow)
+    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
 """)
 
 
@@ -131,7 +132,7 @@ PLANE = PlaneSpec(
     "Compare",
     icon="trophy",
     description="Every MNIST run side by side: a table, overlaid curves, the best one.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(("leader", LEADER), ("table", TABLE), ("overlay", OVERLAY)),
     backend="async",
 )

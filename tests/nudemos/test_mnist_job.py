@@ -12,12 +12,13 @@ import json
 import pytest
 
 import nu
+import nuspace
+import nuspace.places
 from nudemos.mnist.interactions import Evaluate, Histograms, Predict, TrainChunk
 from nudemos.mnist.job import job_source
 from nudemos.mnist.state import Run
 from nudemos.mnist.trainer import LAYERS, Trainer, load
-from nuspace import ops
-from nuspace.shapes import reroot
+from nuspace import Space
 
 
 SYNTHETIC = {"data": "synthetic", "device": "cpu", "batch_size": 16}
@@ -111,30 +112,25 @@ async def _job(store, hp: dict, **every: int) -> str:
     """A headless job plane with its one cell, as Launch makes it. The cell id."""
     pace = {"chunk": 4, "look": 1, "eval": 2, "save": 2, **every}
     source = job_source({**SYNTHETIC, **hp}, **pace)
-    await store.run(
-        ops.add_plane("job", backend="mp", ui=False, made_by="mnist_job")
-        >> ops.add_cell("job", source, cell_id="job_main", name="train")
+    add = nuspace.plane.add("job", backend="mp", spec="mnist_job") >> nuspace.cell.add(
+        "job", source, id="job_main", name="train", fabrics=[]
     )
+    await store.do(add)
     return "job_main"
 
 
 async def _load(store, cell: str) -> nu.Nu:
-    from nuspace.shapes import Reroot, Space
-    from nustd.kv import Snapshot
-
-    load = Space.cells[cell].prog.load(
-        scope={"plane": "job", "cell": cell}, rewrite=Reroot("job", cell)
-    )
-    return await store.run(Snapshot(load, scope=Space))
+    load = Space.cells[cell].prog.load(scope={"plane": "job", "cell": cell})
+    return await store.run(nuspace.atomic(load))
 
 
 async def _start(store, cell: str) -> asyncio.Task:
-    term = nu.Frame(ops.Here, await _load(store, cell), plane="job", cell=cell)
+    term = nuspace.places.inside(await _load(store, cell), plane="job", cell=cell)
     return asyncio.create_task(nu.arun(term, store.ctx))
 
 
-def _state(ref: nu.Nu) -> nu.Nu:
-    return reroot(ref, "job", "job_main")
+#: The run's state, where the job keeps it: its own cell's.
+RUN = nuspace.at.cell(id="job_main").state(Run)
 
 
 async def _until(check, timeout: float = 30.0) -> None:
@@ -147,40 +143,40 @@ async def _until(check, timeout: float = 30.0) -> None:
 async def test_the_job_trains_to_the_end_and_logs_into_kh57(store):
     cell = await _job(store, {"epochs": 1})
     await asyncio.wait_for(await _start(store, cell), 60)
-    assert await store.read(_state(Run.status)) == "done"
-    total = await store.read(_state(Run.total))
+    assert await store.read(RUN.status) == "done"
+    total = await store.read(RUN.total)
     assert total == 12  # 192 images, 16 a batch, one epoch
-    assert await store.read(_state(Run.step)) == total
-    losses = await store.read(nu.sorted(_state(Run.loss.sample(100))))
+    assert await store.read(RUN.step) == total
+    losses = await store.read(nu.sorted(RUN.loss.sample(100)))
     assert [k for k, _ in losses] == [4, 8, 12]
     assert all(v > 0 for _, v in losses)
-    assert [k for k, _ in await store.read(nu.sorted(_state(Run.test_acc.sample(100))))] == [8]
-    assert [k for k, _ in await store.read(nu.sorted(_state(Run.hists.sample(100))))] == [
+    assert [k for k, _ in await store.read(nu.sorted(RUN.test_acc.sample(100)))] == [8]
+    assert [k for k, _ in await store.read(nu.sorted(RUN.hists.sample(100)))] == [
         0,
         4,
         8,
         12,
     ]
-    assert len(await store.read(_state(Run.preds))) == 12
-    final = await store.read(_state(Run.final))
+    assert len(await store.read(RUN.preds)) == 12
+    final = await store.read(RUN.final)
     assert 0.0 <= final <= 1.0
-    latest = await store.read(_state(Run.models["latest"].step))
+    latest = await store.read(RUN.models["latest"].step)
     assert latest == 12
-    assert await store.read(_state(Run.models["latest"].acc)) == final
-    blob = await store.read(_state(Run.models["latest"].blob))
+    assert await store.read(RUN.models["latest"].acc) == final
+    blob = await store.read(RUN.models["latest"].blob)
     assert load(blob)["step"] == 12
     # The best weights are the ones at the best score seen, the final one among them.
-    best = await store.read(_state(Run.models["best"].acc))
-    assert best == max(final, await store.read(_state(Run.best)))
-    assert set(load(await store.read(_state(Run.models["best"].blob)))) == {"model", "arch", "step"}
-    assert (await store.read(_state(Run.hp)))["batch_size"] == 16
+    best = await store.read(RUN.models["best"].acc)
+    assert best == max(final, await store.read(RUN.best))
+    assert set(load(await store.read(RUN.models["best"].blob))) == {"model", "arch", "step"}
+    assert (await store.read(RUN.hp))["batch_size"] == 16
 
 
 async def test_the_last_chunk_stops_at_the_end(store):
     cell = await _job(store, {"epochs": 1}, chunk=5, look=10, eval=10, save=10)
     await asyncio.wait_for(await _start(store, cell), 60)
-    assert [k for k, _ in await store.read(nu.sorted(_state(Run.loss.sample(100))))] == [5, 10, 12]
-    assert await store.read(_state(Run.step)) == 12
+    assert [k for k, _ in await store.read(nu.sorted(RUN.loss.sample(100)))] == [5, 10, 12]
+    assert await store.read(RUN.step) == 12
 
 
 async def test_the_job_honors_stop_and_resumes_from_its_checkpoint(store):
@@ -188,32 +184,32 @@ async def test_the_job_honors_stop_and_resumes_from_its_checkpoint(store):
     task = await _start(store, cell)
 
     async def stepped():
-        return (await store.read(_state(Run.step.fallback(0)))) >= 8
+        return (await store.read(RUN.step.fallback(0))) >= 8
 
     await _until(stepped)
-    await store.run(ops.atomic_state(_state(Run.stop.set(True))))
+    await store.run(nuspace.atomic(RUN.stop.set(True)))
     await asyncio.wait_for(task, 30)
-    assert await store.read(_state(Run.status)) == "stopped"
-    step = await store.read(_state(Run.step))
-    assert 8 <= step < await store.read(_state(Run.total))
-    assert await store.read(_state(Run.models["latest"].step)) == step
+    assert await store.read(RUN.status) == "stopped"
+    step = await store.read(RUN.step)
+    assert 8 <= step < await store.read(RUN.total)
+    assert await store.read(RUN.models["latest"].step) == step
 
     # A stopped run ends at once when it is started again.
     await asyncio.wait_for(await _start(store, cell), 10)
-    assert await store.read(_state(Run.step)) == step
+    assert await store.read(RUN.step) == step
 
     # Resumed: it loads the checkpoint and carries on from the step it saved.
-    resume = Run.stop.set(False) >> Run.status.set("resuming") >> Run.lr.set(0.01)
-    await store.run(ops.atomic_state(_state(resume)))
+    resume = RUN.stop.set(False) >> RUN.status.set("resuming") >> RUN.lr.set(0.01)
+    await store.run(nuspace.atomic(resume))
     task = await _start(store, cell)
 
     async def moved():
-        return (await store.read(_state(Run.step))) > step
+        return (await store.read(RUN.step)) > step
 
     await _until(moved)
-    await store.run(ops.atomic_state(_state(Run.stop.set(True))))
+    await store.run(nuspace.atomic(RUN.stop.set(True)))
     await asyncio.wait_for(task, 30)
-    lrs = await store.read(nu.sorted(_state(Run.lrs.sample(1000))))
+    lrs = await store.read(nu.sorted(RUN.lrs.sample(1000)))
     assert dict(lrs)[step + 4] == 0.01
 
 

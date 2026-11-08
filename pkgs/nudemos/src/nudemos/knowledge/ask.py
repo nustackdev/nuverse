@@ -120,7 +120,7 @@ def answered(asks: list, reply: dict, question: str, t0: float) -> list[dict[str
 
 
 @nu.host
-def shown(asks: list, docs: dict, facts: dict, base: str, now: float) -> dict[str, str]:
+def shown(asks: list, docs: dict, facts: dict, pages: dict, now: float) -> dict[str, str]:
     """The latest answer, its line, and the ones before it, drawn with live links."""
     asks = list(asks or [])
     if not asks:
@@ -140,7 +140,7 @@ def shown(asks: list, docs: dict, facts: dict, base: str, now: float) -> dict[st
             ),
             md,
         )
-        return text.inline(md, docs or {}, facts or {}, base)
+        return text.inline(md, docs or {}, facts or {}, pages)
 
     before = [f"**{x['q']}**  \n{draw(x['a'])}  \n_{text.ago(x['t'], now)}_" for x in asks[1:6]]
     return {

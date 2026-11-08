@@ -80,30 +80,28 @@ def logged(log: list, events: list) -> list:
 
 CHECKER = """\
 import nu
-from nuspace import ops
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.knowledge import kit
-from nudemos.knowledge.kit import Base
 from nudemos.knowledge.jobs import EVERY, checked, logged
 
 
 def out(plane):
     def run(base):
-        at = lambda term: ops.plane_state(base, term)
-        read = at(nu.Dict.of(docs=Base.docs.extract(), facts=Base.facts.extract(), health=Base.health.fallback({})))
+        b = kit.base_at(base)
+        read = nu.Dict.of(docs=b.docs.extract(), facts=b.facts.extract(), health=b.health.fallback({}))
 
         def write(r):
             r = nu.Dict(r)
-            return ops.atomic_state(at(Base.health.set(r["health"]) >> nu.IfDo(
-                nu.List(r["events"]).len() > 0, Base.log.set(logged(Base.log.fallback([]), r["events"]))
-            )))
+            return nuspace.atomic(b.health.set(r["health"]) >> nu.IfDo(
+                nu.List(r["events"]).len() > 0, b.log.set(logged(b.log.fallback([]), r["events"]))
+            ))
 
         # A check now, then on every change to the pages or the facts, and every EVERY seconds regardless.
-        turn = nu.let(checked(snap(read)), write)
-        changes = [at(Base.docs.on_change()), at(Base.facts.on_change())]
-        return turn >> nu.ParallelAsync(*(nu.Reconcile(snap(c), turn, every=EVERY) for c in changes))
+        turn = nu.let(checked(nuspace.atomic(read)), write)
+        changes = [b.docs.on_change(), b.facts.on_change()]
+        return turn >> nu.ParallelAsync(*(nu.Reconcile(nuspace.atomic(c), turn, every=EVERY) for c in changes))
 
-    return nu.let(snap(kit.base_of(plane)), lambda b: run(nu.Str(b)))
+    return nu.let(nuspace.atomic(kit.base_of(plane)), lambda b: run(nu.Str(b)))
 """
 
 
@@ -172,10 +170,8 @@ def stepped(progress: dict, note: dict | None, total: int, label: str = "") -> d
 
 IMPORTER = """\
 import nu
-from nuspace import ops
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.knowledge import kit
-from nudemos.knowledge.kit import Base
 from nudemos.knowledge.jobs import planned, stepped
 
 #: Seconds between two notes: slow enough to watch the base grow.
@@ -184,8 +180,8 @@ PACE = 0.3
 
 def out(plane):
     def run(base):
-        at = lambda term: ops.plane_state(base, term)
-        read = at(nu.Dict.of(key=nu.str(Base.imports["key"].fallback("")), have=Base.docs.extract()))
+        b = kit.base_at(base)
+        read = nu.Dict.of(key=nu.str(b.imports["key"].fallback("")), have=b.docs.extract())
 
         def go(p):
             p = nu.Dict(p)
@@ -193,23 +189,23 @@ def out(plane):
             # Every note lands in one commit, so the notebook's own links resolve at once and the
             # checker never sees half a notebook. The pages then stream in, one every PACE.
             notes = nu.ForEachDo(nu.List(p["notes"]), lambda n: nu.IfDo(
-                nu.Bool(nu.Dict(n)["new"]), Base.docs[nu.Str(nu.Dict(n)["slug"])].set(nu.Dict(n)["doc"])
+                nu.Bool(nu.Dict(n)["new"]), b.docs[nu.Str(nu.Dict(n)["slug"])].set(nu.Dict(n)["doc"])
             ))
-            begin = ops.atomic_state(at(notes >> Base.imports.set(stepped(Base.imports.fallback({}), None, total, p["label"]))))
+            begin = nuspace.atomic(notes >> b.imports.set(stepped(b.imports.fallback({}), None, total, p["label"])))
             folder = kit.collection_page(base, p["folder"], p["short"], "notes")
 
             def one(n):
                 n = nu.Dict(n)
                 slug = nu.Str(n["slug"])
-                progress = Base.imports.set(stepped(Base.imports.fallback({}), n, total))
+                progress = b.imports.set(stepped(b.imports.fallback({}), n, total))
                 row = nu.Dict.of(slug=slug, title=nu.Dict(n["doc"])["title"], kind="note", folder=p["folder"])
-                return nu.Delay(PACE) >> ops.atomic_state(at(progress)) >> kit._any_doc_page(base, row)
+                return nu.Delay(PACE) >> nuspace.atomic(progress) >> kit._any_doc_page(base, row)
 
             said = nu.Str("imported ") + nu.ToStr(total) + " notes from " + nu.Str(p["short"])
-            end = ops.atomic_state(at(Base.imports.set(stepped(Base.imports.fallback({}), None, total)) >> kit.log("importer", said, "")))
+            end = nuspace.atomic(b.imports.set(stepped(b.imports.fallback({}), None, total)) >> kit.log(b, "importer", said, ""))
             return begin >> folder >> nu.ForEachDo(nu.List(p["notes"]), one) >> end
 
-        return nu.let(snap(read), lambda r: nu.let(planned(nu.Dict(r)["key"], nu.Dict(r)["have"]), go))
+        return nu.let(nuspace.atomic(read), lambda r: nu.let(planned(nu.Dict(r)["key"], nu.Dict(r)["have"]), go))
 
-    return nu.let(snap(kit.base_of(plane)), lambda b: run(nu.Str(b)))
+    return nu.let(nuspace.atomic(kit.base_of(plane)), lambda b: run(nu.Str(b)))
 """

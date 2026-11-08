@@ -25,9 +25,10 @@ an incident, the status page turns, the runbook rolls it back.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells
+from .state import KEY
 
 
 __all__ = ["PLANE"]
@@ -38,8 +39,9 @@ PLANE = PlaneSpec(
     "Ops",
     icon="server",
     description="A small team's ops space: jobs, logs, deploys and incidents, all running live.",
-    meta={"editable": True, "full_width": True},
     cells=cells.ROOT,
     group="Demos",
+    key=KEY,
+    web=WebOptions(editable=True, full_width=True),
     backend="async",
 )

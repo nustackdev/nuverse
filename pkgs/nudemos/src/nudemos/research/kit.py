@@ -1,15 +1,16 @@
 """What every desk cell shares: the store, where pages live, how pages and runs are made.
 
-- :class:`Desk`: the one store, in the desk plane's state. Sources, claims,
+- :class:`Desk`: the one store, in the desk plane's state (:data:`DESK`). Sources, claims,
   the evidence linking them, models, eval runs with their answers, the
   probe's answers, the notebook. Every page reads and writes it there, so a
   piece of evidence added on a source page moves the claim, the board, the
   week's digest and the notebook at once.
-- :func:`on_desk`: a cell's body with :class:`Desk` landed at its desk,
-  wherever in the tree the cell's page sits. A page knows its desk from its
-  own meta, written when it was made.
-- Page ids are the desk's id plus a path (``<base>.src.kaplan2020``), so any
-  cell links any page without looking anything up.
+- :func:`on_desk`: a cell's body over :data:`DESK`, wherever in the tree
+  the cell's page sits. One desk per space: its plane is keyed :data:`KEY`,
+  so every cell finds it in one index read.
+- Plane ids are minted. The desk keeps them (:class:`Planes`): sections by
+  name, sources, claims and runs by key, each run's job, the probe. Any cell
+  links any page with one read, never by building an id.
 - :func:`seed`, :func:`add_source`, :func:`add_claim`, :func:`launch_run`:
   cells writing planes. A run is a page and a headless job under it, the job
   asking Claude in its own process (:mod:`.job`).
@@ -28,10 +29,11 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.time
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace import Space
+from nuspace.specs import PlaneSpec, WebOptions
+from nuspace.utils import MintId
 
+from .. import headless
 from . import views
 
 
@@ -40,24 +42,27 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "BASE_ID",
+    "DESK",
+    "KEY",
     "ROOT",
     "Desk",
+    "Planes",
     "add_claim",
     "add_evidence",
     "add_source",
-    "base_of",
     "changes",
-    "claim_page",
-    "folder_page",
+    "claim_plane",
     "launch_run",
     "merged",
     "on_desk",
     "on_page",
     "patch",
-    "run_page",
+    "run_plane",
+    "section_plane",
     "seed",
     "set_status",
-    "source_page",
+    "source_plane",
     "whole",
 ]
 
@@ -65,11 +70,28 @@ __all__ = [
 #: The root Plane's name. Pages it makes are ``research_source``, ``research_claim`` and so on.
 ROOT = "research"
 
-#: ``made_by`` of a run's job, and of the probe's.
+#: ``spec`` of a run's job, and of the probe's.
 RUN_JOB, PROBE_JOB = "research_run_job", "research_probe_job"
 
+#: The desk plane's key: one desk per space.
+KEY = "nudemos_research"
 
-class Desk(nuspace.PlaneState):
+#: The desk plane's id, one index read. NULL while the space has no desk.
+BASE_ID = Space.indexes.plane_keys[KEY]
+
+
+class Planes(nu.Shape):
+    """The ids of the planes the desk made: sections by name; sources, claims and runs by key; each run's job; the probe."""
+
+    sections = nustd.kv.DictRef.slot(str)
+    sources = nustd.kv.DictRef.slot(str)
+    claims = nustd.kv.DictRef.slot(str)
+    runs = nustd.kv.DictRef.slot(str)
+    jobs = nustd.kv.DictRef.slot(str)
+    probe = nustd.kv.StrRef.slot()
+
+
+class Desk(nu.Shape):
     """The desk's store. Values are plain dicts (see :mod:`.data` for their fields)."""
 
     sources = nustd.kv.DictRef.slot(dict)
@@ -85,14 +107,15 @@ class Desk(nuspace.PlaneState):
     asked = nustd.kv.IntRef.slot()
     notebook = nustd.kv.ListRef.slot(dict)
     seeded = nustd.kv.BoolRef.slot()
+    # The ids of the planes it made (:class:`Planes`).
+    planes = nustd.kv.ShapeRef.slot(Planes)
+
+
+#: The desk, in the desk plane's state: what every page reads and writes.
+DESK = nuspace.at.plane(KEY).state(Desk)
 
 
 # --- where things are -----------------------------------------------------------------------
-
-
-def base_of(plane: nu.StrArg) -> nu.Str:
-    """The desk a page belongs to: its meta's ``base``, or the plane itself at the root."""
-    return nu.str(Space.planes[plane].meta["base"].fallback(plane))
 
 
 def about(plane: nu.StrArg) -> nu.Str:
@@ -101,38 +124,36 @@ def about(plane: nu.StrArg) -> nu.Str:
 
 
 def on_desk(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
-    """``build(base)`` with :class:`Desk` landed at the desk, bracketed step by step."""
-
-    def landed(base: nu.ObjectRef) -> nu.Nu:
-        b = nu.Str(base)
-        return ops.bracketed(ops.plane_state(b, build(b)))
-
-    return nu.let(snap(base_of(plane)), landed)
+    """``build(base)``, the desk plane's id read once, bracketed step by step: a cell's body over :data:`DESK`."""
+    del plane
+    return nu.let(nuspace.atomic(BASE_ID), lambda base: nuspace.bracketed(build(nu.Str(base))))
 
 
 def on_page(plane: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
     """``build(base, subject)`` on an item page, as :func:`on_desk`."""
-    return nu.let(snap(about(plane)), lambda s: on_desk(plane, lambda b: build(b, nu.Str(s))))
+    return nu.let(
+        nuspace.atomic(about(plane)), lambda s: on_desk(plane, lambda b: build(b, nu.Str(s)))
+    )
 
 
-def source_page(base: nu.StrArg, key: nu.StrArg) -> nu.Str:
-    """A source page's plane id."""
-    return nu.Str(base) + ".src." + key
+def source_plane(key: nu.StrArg) -> nu.Str:
+    """A source page's plane id, NULL before it is made. Bare read."""
+    return nu.Str(DESK.planes.sources[key])
 
 
-def claim_page(base: nu.StrArg, key: nu.StrArg) -> nu.Str:
-    """A claim page's plane id."""
-    return nu.Str(base) + ".claim." + key
+def claim_plane(key: nu.StrArg) -> nu.Str:
+    """A claim page's plane id, NULL before it is made. Bare read."""
+    return nu.Str(DESK.planes.claims[key])
 
 
-def run_page(base: nu.StrArg, key: nu.StrArg) -> nu.Str:
-    """A run page's plane id."""
-    return nu.Str(base) + ".run." + key
+def run_plane(key: nu.StrArg) -> nu.Str:
+    """A run page's plane id, NULL before it is made. Bare read."""
+    return nu.Str(DESK.planes.runs[key])
 
 
-def folder_page(base: nu.StrArg, name: str) -> nu.Str:
-    """A section's plane id: ``reading``, ``claims``, ``models``, ``evals``, ``watch``, ``notebook``."""
-    return nu.Str(base) + "." + name
+def section_plane(name: str) -> nu.Str:
+    """A section's plane id: ``reading``, ``claims``, ``models``, ``evals``, ``watch``, ``notebook``. Bare read."""
+    return nu.Str(DESK.planes.sections[name])
 
 
 # --- reading the desk ------------------------------------------------------------------------
@@ -141,21 +162,32 @@ def folder_page(base: nu.StrArg, name: str) -> nu.Str:
 def whole() -> nu.Dict:
     """The whole desk as one dict of plain values, for a view that reads across it."""
     return nu.Dict.of(
-        sources=Desk.sources.extract(),
-        claims=Desk.claims.extract(),
-        evidence=Desk.evidence.extract(),
-        models=Desk.models.extract(),
-        runs=Desk.runs.extract(),
-        probes=Desk.probes.extract(),
-        probe=Desk.probe.fallback({}),
-        notebook=Desk.notebook.extract(),
+        sources=DESK.sources.extract(),
+        claims=DESK.claims.extract(),
+        evidence=DESK.evidence.extract(),
+        models=DESK.models.extract(),
+        runs=DESK.runs.extract(),
+        probes=DESK.probes.extract(),
+        probe=DESK.probe.fallback({}),
+        notebook=DESK.notebook.extract(),
+        planes=nu.Dict(DESK.planes.extract()).fallback({}),
     )
 
 
 def changes(*names: str) -> list[nu.Nu]:
     """The subscriptions a view follows: every part of the desk, or the ``names`` given."""
-    every = ("sources", "claims", "evidence", "models", "runs", "probes", "probe", "notebook")
-    return [getattr(Desk, n).on_change() for n in names or every]
+    every = (
+        "sources",
+        "claims",
+        "evidence",
+        "models",
+        "runs",
+        "probes",
+        "probe",
+        "notebook",
+        "planes",
+    )
+    return [getattr(DESK, n).on_change() for n in names or every]
 
 
 @nu.host
@@ -166,15 +198,14 @@ def merged(value: dict | None, fields: dict) -> dict:
 
 def patch(ref: nu.Nu, fields: nu.Nu) -> nu.Nu:
     """Write ``fields`` over the dict at ``ref``, in the commit that reads it."""
-    return ops.atomic_state(ref.set(merged(ref.fallback({}), fields)))
+    return nuspace.atomic(ref.set(merged(ref.fallback({}), fields)))
 
 
 # --- making pages ---------------------------------------------------------------------------
 
 
 def _page(
-    pid: nu.Nu,
-    base: nu.Nu,
+    held: nu.Nu,
     parent: nu.Nu,
     name: nu.Nu,
     kind: str,
@@ -182,15 +213,49 @@ def _page(
     icon: nu.StrArg,
     cells: tuple[tuple[str, str], ...],
 ) -> nu.Nu:
-    """A page under ``parent`` with its cells, made once: a page already there is left alone."""
-    from nuspace import PlaneSpec
+    """A page under ``parent`` with its cells, made once: a page the desk holds already is left alone.
 
-    spec = PlaneSpec(f"{ROOT}_{kind}", kind.title(), cells=tuple(cells), backend="async")
-    meta = nu.Dict.of(base=base, icon=icon, editable=True, full_width=True, subject=subject)
-    make = ops.create_plane(spec, parent=parent, name=name, plane_id=pid) >> ops.set_plane_meta(
-        pid, meta
+    ``held`` is the desk's slot for the page's id (eg ``DESK.planes.sources[key]``).
+    ``parent`` is read in a snapshot of its own first. Made from a spec named
+    ``research_<kind>``, on the web, in a row of commits: the plane with its
+    cells and web row, then its icon and subject (``subject`` in its meta),
+    then its id into ``held``.
+    """
+    spec = PlaneSpec(
+        f"{ROOT}_{kind}",
+        kind.title(),
+        cells=tuple(cells),
+        web=WebOptions(editable=True, full_width=True),
+        backend="async",
     )
-    return nu.IfDo(nu.Bool(snap(ops.plane_exists(pid))).not_(), make)
+
+    def make(made: nu.ObjectRef, under: nu.ObjectRef) -> nu.Nu:
+        pid = nu.Str(made)
+        marked = nuspace.plane.set_icon(pid, icon) >> nuspace.plane.set_meta(
+            pid, nu.Dict.of(subject=subject)
+        )
+        return (
+            nuspace.specs.add_plane(spec, parent=nu.Str(under), name=name, into=made)
+            >> nuspace.atomic(marked)
+            >> nuspace.atomic(held.set(pid))
+        )
+
+    new = nu.let("", lambda made: nu.let(nuspace.atomic(parent), lambda under: make(made, under)))
+    return nu.IfDo(nu.Bool(nuspace.atomic(held.exists())).not_(), new)
+
+
+def wear(held: nu.Nu, icon: nu.StrArg) -> nu.Nu:
+    """The page at ``held`` (a desk slot holding its id) to wear ``icon`` when it differs, in one commit.
+
+    A page not made yet is left alone.
+    """
+    pid = nu.Str(held)
+    differs = nu.If(
+        held.exists(),
+        nuspace.plane.exists(pid).and_(Space.planes[pid].icon.fallback("") != icon),
+        False,
+    )
+    return nuspace.atomic(nu.IfDo(differs, nuspace.plane.set_icon(pid, icon)))
 
 
 #: A source page's icon by its status, and a claim page's by its standing.
@@ -209,34 +274,35 @@ source_icon = nu.host(
 def _source_page(base: nu.Str, key: nu.Nu, title: nu.Nu, status: nu.Nu) -> nu.Nu:
     from .cells import SOURCE
 
-    parent = folder_page(base, "reading")
-    icon = source_icon(status)
-    return _page(source_page(base, key), base, parent, title, "source", key, icon, SOURCE)
+    held, parent = DESK.planes.sources[key], section_plane("reading")
+    return _page(held, parent, title, "source", key, source_icon(status), SOURCE)
 
 
 def set_status(base: nu.StrArg, key: nu.Nu, status: nu.Nu) -> nu.Nu:
     """A source's reading status, kept, and its page's icon to match. Inside :func:`on_desk`."""
-    return patch(Desk.sources[key], nu.Dict.of(status=status)) >> ops.set_plane_meta(
-        source_page(base, key), nu.Dict.of(icon=source_icon(status))
+    return patch(DESK.sources[key], nu.Dict.of(status=status)) >> wear(
+        DESK.planes.sources[key], source_icon(status)
     )
 
 
 def _claim_page(base: nu.Str, key: nu.Nu, label: nu.Nu, icon: nu.StrArg = "emoji:⚪") -> nu.Nu:
     from .cells import CLAIM
 
-    parent = folder_page(base, "claims")
-    return _page(claim_page(base, key), base, parent, label, "claim", key, icon, CLAIM)
+    held, parent = DESK.planes.claims[key], section_plane("claims")
+    return _page(held, parent, label, "claim", key, icon, CLAIM)
 
 
 def _run_page(base: nu.Str, key: nu.Nu, label: nu.Nu) -> nu.Nu:
     from .cells import RUN
 
-    parent = folder_page(base, "evals")
-    return _page(run_page(base, key), base, parent, label, "run", key, "lucide:chart-column", RUN)
+    held, parent = DESK.planes.runs[key], section_plane("evals")
+    return _page(held, parent, label, "run", key, "lucide:chart-column", RUN)
 
 
 def _keep(base: nu.Str, term: nu.Nu) -> nu.Nu:
-    return ops.atomic_state(ops.plane_state(base, term))
+    """``term``, a write over :data:`DESK`, in one commit."""
+    del base
+    return nuspace.atomic(term)
 
 
 def add_source(base: nu.Str, source: nu.Nu) -> nu.Nu:
@@ -245,7 +311,7 @@ def add_source(base: nu.Str, source: nu.Nu) -> nu.Nu:
     def add(s: nu.ObjectRef) -> nu.Nu:
         src = nu.Dict(s)
         key = nu.Str(src["key"])
-        kept = _keep(base, nu.IfDo(Desk.sources.contains(key).not_(), Desk.sources[key].set(src)))
+        kept = _keep(base, nu.IfDo(DESK.sources.contains(key).not_(), DESK.sources[key].set(src)))
         return kept >> _source_page(base, key, src["title"], src["status"])
 
     return nu.let(source, add)
@@ -257,7 +323,7 @@ def add_claim(base: nu.Str, claim: nu.Nu) -> nu.Nu:
     def add(c: nu.ObjectRef) -> nu.Nu:
         cl = nu.Dict(c)
         key = nu.Str(cl["key"])
-        kept = _keep(base, nu.IfDo(Desk.claims.contains(key).not_(), Desk.claims[key].set(cl)))
+        kept = _keep(base, nu.IfDo(DESK.claims.contains(key).not_(), DESK.claims[key].set(cl)))
         return kept >> _claim_page(base, key, cl["label"])
 
     return nu.let(claim, add)
@@ -265,7 +331,7 @@ def add_claim(base: nu.Str, claim: nu.Nu) -> nu.Nu:
 
 def add_evidence(base: nu.Str, ev: nu.Nu) -> nu.Nu:
     """A piece of evidence (``source``, ``claim``, ``stance``, ``weight``, ``note``) into the desk."""
-    return nu.let(ev, lambda e: _keep(base, Desk.evidence[nu.Str(nu.Dict(e)["key"])].set(e)))
+    return nu.let(ev, lambda e: _keep(base, DESK.evidence[nu.Str(nu.Dict(e)["key"])].set(e)))
 
 
 opening = nu.host(views.opening, name="Opening")
@@ -297,25 +363,24 @@ def seed(base: nu.Str) -> nu.Nu:
     from . import cells
 
     def section(name: str, label: str, icon: str, cs: tuple[tuple[str, str], ...]) -> nu.Nu:
-        pid = folder_page(base, name)
-        return _page(pid, base, base, label, "section", name, icon, cs)
+        return _page(DESK.planes.sections[name], base, label, "section", name, icon, cs)
 
     def store(o: nu.ObjectRef) -> nu.Nu:
         od = nu.Dict(o)
         return (
-            Desk.sources.set(od["sources"])
-            >> Desk.claims.set(od["claims"])
-            >> Desk.evidence.set(od["evidence"])
-            >> Desk.models.set(od["models"])
-            >> Desk.runs.set(od["runs"])
-            >> Desk.notebook.set(od["notebook"])
-            >> Desk.probes.set(od["probes"])
-            >> Desk.probe.set(od["probe"])
-            >> Desk.paused.set(False)
-            >> Desk.seeded.set(True)
+            DESK.sources.set(od["sources"])
+            >> DESK.claims.set(od["claims"])
+            >> DESK.evidence.set(od["evidence"])
+            >> DESK.models.set(od["models"])
+            >> DESK.runs.set(od["runs"])
+            >> DESK.notebook.set(od["notebook"])
+            >> DESK.probes.set(od["probes"])
+            >> DESK.probe.set(od["probe"])
+            >> DESK.paused.set(False)
+            >> DESK.seeded.set(True)
         )
 
-    content = _keep(base, nu.IfDo(Desk.seeded.is_null(), nu.let(opening(nustd.time.time()), store)))
+    content = _keep(base, nu.IfDo(DESK.seeded.is_null(), nu.let(opening(nustd.time.time()), store)))
 
     def pages(due: nu.ObjectRef) -> nu.Nu:
         d = nu.Dict(due)
@@ -338,7 +403,7 @@ def seed(base: nu.Str) -> nu.Nu:
             >> nu.ForEachDo(nu.List(d["runs"]), run)
         )
 
-    held = snap(ops.plane_state(base, _due_pages(whole())))
+    held = nuspace.atomic(_due_pages(whole()))
     return (
         content
         >> section("reading", "Reading list", "lucide:library", cells.READING)
@@ -377,36 +442,52 @@ def launch_run(base: nu.Str, run: nu.Nu) -> nu.Nu:
 
     source = nu.host(job_source, name="RunSource")
 
-    def made(r: nu.ObjectRef, job: nu.ObjectRef) -> nu.Nu:
+    def made(r: nu.ObjectRef) -> nu.Nu:
         rd = nu.Dict(r)
         key = nu.Str(rd["key"])
-        page = run_page(base, key)
+
+        def job(ids: nu.ObjectRef) -> nu.Nu:
+            page, jid = nu.Str(nu.List(ids)[0]), nu.Str(nu.List(ids)[1])
+            cells = [("ask", source(rd))]
+            make = headless.make(
+                jid, parent=page, name="job", backend="mp", spec=RUN_JOB, cells=cells
+            )
+            return headless.once(jid, make) >> headless.supervise(jid)
+
+        # The job's id minted and kept with the run's page, then the job under the page.
+        held = DESK.planes.jobs[key]
+        claimed = _keep(base, held.init(MintId("p")))
+        ids = nuspace.atomic(nu.List.of(run_plane(key), held))
         return (
-            _keep(base, Desk.runs[key].set(rd))
+            _keep(base, DESK.runs[key].set(rd))
             >> _run_page(base, key, run_title(rd))
-            >> ops.add_plane(
-                backend="mp", name="job", parent=page, ui=False, made_by=RUN_JOB, into=job
-            )
-            >> ops.add_cell(
-                nu.Str(job), source(base, rd), cell_id=nu.Str(job) + "_main", name="ask"
-            )
-            >> nuspace.supervise(nu.Str(job))
+            >> claimed
+            >> nu.let(ids, job)
         )
 
-    return nu.let(run, lambda r: nu.let("", lambda j: made(r, j)))
+    return nu.let(run, made)
 
 
 def start_probe(base: nu.Str) -> nu.Nu:
     """The probe: a headless job under Watch, put under the supervisor. Once per desk."""
     from .job import probe_source
 
-    source = nu.host(probe_source, name="ProbeSource")
-    pid = folder_page(base, "watch") + ".probe"
-    make = ops.add_plane(
-        pid, backend="mp", name="probe", parent=folder_page(base, "watch"), made_by=PROBE_JOB
-    ) >> ops.add_cell(pid, source(base), cell_id=pid + "_main", name="probe")
-    there = nu.Bool(snap(ops.plane_exists(pid)))
-    return nu.IfDo(there.not_(), make) >> nuspace.supervise(pid)
+    def made(ids: nu.ObjectRef) -> nu.Nu:
+        pid, watch = nu.Str(nu.List(ids)[0]), nu.Str(nu.List(ids)[1])
+        make = headless.make(
+            pid,
+            parent=watch,
+            name="probe",
+            backend="mp",
+            spec=PROBE_JOB,
+            cells=[("probe", probe_source())],
+        )
+        return headless.once(pid, make) >> headless.supervise(pid)
+
+    # Its id minted once and kept on the desk, then the job under Watch.
+    claimed = _keep(base, DESK.planes.probe.init(MintId("p")))
+    ids = nuspace.atomic(nu.List.of(DESK.planes.probe, section_plane("watch")))
+    return claimed >> nu.let(ids, made)
 
 
 # --- what is typed ---------------------------------------------------------------------------

@@ -11,10 +11,11 @@ from __future__ import annotations
 from typing import Any
 
 import nu
-from nuspace import PlaneSpec, ops
+import nuspace
+from nuspace.specs import PlaneSpec, WebOptions
 
 from .flows import BOARD, SCENARIO
-from .state import Agent, Flow, at, flow_at, flows_of, status_of
+from .state import agent, flow_of, flows_of, status_of
 
 
 __all__ = [
@@ -82,20 +83,20 @@ def out(plane):
 def flow_view(job: nu.StrArg) -> nu.Nu:
     """A flow run, in one dict: name, phase, status, outcome, and ``[role, page, status, doing]`` per agent. Bare."""
 
-    def agent(role: nu.Nu) -> nu.Nu:
+    def member(role: nu.Nu) -> nu.Nu:
         r = nu.Str(role)
-        aj = nu.Str(flow_at(job, Flow.agents.get_item(r, "")))
-        page = flow_at(job, Flow.pages.get_item(r, ""))
-        return nu.List.of(r, page, status_of(aj), at(aj, Agent.doing.fallback("")))
+        aj = nu.Str(flow_of(job).agents.get_item(r, ""))
+        page = flow_of(job).pages.get_item(r, "")
+        return nu.List.of(r, page, status_of(aj), agent(aj).doing.fallback(""))
 
-    roles = nu.list(flow_at(job, Flow.roles.fallback([])))
+    roles = nu.list(flow_of(job).roles.fallback([]))
     return nu.Dict.of(
         job=job,
-        name=ops.plane_title(job),
-        phase=flow_at(job, Flow.phase.fallback("starting")),
-        status=flow_at(job, Flow.status.fallback("starting")),
-        outcome=flow_at(job, Flow.outcome.fallback("")),
-        agents=roles.iter().map(agent).to_list(),
+        name=nuspace.plane.title(job),
+        phase=flow_of(job).phase.fallback("starting"),
+        status=flow_of(job).status.fallback("starting"),
+        outcome=flow_of(job).outcome.fallback(""),
+        agents=roles.iter().map(member).to_list(),
     )
 
 
@@ -145,22 +146,18 @@ _with_task = nu.host(with_task, name="WithTask")
 
 def add_task(job: nu.StrArg, text: nu.StrArg) -> nu.Nu:
     """One more open task on the board flow ``job`` runs."""
-    tasks = flow_at(job, Flow.tasks.fallback([]))
-    return ops.atomic_state(
-        nu.let(_with_task(tasks, text), lambda t: flow_at(job, Flow.tasks.set(t)))
-    )
+    tasks = flow_of(job).tasks.fallback([])
+    return nuspace.atomic(nu.let(_with_task(tasks, text), lambda t: flow_of(job).tasks.set(t)))
 
 
 RUN = """\
 import nu
+import nuspace
 import nustd.ui
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
 from nudemos.agents import orchestrate, views
 from nudemos.agents.claude import READY
 from nudemos.agents.flows import KINDS, launch_flow
-from nudemos.agents.state import flows_of
+from nudemos.agents.state import flows_of, runs_at
 
 KIND = "fanout"
 ASK = orchestrate.ASKS[KIND]
@@ -200,13 +197,13 @@ def started(plane):
         spec = nu.Dict.of(brief=text, n=n, tasks=orchestrate.lines(text))
         return launch_flow(plane, root, KIND, spec, name)
 
-    return nu.let(snap(ops.parent(plane)), lambda root: nu.let(snap(flows_of(plane).len()), lambda c: go(root, c)))
+    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), lambda root: nu.let(nuspace.atomic(flows_of(plane).len()), lambda c: go(root, c)))
 
 
 def added(plane):
     # A task onto the newest board: a free worker pulls it on the board's next round.
-    text = snap(nu.Str(View.more.task).strip())
-    newest = snap(nu.str(flows_of(plane).iter().last(default="")))
+    text = nuspace.atomic(nu.Str(View.more.task).strip())
+    newest = nuspace.atomic(nu.str(flows_of(plane).iter().last(default="")))
     def add(t, job):
         return nu.IfDo((nu.Str(t) != "").and_(nu.Str(job) != ""), orchestrate.add_task(job, t) >> View.more.task.set(""))
     return nu.let(text, lambda t: nu.let(newest, lambda j: add(t, j)))
@@ -227,12 +224,12 @@ def out(plane):
     count = View.ask.n.set_value(float(ASK["n"])) if KIND != "chain" else nu.Noop()
     more = View.more.task.set("") >> View.more.add.set("Add task") if KIND == "tasks" else nu.Noop()
     placed = View.brief.set(ASK["brief"]) >> count >> View.ask.run.set("Run it", icon="play") >> more >> View.head.set("Runs")
-    kids = Space.planes[plane].children.on_change()
+    kids = runs_at(plane).flows.on_change()
     runs = orchestrate.shown(orchestrate.flows_view(plane))
     return placed >> nu.ParallelAsync(
         nu.ReactEvery(View.ask.run.on_click(), started(plane)),
         nu.ReactEvery(View.more.add.on_click(), added(plane)),
-        nu.Reconcile(snap(nu.OnAny(*[kids])), nu.let(snap(runs), lambda rs: nu.ForEachDo(nu.List(rs), card)), every=1.5),
+        nu.Reconcile(nuspace.atomic(nu.OnAny(*[kids])), nu.let(nuspace.atomic(runs), lambda rs: nu.ForEachDo(nu.List(rs), card)), every=1.5),
     )
 """
 
@@ -243,7 +240,7 @@ def _plane(kind: str, label: str, icon: str, description: str) -> PlaneSpec:
         label,
         icon=icon,
         description=description,
-        meta={"editable": True, "full_width": True},
+        web=WebOptions(editable=True, full_width=True),
         cells=(("flow", about(kind)), ("run", RUN.replace('KIND = "fanout"', f"KIND = {kind!r}"))),
         backend="async",
     )

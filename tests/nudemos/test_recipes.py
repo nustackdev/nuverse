@@ -13,15 +13,15 @@ import asyncio
 import pytest
 
 import nu
-import nustd.kv
+import nuspace
 import nustd.ui as ui
 from nu import Context
 from nudemos import recipes
 from nudemos.recipes import meridian
-from nuspace import ops
-from nuspace.shapes import Reroot, Space
-from nuspace.system.devices.web.env import session_env
-from nuspace.system.kernel.body import Rewrites
+from nuspace import Space
+from nuspace.devices.web.env import session_env
+from nuspace.places import inside
+from nuspace.specs import SpecCells
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_INIT
 from nustd.ui.core.session import Session
@@ -49,20 +49,20 @@ def _drawn(name: str, links: dict | None = None) -> list[dict]:
 
 
 async def _cells(store, plane: str) -> dict:
-    return {c["name"]: c["id"] for c in await store.read(ops.cell_rows(plane))}
+    """``{cell name: cell id}`` of a plane made from a spec: what its plane state keeps."""
+    return await store.read(nuspace.at.plane(id=plane).state(SpecCells).ids.extract())
 
 
 async def _load(store, plane: str, cell: str) -> nu.Nu:
     env = session_env("127.0.0.1:9")("s1")
-    rewrite = Rewrites(Reroot(plane, cell), env.rewrite)
-    load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=rewrite)
-    return await store.run(nustd.kv.Snapshot(load, scope=Space))
+    load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=env.rewrite)
+    return await store.read(load)
 
 
 async def _run_until_drawn(store, plane: str, cell: str, settle: float = 1.0) -> _Browser:
     """Run the cell as the kernel does, let it draw, then stop it (it waits forever after)."""
     browser = _Browser()
-    term = nu.Frame(ops.Here, await _load(store, plane, cell), plane=plane, cell=cell)
+    term = inside(await _load(store, plane, cell), plane=plane, cell=cell)
     task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
     await asyncio.sleep(settle)
     task.cancel()
@@ -182,7 +182,8 @@ def test_an_unknown_recipe_says_which_there_are():
 def test_the_group_is_registered_with_an_index_cell():
     spec = recipes.PLANE
     assert (spec.name, spec.group, spec.backend) == ("recipes", "Recipes", "async")
-    assert spec.meta["editable"] is True
+    assert spec.web is not None
+    assert spec.web.editable is True
     assert [name for name, _ in spec.cells] == ["index"]
     # The pages are made by the index, so each one's id is known: not declared children.
     assert spec.children == ()
@@ -206,7 +207,7 @@ def test_a_page_per_recipe_whose_cell_is_the_recipe_source():
     ids=["index", *recipes.PAGES],
 )
 async def test_each_cell_loads_through_the_kernel_rewrites(store, source):
-    await store.run(ops.add_plane("p", backend="async") >> ops.add_cell("p", source, cell_id="c"))
+    await store.do(nuspace.plane.add("p", backend="async") >> nuspace.cell.add("p", source, id="c"))
     term = await _load(store, "p", "c")
     assert isinstance(term, nu.Nu)
     nu.validate(nu.compile(term))
@@ -216,13 +217,12 @@ async def test_each_cell_loads_through_the_kernel_rewrites(store, source):
 
 
 async def test_the_index_makes_every_page_once_under_itself(store):
-    await store.run(ops.create_plane(recipes.PLANE, plane_id="r"))
+    await store.run(nuspace.specs.add_plane(recipes.PLANE, "r"))
     index = (await _cells(store, "r"))["index"]
     browser = await _run_until_drawn(store, "r", index)
-    kids = await store.read(ops.children("r"))
+    kids = await store.read(Space.planes["r"].children.keys(limit=10))
     assert kids == [f"r.{name}" for name in recipes.RECIPES]
-    rows = {row["id"]: row for row in await store.read(ops.plane_rows())}
-    assert [rows[k]["name"] for k in kids] == [
+    assert [await store.read(Space.planes[k].name) for k in kids] == [
         "Dashboard",
         "Detail",
         "Catalog",
@@ -233,11 +233,22 @@ async def test_the_index_makes_every_page_once_under_itself(store):
     assert _hrefs(browser.frames) == {f"/r.{name}" for name in recipes.RECIPES}
     # Run again: nothing made twice.
     await _run_until_drawn(store, "r", index, settle=0.5)
-    assert await store.read(ops.children("r")) == kids
+    assert await store.read(Space.planes["r"].children.keys(limit=10)) == kids
+
+
+async def test_a_removed_page_stays_removed(store):
+    await store.run(nuspace.specs.add_plane(recipes.PLANE, "r"))
+    index = (await _cells(store, "r"))["index"]
+    await _run_until_drawn(store, "r", index, settle=0.5)
+    await store.do(nuspace.plane.remove("r.detail"))
+    await _run_until_drawn(store, "r", index, settle=0.5)
+    kids = await store.read(Space.planes["r"].children.keys(limit=10))
+    assert "r.detail" not in kids
+    assert len(kids) == len(recipes.RECIPES) - 1
 
 
 async def test_a_page_draws_its_recipe_linked_to_its_siblings(store):
-    await store.run(ops.create_plane(recipes.PLANE, plane_id="r"))
+    await store.run(nuspace.specs.add_plane(recipes.PLANE, "r"))
     await _run_until_drawn(store, "r", (await _cells(store, "r"))["index"])
     page = "r.catalog"
     browser = await _run_until_drawn(store, page, (await _cells(store, page))["catalog"])

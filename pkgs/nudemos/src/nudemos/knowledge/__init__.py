@@ -32,7 +32,7 @@ themselves from the base.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells
 
@@ -45,7 +45,7 @@ PLANE = PlaneSpec(
     "Knowledge",
     icon="sprout",
     description="Larkspur's wiki, handbook and notes: every page live, every fact cited once.",
-    meta={"editable": True, "full_width": True, "compact": True},
+    web=WebOptions(editable=True, full_width=True, compact=True),
     cells=cells.ROOT,
     group="Demos",
     backend="async",

@@ -3,11 +3,13 @@
 - :class:`Catalog`: the one store. Every film, keyed by slug, in the
   cinematheque plane's state. Every page reads and writes it there, so a
   rating changed anywhere shows everywhere.
-- :func:`on_catalog`: a cell's body with :class:`Catalog` landed at its
-  cinematheque, wherever in the tree the cell's page sits. A page knows its
-  cinematheque from its own meta, written when it was made.
-- Page ids are the cinematheque's id plus a path (``<base>.film.dune``), so
-  any cell links any page without looking anything up.
+- :func:`on_catalog`: a cell's body given its cinematheque, wherever in the
+  tree the cell's page sits; :func:`catalog` is that cinematheque's
+  :class:`Catalog`. A page knows its cinematheque from its own plane state,
+  written when it was made (:mod:`nudemos.bases`): a removed cinematheque
+  raises, never reads another.
+- Plane ids are minted. The catalog keeps them (:class:`Planes`), by film key,
+  person slug and browsing page, so any cell links any page with one read.
 - :func:`add_film` and :func:`ensure_people` are cells writing planes: a film
   added is a catalog entry and a page with its own cells, and a person
   credited enough gets a page of their own.
@@ -27,12 +29,12 @@ from urllib.parse import quote
 
 import nu
 import nuspace
+import nuspace.specs
 import nustd.kv
 import nustd.ui
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace import Space
 
+from .. import bases
 from .data import FILMS, slug
 
 
@@ -44,17 +46,17 @@ __all__ = [
     "ROOT",
     "Catalog",
     "Film",
+    "Planes",
     "Tile",
     "add_film",
+    "catalog",
     "ensure_people",
-    "film_page",
     "films_count",
-    "folder_page",
     "has_page",
     "on_catalog",
     "on_page",
     "people_of",
-    "person_page",
+    "plane_href",
     "poster",
     "poster_url",
     "seed",
@@ -82,19 +84,40 @@ class Film(nu.Shape):
     notes = nustd.kv.StrRef.slot()
 
 
-class Catalog(nuspace.PlaneState):
-    """The cinematheque's store: films by key, and whether the opening films are in."""
+class Planes(nu.Shape):
+    """The ids of the planes a cinematheque made: by film key, by person slug, by browsing page."""
+
+    film = nustd.kv.DictRef.slot(str)
+    person = nustd.kv.DictRef.slot(str)
+    folder = nustd.kv.DictRef.slot(str)
+
+
+class Catalog(nu.Shape):
+    """The cinematheque's store, in its plane's state: films by key, the planes it made, whether the opening films are in."""
 
     films = nustd.kv.DictRef.slot(Film)
+    planes = nustd.kv.ShapeRef.slot(Planes)
     seeded = nustd.kv.BoolRef.slot()
+
+
+def catalog(base: nu.StrArg) -> Catalog:
+    """The catalog of the cinematheque ``base``: its plane's state, typed as :class:`Catalog`."""
+    return nuspace.at.plane(id=base).state(Catalog)
 
 
 # --- where things are -----------------------------------------------------------------------
 
 
 def base_of(plane: nu.StrArg) -> nu.Str:
-    """The cinematheque a page belongs to: its meta's ``base``, or the plane itself at the root."""
-    return nu.str(Space.planes[plane].meta["base"].fallback(plane))
+    """The cinematheque a plane belongs to: itself at the root, else the one its page recorded.
+
+    Raises:
+        Missing: A page that recorded none.
+        Removed: The cinematheque it recorded is removed.
+    """
+    from . import PLANE
+
+    return bases.base_of(plane, PLANE)
 
 
 def about(plane: nu.StrArg, kind: str) -> nu.Str:
@@ -103,13 +126,12 @@ def about(plane: nu.StrArg, kind: str) -> nu.Str:
 
 
 def on_catalog(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
-    """``build(base)`` with :class:`Catalog` landed at the cinematheque, bracketed step by step."""
+    """``build(base)``, given the page's cinematheque, bracketed step by step. It reads :func:`catalog`."""
 
     def landed(base: nu.ObjectRef) -> nu.Nu:
-        b = nu.Str(base)
-        return ops.bracketed(ops.plane_state(b, build(b)))
+        return nuspace.bracketed(build(nu.Str(base)))
 
-    return nu.let(snap(base_of(plane)), landed)
+    return nu.let(nuspace.atomic(base_of(plane)), landed)
 
 
 def on_page(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
@@ -119,7 +141,8 @@ def on_page(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> 
     for ``kind="film"``, a person's name for ``kind="person"``.
     """
     return nu.let(
-        snap(about(plane, kind)), lambda s: on_catalog(plane, lambda b: build(b, nu.Str(s)))
+        nuspace.atomic(about(plane, kind)),
+        lambda s: on_catalog(plane, lambda b: build(b, nu.Str(s))),
     )
 
 
@@ -157,22 +180,19 @@ def wall(grid: nu.Nu, tiles: nu.Nu) -> nu.Nu:
 slug_of = nu.host(slug, name="Slug")
 
 
-def film_page(base: nu.StrArg, key: nu.StrArg) -> nu.Str:
-    """A film page's plane id."""
-    return nu.Str(base) + ".film." + key
-
-
-def person_page(base: nu.StrArg, name: nu.StrArg) -> nu.Str:
-    """A person page's plane id."""
-    return nu.Str(base) + ".person." + slug_of(name)
-
-
-def folder_page(base: nu.StrArg, name: str) -> nu.Str:
-    """One of the browsing pages' plane ids: ``people``, ``timeline``, ``atlas``."""
-    return nu.Str(base) + "." + name
-
-
 # --- reading the catalog --------------------------------------------------------------------
+
+
+def plane_href(planes: dict, kind: str, key: str) -> str:
+    """A link to a plane the catalog made, ``""`` while it has none.
+
+    Args:
+        planes: :class:`Planes` as read, ``{film, person, folder}``.
+        kind: ``film`` (by key), ``person`` (by slug) or ``folder`` (by name).
+        key: The film's key, the person's slug or the browsing page's name.
+    """
+    pid = ((planes or {}).get(kind) or {}).get(key)
+    return f"/{pid}" if pid else ""
 
 
 def people_of(films: dict[str, dict]) -> dict[str, dict[str, list[str]]]:
@@ -235,7 +255,7 @@ def icon_of(genres: list[str]) -> str:
 
 
 def _page(
-    pid: nu.Nu,
+    held: nu.Nu,
     base: nu.Nu,
     parent: nu.Nu,
     name: nu.Nu,
@@ -245,19 +265,34 @@ def _page(
     cells: tuple[tuple[str, str], ...],
     wide: bool = False,
 ) -> nu.Nu:
-    """A page under ``parent`` with its cells, made once: a page already there is left alone.
+    """A page under ``parent`` with its cells, made once: a page the catalog holds already is left alone.
 
-    Two commits: the plane with every cell, then its meta, which says what it
-    is about and where its cinematheque is.
+    ``held`` is the catalog's slot for the page's id (eg
+    ``catalog(base).planes.film[key]``). Made in a row of commits: the plane
+    with every cell and its web row (``nuspace.specs.add_plane``), then its
+    meta and icon (what it is about), then its id into ``held`` with its
+    cinematheque recorded in its own state (:func:`nudemos.bases.belongs`).
     """
-    from nuspace import PlaneSpec
-
-    spec = PlaneSpec(f"{ROOT}_{kind}", kind.title(), cells=tuple(cells), backend="async")
-    meta = nu.Dict.of(base=base, icon=icon, editable=True, full_width=wide, **{kind: subject})
-    make = ops.create_plane(spec, parent=parent, name=name, plane_id=pid) >> ops.set_plane_meta(
-        pid, meta
+    spec = nuspace.specs.PlaneSpec(
+        f"{ROOT}_{kind}",
+        kind.title(),
+        cells=tuple(cells),
+        web=nuspace.specs.WebOptions(editable=True, full_width=wide),
+        backend="async",
     )
-    return nu.IfDo(nu.Bool(snap(ops.plane_exists(pid))).not_(), make)
+    meta = nu.Dict.of(**{kind: subject})
+
+    def make(made: nu.ObjectRef) -> nu.Nu:
+        pid = nu.Str(made)
+        return (
+            nuspace.specs.add_plane(spec, parent=parent, name=name, into=made)
+            >> nuspace.atomic(
+                nuspace.plane.set_meta(pid, meta) >> nuspace.plane.set_icon(pid, icon)
+            )
+            >> nuspace.atomic(held.set(pid) >> bases.belongs(pid, base))
+        )
+
+    return nu.IfDo(nu.Bool(nuspace.atomic(held.exists())).not_(), nu.let("", make))
 
 
 def add_film(base: nu.Str, film: nu.Nu) -> nu.Nu:
@@ -267,15 +302,13 @@ def add_film(base: nu.Str, film: nu.Nu) -> nu.Nu:
     """
     from .cells import FILM
 
+    cat = catalog(base)
+
     def add(f: nu.ObjectRef, key: nu.ObjectRef) -> nu.Nu:
         k, film = nu.Str(key), nu.Dict(f)
-        keep = ops.atomic_state(
-            ops.plane_state(
-                base, nu.IfDo(Catalog.films.contains(k).not_(), Catalog.films[k].set(film))
-            )
-        )
+        keep = nuspace.atomic(nu.IfDo(cat.films.contains(k).not_(), cat.films[k].set(film)))
         page = _page(
-            film_page(base, k), base, base, film["title"], "film", k, icon_of(film["genres"]), FILM
+            cat.planes.film[k], base, base, film["title"], "film", k, icon_of(film["genres"]), FILM
         )
         return keep >> page
 
@@ -293,21 +326,20 @@ def ensure_people(base: nu.Str) -> nu.Nu:
         actors = sorted(n for n, p in people.items() if has_page(p) and not p["directed"])
         return directors + actors
 
-    def make(name: nu.Attr) -> nu.Nu:
+    cat = catalog(base)
+
+    def make(name: nu.Attr, people: nu.ObjectRef) -> nu.Nu:
         n = nu.Str(name)
-        return _page(
-            person_page(base, n),
-            base,
-            folder_page(base, "people"),
-            n,
-            "person",
-            n,
-            "lucide:user",
-            PERSON,
+        held = cat.planes.person[slug_of(n)]
+        return _page(held, base, nu.Str(people), n, "person", n, "lucide:user", PERSON)
+
+    def under(people: nu.ObjectRef) -> nu.Nu:
+        films = nuspace.atomic(cat.films.extract())
+        return nu.let(
+            due(films), lambda names: nu.ForEachDo(nu.List(names), lambda n: make(n, people))
         )
 
-    films = snap(ops.plane_state(base, Catalog.films.extract()))
-    return nu.let(due(films), lambda names: nu.ForEachDo(nu.List(names), make))
+    return nu.let(nuspace.atomic(cat.planes.folder["people"].fallback(base)), under)
 
 
 def seed(base: nu.Str) -> nu.Nu:
@@ -318,16 +350,18 @@ def seed(base: nu.Str) -> nu.Nu:
     """
     from .cells import ATLAS, PEOPLE, TIMELINE
 
+    cat = catalog(base)
+
     def browsing(name: str, label: str, icon: str, cells: tuple[tuple[str, str], ...]) -> nu.Nu:
-        pid = folder_page(base, name)
-        return _page(pid, base, base, label, "view", name, icon, cells, wide=True)
+        held = cat.planes.folder[name]
+        return _page(held, base, base, label, "view", name, icon, cells, wide=True)
 
     def films() -> nu.Nu:
         # One body, run per film: the term stays the size of one film however many there are.
         return nu.ForEachDo(nu.List.of(*FILMS), lambda film: add_film(base, film))
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
-        take = nu.IfDo(Catalog.seeded.is_null(), Catalog.seeded.set(True) >> mine.set(True))
+        take = nu.IfDo(cat.seeded.is_null(), cat.seeded.set(True) >> mine.set(True))
         build = (
             browsing("people", "People", "lucide:users", PEOPLE)
             >> browsing("timeline", "Timeline", "lucide:calendar", TIMELINE)
@@ -335,8 +369,15 @@ def seed(base: nu.Str) -> nu.Nu:
             >> films()
             >> ensure_people(base)
         )
-        made = Catalog.films.init(nu.Dict.create()) >> take
-        return ops.atomic_state(ops.plane_state(base, made)) >> nu.IfDo(nu.Bool(mine), build)
+        planes = cat.planes
+        made = (
+            cat.films.init(nu.Dict.create())
+            >> planes.film.init(nu.Dict.create())
+            >> planes.person.init(nu.Dict.create())
+            >> planes.folder.init(nu.Dict.create())
+            >> take
+        )
+        return nuspace.atomic(made) >> nu.IfDo(nu.Bool(mine), build)
 
     return nu.let(False, first)
 

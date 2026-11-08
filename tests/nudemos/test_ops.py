@@ -7,6 +7,7 @@ import tarfile
 
 import pytest
 
+import nu
 from nudemos.ops import model, shape
 from nudemos.ops.gateway import RELEASES, Gateway
 from nudemos.ops.jobs import SOURCES
@@ -167,3 +168,64 @@ def test_a_monitored_incident_is_not_open_on_the_tiles() -> None:
     incidents = {"INC-1": {"status": "monitoring", "sev": 3}}
     tile = shape.pulse({}, {}, {}, incidents, {})["incidents"]
     assert tile == {"value": "0", "delta": "1 monitoring", "trend": "flat"}
+
+
+# --- the first open, on a store ------------------------------------------------------------------
+
+
+async def test_the_first_open_makes_the_pages_and_the_jobs_once(store, tmp_path):
+    import nuspace
+    from nudemos import headless, ops
+    from nudemos.ops import jobs, kit, state
+    from nuspace import Space
+    from nuspace.devices.web import Web
+    from nuspace.system import supervisor
+
+    await store.run(nuspace.specs.add_plane(ops.PLANE, "o"))
+    await store.do(Space.info.path.set(str(tmp_path)))
+    assert await store.read(state.ROOT_ID) == "o"
+    await store.run(kit.seed(nu.Str("o")))
+    await store.run(kit.seed(nu.Str("o")))
+    kids = await store.read(Space.planes["o"].children.keys(limit=50))
+    # Every plane at an id minted at the first open, kept in the root's state.
+    made = await store.read(state.OPS.made.extract())
+    folders = made["folders"]
+    assert {folders[k] for k in ("jobs", "deploys", "incidents", "status")} <= set(kids)
+    assert await store.read(Space.planes[folders["jobs"]].meta.extract()) == {"view": "jobs"}
+    assert await store.read(Web.planes[folders["jobs"]].full_width) is True
+    gateway = made["views"]["gateway"]
+    assert await store.read(Space.planes[gateway].parent) == folders["jobs"]
+    assert await store.read(Space.planes[gateway].meta["job"]) == "gateway"
+    # Every job a headless plane under the root, on its schedule, its cells by name.
+    for name, spec in model.JOBS.items():
+        jid = made["workers"][name]
+        assert jid in kids
+        assert await store.read(Space.planes[jid].spec) == state.WORKER
+        assert not await store.read(Web.planes.contains(jid))
+        for cell, _ in jobs.SOURCES[name]:
+            assert await store.read(headless.cell_of(jid, cell)) in await store.read(
+                nu.list(Space.planes[jid].cells.keys())
+            )
+        policy = await store.read(supervisor.supervised()[jid].policy)
+        assert policy == (supervisor.ALWAYS if spec["every"] else supervisor.ON_FAILURE)
+    assert await store.read(state.OPS.settings["data"]) == str(tmp_path / "ops-data")
+    assert await store.read(state.OPS.release["version"]) == model.HISTORY[-1][0]
+
+
+async def test_pausing_a_job_takes_it_off_its_schedule_and_resuming_puts_it_back(store, tmp_path):
+    import nuspace
+    from nudemos import ops
+    from nudemos.ops import kit, state
+    from nuspace.system import supervisor
+
+    await store.run(nuspace.specs.add_plane(ops.PLANE, "o"))
+    await store.run(kit.seed(nu.Str("o")))
+    await store.run(kit.pause("o", "offsite"))
+    offsite = await store.read(state.worker_of("offsite"))
+    gateway = await store.read(state.worker_of("gateway"))
+    assert await store.read(supervisor.supervised().contains(offsite)) is False
+    assert await store.read(state.OPS.jobs["offsite"]["paused"]) is True
+    await store.run(kit.resume("o", "offsite"))
+    assert await store.read(supervisor.supervised()[offsite].policy) == supervisor.ALWAYS
+    await store.run(kit.restart("o", "gateway"))
+    assert await store.read(supervisor.supervised()[gateway].policy) == supervisor.ON_FAILURE

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
 
 __all__ = ["extension"]
@@ -32,7 +32,7 @@ __all__ = ["extension"]
 
 def extension() -> Extension:
     """The tour and the demo planes, as one extension."""
-    from nuspace import Extension
+    from nuspace.specs import Extension
 
     from . import (
         agents,

@@ -1,9 +1,9 @@
 """The cinematheque's cells, as sources: one short Nu program each.
 
 Every cell is ``def out(plane)``: the id of the page it runs on comes in, and
-:mod:`.kit` lands the catalog wherever that page's cinematheque is. Pages of
-one kind run the same cells: twenty film pages, one program each, told apart
-by their page's meta.
+:mod:`.kit` finds that page's cinematheque and its catalog. Pages of one kind
+run the same cells: twenty film pages, one program each, told apart by their
+page's meta.
 
 - The cinematheque (:data:`ROOT`): welcome, stats, add, films, wall.
 - A film page (:data:`FILM`): poster, ours, notes, connected, facts.
@@ -23,8 +23,10 @@ __all__ = ["ATLAS", "FILM", "PEOPLE", "PERSON", "ROOT", "TIMELINE"]
 
 WELCOME = '''\
 import nu
-import nuspace.ui
+import nuspace
+import nuspace.devices.web
 import nustd.ui
+from nudemos.movies import kit
 
 TEXT = """\\
 Films, the people who made them, and what we made of them.
@@ -49,15 +51,24 @@ class View(nustd.ui.Column):
 
 def out(plane):
     ways = View.ways
+
+    def build(base):
+        folder = kit.catalog(base).planes.folder
+        link = lambda name: nuspace.devices.web.href(folder[name].fallback(base))
+        draw = (
+            ways.people.set(href=link("people"), label="people")
+            >> ways.timeline.set(href=link("timeline"), label="timeline")
+            >> ways.atlas.set(href=link("atlas"), label="atlas")
+        )
+        # The browsing pages are made on the first run: the links follow once they are.
+        return nu.Reconcile(nuspace.atomic(folder.on_change()), nuspace.atomic(draw))
+
     return (
         View.about.set(TEXT)
         >> ways.lead.set("Browse by ")
-        >> ways.people.set(href=nuspace.ui.href(f"{plane}.people"), label="people")
         >> ways.a.set(",  by year on the ")
-        >> ways.timeline.set(href=nuspace.ui.href(f"{plane}.timeline"), label="timeline")
         >> ways.b.set(",  or the whole map in the ")
-        >> ways.atlas.set(href=nuspace.ui.href(f"{plane}.atlas"), label="atlas")
-        >> nu.ForeverDo(nu.Delay(3600.0))
+        >> kit.on_catalog(plane, build)
     )
 '''
 
@@ -65,9 +76,8 @@ def out(plane):
 STATS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class Tiles(nustd.ui.Grid):
@@ -102,7 +112,11 @@ def draw(t):
 
 
 def out(plane):
-    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(tally(Catalog.films.extract())), draw)))
+    def build(base):
+        films = kit.catalog(base).films
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(tally(films.extract())), draw))
+
+    return kit.on_catalog(plane, build)
 """
 
 
@@ -139,9 +153,8 @@ def out(plane):
 FILMS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 COLUMNS = [
     {"key": "title", "label": "Title", "editable": False},
@@ -167,8 +180,8 @@ def rows(films):
     ]
 
 
-def edit(ev):
-    film = Catalog.films[nu.Str(ev["key"])]
+def edit(films, ev):
+    film = films[nu.Str(ev["key"])]
     column = nu.Str(ev["column"])
     return nu.IfDo(column == "rating", film.rating.set(nu.ToFloat(ev["value"]))) >> nu.IfDo(
         column == "watched", film.watched.set(nu.ToBool(ev["value"]))
@@ -177,19 +190,23 @@ def edit(ev):
 
 def out(plane):
     table = View.table
-    return kit.on_catalog(plane, lambda base: nu.ParallelAsync(
-        nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(rows(Catalog.films.extract())), table.set_rows)),
-        nu.ReactEvery(table.on_edit(), edit),
-    ))
+
+    def build(base):
+        films = kit.catalog(base).films
+        return nu.ParallelAsync(
+            nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(rows(films.extract())), table.set_rows)),
+            nu.ReactEvery(table.on_edit(), lambda ev: edit(films, ev)),
+        )
+
+    return kit.on_catalog(plane, build)
 """
 
 
 WALL = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class View(nustd.ui.Column):
@@ -198,10 +215,10 @@ class View(nustd.ui.Column):
 
 
 @nu.host
-def tiles(films, base):
+def tiles(films, planes):
     best = sorted(films.items(), key=lambda kv: (-(kv[1].get("rating") or 0), kv[1]["title"]))
     return [
-        {"i": i, "src": kit.poster_url(f), "label": f["title"], "href": f"/{base}.film.{key}",
+        {"i": i, "src": kit.poster_url(f), "label": f["title"], "href": kit.plane_href(planes, "film", key),
          "note": f"{f.get('year') or ''}  {kit.stars(f.get('rating'))}"}
         for i, (key, f) in enumerate(best)
     ]
@@ -209,8 +226,9 @@ def tiles(films, base):
 
 def out(plane):
     def build(base):
+        cat = kit.catalog(base)
         draw = lambda t: kit.wall(View.wall, t)
-        return View.heading.set_label("The wall, our favourites first") >> nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(tiles(Catalog.films.extract(), base)), draw))
+        return View.heading.set_label("The wall, our favourites first") >> nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(tiles(cat.films.extract(), cat.planes.extract())), draw))
 
     return kit.on_catalog(plane, build)
 """
@@ -225,9 +243,8 @@ ROOT = (("welcome", WELCOME), ("stats", STATS), ("add", ADD), ("films", FILMS), 
 POSTER = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class Facts(nustd.ui.Column):
@@ -245,11 +262,12 @@ class View(nustd.ui.Column):
 
 
 @nu.host
-def front(films, key, base):
+def front(films, key, base, planes):
     f, people = films.get(key, {}), kit.people_of(films)
 
     def who(name):
-        return f"[{name}](/{base}.person.{kit.slug(name)})" if kit.has_page(people.get(name, {"directed": [], "films": []})) else name
+        href = kit.plane_href(planes, "person", kit.slug(name))
+        return f"[{name}]({href})" if href and kit.has_page(people.get(name, {"directed": [], "films": []})) else name
 
     facts = [str(f.get("year") or ""), f"{f['runtime']} min" if f.get("runtime") else "", " / ".join(f.get("genres") or [])]
     credits = [f"**Directed by** {who(f['director'])}" if f.get("director") else "",
@@ -265,16 +283,19 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, "film", lambda base, key: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(front(Catalog.films.extract(), key, base)), draw)))
+    def build(base, key):
+        cat = kit.catalog(base)
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(front(cat.films.extract(), key, base, cat.planes.extract())), draw))
+
+    return kit.on_page(plane, "film", build)
 """
 
 
 OURS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class Ours(nustd.ui.Row):
@@ -295,11 +316,12 @@ def rank(films, key):
 
 def out(plane):
     def build(base, key):
-        film, ours = Catalog.films[key], View.ours
-        shown = nu.Dict.of(rating=film.rating.fallback(0.0), watched=film.watched.fallback(False), rank=rank(Catalog.films.extract(), key))
+        films = kit.catalog(base).films
+        film, ours = films[key], View.ours
+        shown = nu.Dict.of(rating=film.rating.fallback(0.0), watched=film.watched.fallback(False), rank=rank(films.extract(), key))
         draw = lambda v: ours.rating.set_value(v["rating"]) >> ours.watched.set(v["watched"]) >> ours.rank.set_value(v["rank"])
         return nu.ParallelAsync(
-            nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(shown), draw)),
+            nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(shown), draw)),
             nu.ReactEvery(ours.rating.on_change(), film.rating.set(nu.ToFloat(ours.rating))),
             nu.ReactEvery(ours.watched.on_change(), film.watched.set(nu.ToBool(ours.watched))),
         )
@@ -312,7 +334,6 @@ NOTES = """\
 import nu
 import nustd.ui
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class View(nustd.ui.Column):
@@ -322,7 +343,7 @@ class View(nustd.ui.Column):
 
 def out(plane):
     def build(base, key):
-        notes, kept = View.notes, Catalog.films[key].notes
+        notes, kept = View.notes, kit.catalog(base).films[key].notes
         return (
             View.heading.set_label("Our notes")
             >> notes.set(kept.fallback(""))
@@ -341,13 +362,12 @@ def out(plane):
 CONNECTED = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 @nu.host
-def connected(films, key, base):
+def connected(films, key, planes):
     me = films.get(key, {})
     mine = {me.get("director")} | set(me.get("cast") or [])
     links = []
@@ -356,23 +376,27 @@ def connected(films, key, base):
         genres = set(me.get("genres") or []) & set(f.get("genres") or [])
         if k != key and (shared or len(genres) >= 2):
             why = ", ".join(shared) if shared else "also " + " / ".join(sorted(genres))
-            links.append((-len(shared), f.get("year") or 0, f"- [{f['title']}](/{base}.film.{k}) {f.get('year') or ''}  ·  {why}"))
+            links.append((-len(shared), f.get("year") or 0, f"- [{f['title']}]({kit.plane_href(planes, 'film', k)}) {f.get('year') or ''}  ·  {why}"))
     lines = [line for *_, line in sorted(links)][:8]
     return "### Connected\\n\\n" + ("\\n".join(lines) if lines else "Nothing shares a person with this film yet.")
 
 
 def out(plane):
-    web = nustd.ui.MarkdownRef("connected")
-    return kit.on_page(plane, "film", lambda base, key: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(connected(Catalog.films.extract(), key, base)), web.set)))
+    text = nustd.ui.MarkdownRef("connected")
+
+    def build(base, key):
+        cat = kit.catalog(base)
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(connected(cat.films.extract(), key, cat.planes.extract())), text.set))
+
+    return kit.on_page(plane, "film", build)
 """
 
 
 FACTS = """\
 import nu
+import nuspace
 import nustd.ui
-from nuspace import ops
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class When(nustd.ui.Row):
@@ -394,7 +418,7 @@ class View(nustd.ui.Column):
 
 def out(plane):
     def build(base, key):
-        film, e = Catalog.films[key], View.edit
+        film, e = kit.catalog(base).films[key], View.edit
         show = (
             e.when.year.set_value(film.year.fallback(0)) >> e.when.runtime.set_value(film.runtime.fallback(0))
             >> e.director.set(film.director.fallback("")) >> e.cast.set(nu.list(film.cast)) >> e.genres.set(nu.list(film.genres))
@@ -404,7 +428,7 @@ def out(plane):
             >> film.director.set(nu.Str(e.director).strip()) >> film.cast.set(nu.List(e.cast)) >> film.genres.set(nu.List(e.genres))
         )
         # Saved facts can credit someone new, who gets a page under People, and the genre picks the icon.
-        icon = ops.set_plane_meta(plane, nu.Dict.of(icon=kit.icon_of(nu.List(e.genres))))
+        icon = nuspace.plane.set_icon(plane, kit.icon_of(nu.List(e.genres)))
         return show >> e.save.set_label("Save facts") >> nu.ReactEvery(e.save.on_click(), save >> icon >> kit.ensure_people(base))
 
     return kit.on_page(plane, "film", build)
@@ -426,9 +450,8 @@ FILM = (
 PROFILE = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class Who(nustd.ui.Column):
@@ -446,7 +469,7 @@ class View(nustd.ui.Column):
 
 
 @nu.host
-def profile(films, name, base):
+def profile(films, name, planes):
     me = kit.people_of(films).get(name, {"films": [], "directed": [], "acted": []})
     years = [films[k].get("year") or 0 for k in me["films"]]
     roles = [r for r, ks in (("Director", me["directed"]), ("Actor", me["acted"])) if ks]
@@ -454,7 +477,7 @@ def profile(films, name, base):
     role = f"{' and '.join(roles)}  ·  {kit.films_count(len(years))}, {min(years)} to {max(years)}" if years else "No films here yet"
     if rated:
         role += f"  ·  we give them {sum(rated) / len(rated):.1f} on average"
-    tiles = [{"i": i, "src": kit.poster_url(films[k]), "label": films[k]["title"], "href": f"/{base}.film.{k}",
+    tiles = [{"i": i, "src": kit.poster_url(films[k]), "label": films[k]["title"], "href": kit.plane_href(planes, "film", k),
               "note": f"{films[k].get('year') or ''}  {'directed' if k in me['directed'] else 'acted'}"}
              for i, k in enumerate(me["films"])]
     return {"role": role, "tiles": tiles}
@@ -464,7 +487,8 @@ def out(plane):
     def build(base, name):
         head = View.head
         draw = lambda v: head.who.role.set(v["role"]) >> kit.wall(View.films, v["tiles"])
-        return head.face.set_name(name) >> nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(profile(Catalog.films.extract(), name, base)), draw))
+        cat = kit.catalog(base)
+        return head.face.set_name(name) >> nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(profile(cat.films.extract(), name, cat.planes.extract())), draw))
 
     return kit.on_page(plane, "person", build)
 """
@@ -473,9 +497,8 @@ def out(plane):
 CIRCLE = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class Both(nustd.ui.Row):
@@ -488,12 +511,13 @@ class View(nustd.ui.Column):
 
 
 @nu.host
-def circle(films, name, base):
+def circle(films, name, planes):
     people = kit.people_of(films)
     mine = set(people.get(name, {}).get("films", []))
     shared = {n: [films[k]["title"] for k in p["films"] if k in mine] for n, p in people.items() if n != name}
     close = sorted(((n, ts) for n, ts in shared.items() if ts), key=lambda x: (-len(x[1]), x[0]))[:10]
-    link = lambda n: f"[{n}](/{base}.person.{kit.slug(n)})" if kit.has_page(people[n]) else n
+    href = lambda n: kit.plane_href(planes, "person", kit.slug(n))
+    link = lambda n: f"[{n}]({href(n)})" if href(n) and kit.has_page(people[n]) else n
     lines = [f"- {link(n)}  ·  {', '.join(ts)}" for n, ts in close]
     bars = [[films[k]["title"], films[k].get("rating") or 0] for k in sorted(mine, key=lambda k: films[k].get("year") or 0)]
     return {"md": "### Worked with\\n\\n" + "\\n".join(lines), "bars": bars}
@@ -501,7 +525,11 @@ def circle(films, name, base):
 
 def out(plane):
     draw = lambda v: View.both.circle.set(v["md"]) >> View.both.ratings.set(v["bars"])
-    return kit.on_page(plane, "person", lambda base, name: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(circle(Catalog.films.extract(), name, base)), draw)))
+    def build(base, name):
+        cat = kit.catalog(base)
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(circle(cat.films.extract(), name, cat.planes.extract())), draw))
+
+    return kit.on_page(plane, "person", build)
 """
 
 
@@ -514,9 +542,8 @@ PERSON = (("profile", PROFILE), ("circle", CIRCLE))
 PEOPLE_GRID = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class Name(nustd.ui.Column):
@@ -535,10 +562,10 @@ class View(nustd.ui.Column):
 
 
 @nu.host
-def faces(films, base):
+def faces(films, planes):
     people = [(n, p) for n, p in kit.people_of(films).items() if kit.has_page(p)]
     people.sort(key=lambda np: (not np[1]["directed"], -len(np[1]["films"]), np[0]))
-    return [{"i": str(i), "name": n, "href": f"/{base}.person.{kit.slug(n)}",
+    return [{"i": str(i), "name": n, "href": kit.plane_href(planes, "person", kit.slug(n)),
              "note": f"{'Director' if p['directed'] else 'Actor'}, {kit.films_count(len(p['films']))}"}
             for i, (n, p) in enumerate(people)]
 
@@ -552,7 +579,11 @@ def draw(rows):
 
 def out(plane):
     intro = View.intro.set("Every director, and everyone who appears in two films or more. The web grows as films are added.")
-    return intro >> kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(faces(Catalog.films.extract(), base)), draw)))
+    def build(base):
+        cat = kit.catalog(base)
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(faces(cat.films.extract(), cat.planes.extract())), draw))
+
+    return intro >> kit.on_catalog(plane, build)
 """
 
 
@@ -562,9 +593,8 @@ PEOPLE = (("people", PEOPLE_GRID),)
 CHART = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class View(nustd.ui.Column):
@@ -587,31 +617,38 @@ def points(films):
 
 
 def out(plane):
-    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(points(Catalog.films.extract())), View.chart.set)))
+    def build(base):
+        films = kit.catalog(base).films
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(points(films.extract())), View.chart.set))
+
+    return kit.on_catalog(plane, build)
 """
 
 
 DECADES = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 @nu.host
-def decades(films, base):
+def decades(films, planes):
     by = {}
     for key, f in sorted(films.items(), key=lambda kv: kv[1].get("year") or 0):
         by.setdefault((f.get("year") or 0) // 10 * 10, []).append(
-            f"- **{f.get('year') or '?'}**  [{f['title']}](/{base}.film.{key})  ·  {f.get('director') or 'unknown'}  ·  {kit.stars(f.get('rating'))}"
+            f"- **{f.get('year') or '?'}**  [{f['title']}]({kit.plane_href(planes, 'film', key)})  ·  {f.get('director') or 'unknown'}  ·  {kit.stars(f.get('rating'))}"
         )
     return "\\n\\n".join(f"### The {d}s\\n\\n" + "\\n".join(lines) for d, lines in by.items())
 
 
 def out(plane):
     text = nustd.ui.MarkdownRef("decades")
-    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(decades(Catalog.films.extract(), base)), text.set)))
+    def build(base):
+        cat = kit.catalog(base)
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(decades(cat.films.extract(), cat.planes.extract())), text.set))
+
+    return kit.on_catalog(plane, build)
 """
 
 
@@ -621,9 +658,8 @@ TIMELINE = (("chart", CHART), ("decades", DECADES))
 FLOWS = """\
 import nu
 import nustd.ui
-from nuspace.system.utils import snap
+import nuspace
 from nudemos.movies import kit
-from nudemos.movies.kit import Catalog
 
 
 class View(nustd.ui.Column):
@@ -641,23 +677,26 @@ def flows(films):
 
 
 def out(plane):
-    return kit.on_catalog(plane, lambda base: nu.Reconcile(snap(nu.OnAny(*[Catalog.films.on_change()])), nu.let(snap(flows(Catalog.films.extract())), View.flows.set)))
+    def build(base):
+        films = kit.catalog(base).films
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(flows(films.extract())), View.flows.set))
+
+    return kit.on_catalog(plane, build)
 """
 
 
 LENS = """\
 import nu
+import nuspace
 import nustd.ui.lens
-from nuspace.shapes import States
-from nuspace.system.utils import snap
 from nudemos.movies import kit
 
 
 def out(plane):
     # The whole cinematheque is this one store: browse it as it lies, and watch it change.
     lens = nustd.ui.lens.LensRef("store")
-    store = lambda base: nustd.ui.lens.browse(lens, kit.Catalog, prefix=States.planes[nu.Str(base)].state)
-    return nu.let(snap(kit.base_of(plane)), store)
+    store = lambda base: nustd.ui.lens.browse(lens, kit.Catalog, prefix=nuspace.State.planes[nu.Str(base)])
+    return nu.let(nuspace.atomic(kit.base_of(plane)), store)
 """
 
 

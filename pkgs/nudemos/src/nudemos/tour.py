@@ -6,7 +6,7 @@ creates one by one, each on its own backend, with its own cells and state.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import counter, sampled
 
@@ -38,7 +38,7 @@ PLANE = PlaneSpec(
     "Nu demos",
     icon="compass",
     description="A counter and a sampled series, nested under one plane.",
-    meta={"editable": True, "full_width": False},
+    web=WebOptions(editable=True, full_width=False),
     cells=(("intro", INTRO),),
     children=(counter.PLANE, sampled.PLANE),
     group="Demos",

@@ -1,6 +1,6 @@
 """What the cells read and draw: a run's state as terms, and plain Python that shapes it.
 
-The terms reach a run's state from any plane (:func:`at`), wait for a run
+The terms reach a run's state from any plane (:func:`~.state.run_at`), wait for a run
 page's job (:func:`with_job`), gather what a view shows in one read
 (:func:`run_view`, :func:`board`). The ``@nu.host`` functions turn what
 was read into what a widget takes: tile strings, chart series, heatmap
@@ -15,13 +15,11 @@ import math
 from typing import TYPE_CHECKING, Any
 
 import nu
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+import nuspace
 
 from .ink import sample, strokes_of, strokes_to_image
 from .reader import image_png
-from .state import Run, job_cell, job_of, runs_of, status_of
+from .state import Made, job_of, run_at, runs_of, status_of
 from .trainer import LAYERS
 
 
@@ -32,7 +30,6 @@ if TYPE_CHECKING:
 __all__ = [
     "TONES",
     "answer",
-    "at",
     "board",
     "cards",
     "choices",
@@ -73,34 +70,30 @@ POINTS, SNAPSHOTS = 300, 40
 # --- terms -------------------------------------------------------------------------------------
 
 
-def at(job: nu.StrArg, term: nu.Nu) -> nu.Nu:
-    """``term`` over :class:`~.state.Run`, landed on ``job``'s cell. Bare."""
-    return ops.cell_state(job_cell(job), term)
-
-
 def with_job(plane: nu.StrArg, body: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     """``body(job)`` once the run page ``plane`` has its job: Launch makes it right after the page."""
-    found = snap(job_of(plane) != "")
-    wait = nu.WaitUntil(snap(Space.planes[plane].children.on_change()), found, every=2.0)
-    return wait >> nu.let(snap(job_of(plane)), lambda job: body(nu.Str(job)))
+    found = nuspace.atomic(job_of(plane) != "")
+    made = nuspace.at.plane(id=plane).state(Made).job.on_change()
+    wait = nu.WaitUntil(nuspace.atomic(made), found, every=2.0)
+    return wait >> nu.let(nuspace.atomic(job_of(plane)), lambda job: body(nu.Str(job)))
 
 
 def run_view(job: nu.StrArg) -> nu.Nu:
     """Everything a run's tiles and steering show, in one dict. Bare."""
-    r = Run
+    r = run_at(job)
     return nu.Dict.of(
         status=status_of(job),
-        hp=at(job, r.hp.fallback({})),
-        info=at(job, r.info.fallback({})),
-        lr=at(job, r.lr.fallback(0.0)),
-        step=at(job, r.step.fallback(0)),
-        total=at(job, r.total.fallback(0)),
-        now=at(job, r.now.fallback({})),
-        best=at(job, r.best.fallback(0.0)),
-        final=at(job, r.final.fallback(-1.0)),
-        speed=at(job, r.speed.fallback(0.0)),
-        started=at(job, r.started.fallback(0.0)),
-        beat=at(job, r.beat.fallback(0.0)),
+        hp=r.hp.fallback({}),
+        info=r.info.fallback({}),
+        lr=r.lr.fallback(0.0),
+        step=r.step.fallback(0),
+        total=r.total.fallback(0),
+        now=r.now.fallback({}),
+        best=r.best.fallback(0.0),
+        final=r.final.fallback(-1.0),
+        speed=r.speed.fallback(0.0),
+        started=r.started.fallback(0.0),
+        beat=r.beat.fallback(0.0),
     )
 
 
@@ -351,7 +344,7 @@ def series(root: nu.StrArg) -> nu.Nu:
         run = nu.List(r)
         job = nu.Str(run[1])
         return nu.List.of(
-            run[0], run[2], at(job, Run.test_acc.sample(POINTS)), at(job, Run.loss.sample(POINTS))
+            run[0], run[2], run_at(job).test_acc.sample(POINTS), run_at(job).loss.sample(POINTS)
         )
 
     return runs_of(root).iter().map(row).to_list()
@@ -381,8 +374,8 @@ def shelf(root: nu.StrArg) -> nu.Nu:
     """Every run as ``[job, name, view, models]``, models ``{slot: {step, acc}}`` (no bytes), oldest first. Bare."""
 
     def model(job: nu.Str, slot: str) -> nu.Nu:
-        m = Run.models[slot]
-        return nu.Dict.of(step=at(job, m.step.fallback(-1)), acc=at(job, m.acc.fallback(-1.0)))
+        m = run_at(job).models[slot]
+        return nu.Dict.of(step=m.step.fallback(-1), acc=m.acc.fallback(-1.0))
 
     def row(r: nu.Nu) -> nu.Nu:
         run = nu.List(r)

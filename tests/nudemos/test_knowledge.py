@@ -17,6 +17,11 @@ def base() -> tuple[dict, dict]:
     return seed.base(data.DOCS, data.FACTS, NOW)
 
 
+def _pages(docs: dict) -> dict:
+    """The page ids a base keeps, as a seeded one would: a doc page per slug, the Facts page."""
+    return {"doc": {slug: f"p-{slug}" for slug in docs}, "view": {"facts": "p-facts"}}
+
+
 def test_every_cell_source_parses() -> None:
     sources = list(cells.ROOT) + [c for kind in cells.DOC_CELLS.values() for c in kind]
     sources += [c for view in cells.VIEW_CELLS.values() for c in view] + list(cells.COLLECTION)
@@ -36,14 +41,17 @@ def test_seed_dates_resolve_from_the_day_opened(base: tuple[dict, dict]) -> None
 
 def test_links_facts_and_people_render(base: tuple[dict, dict]) -> None:
     docs, facts = base
-    md = text.render("pricing", docs, facts, "b", NOW)
-    assert f"[{facts['price']['value']}](/b.facts)" in md
+    pages = _pages(docs)
+    md = text.render("pricing", docs, facts, pages, NOW)
+    assert f"[{facts['price']['value']}](/p-facts)" in md
     assert "{{" not in md
-    assert "](/b.doc.arlo)" in md
+    assert "](/p-arlo)" in md
     assert (
-        "~~" not in text.inline("[[pricing]] and [[nowhere]]", docs, facts, "b").split(" and ")[0]
+        "~~" not in text.inline("[[pricing]] and [[nowhere]]", docs, facts, pages).split(" and ")[0]
     )
-    assert "~~nowhere~~" in text.inline("[[nowhere]]", docs, facts, "b")
+    assert "~~nowhere~~" in text.inline("[[nowhere]]", docs, facts, pages)
+    # A page the base has made no plane for yet links nowhere.
+    assert "](/p-facts)" not in text.render("pricing", docs, facts, {"doc": {}}, NOW)
 
 
 def test_a_fact_changed_once_shows_everywhere(base: tuple[dict, dict]) -> None:
@@ -51,7 +59,8 @@ def test_a_fact_changed_once_shows_everywhere(base: tuple[dict, dict]) -> None:
     facts = {**facts, "price": {**facts["price"], "value": "$79"}}
     citing = [k for k, d in docs.items() if "price" in text.facts_of(d["body"])]
     assert len(citing) >= 2
-    assert all("[$79](/b.facts)" in text.render(k, docs, facts, "b", NOW) for k in citing)
+    pages = _pages(docs)
+    assert all("[$79](/p-facts)" in text.render(k, docs, facts, pages, NOW) for k in citing)
 
 
 def test_tasks_parse_and_tick_in_their_page() -> None:
@@ -70,13 +79,14 @@ def test_tasks_parse_and_tick_in_their_page() -> None:
 
 def test_queries_are_tables_over_the_base(base: tuple[dict, dict]) -> None:
     docs, facts = base
-    decisions = text.query("open-decisions", "", docs, facts, "b", NOW)
+    pages = _pages(docs)
+    decisions = text.query("open-decisions", "", docs, facts, pages, NOW)
     assert decisions.startswith("| Open decision |")
     assert decisions.count("\n") - 1 == sum(
         1 for d in docs.values() if d["kind"] == "decision" and d["status"] == "open"
     )
-    assert "Unknown query" in text.query("nope", "", docs, facts, "b", NOW)
-    assert "](/b.doc." in text.query("owned-by", "theo", docs, facts, "b", NOW)
+    assert "Unknown query" in text.query("nope", "", docs, facts, pages, NOW)
+    assert "](/p-" in text.query("owned-by", "theo", docs, facts, pages, NOW)
 
 
 def test_backlinks_find_the_line_that_links(base: tuple[dict, dict]) -> None:
@@ -142,7 +152,7 @@ def test_ask_prompt_and_citations(base: tuple[dict, dict]) -> None:
 
 def test_digest_reads_the_week(base: tuple[dict, dict]) -> None:
     docs, facts = base
-    md = text.digest(docs, facts, [], "b", NOW)
+    md = text.digest(docs, facts, [], _pages(docs), NOW)
     assert "## Due in the next seven days" in md and "Still open" in md
 
 
@@ -157,3 +167,115 @@ def test_an_imported_notebook_leaves_the_base_healthy(base: tuple[dict, dict]) -
     assert after["broken"] == before["broken"]
     assert after["missing"] == before["missing"]
     assert not any(o["doc"].startswith("lab-") for o in after["orphans"])
+
+
+# --- on a store --------------------------------------------------------------------------------
+
+
+def _all_sources() -> dict[str, str]:
+    found = {f"root.{name}": source for name, source in cells.ROOT}
+    for kind, group in cells.DOC_CELLS.items():
+        found.update({f"doc.{kind}.{name}": source for name, source in group})
+    for view, group in cells.VIEW_CELLS.items():
+        found.update({f"view.{view}.{name}": source for name, source in group})
+    found.update({f"collection.{name}": source for name, source in cells.COLLECTION})
+    found["checker"], found["importer"] = jobs.CHECKER, jobs.IMPORTER
+    return found
+
+
+SOURCES = _all_sources()
+
+
+@pytest.mark.parametrize("name", list(SOURCES))
+async def test_every_cell_loads(store, name) -> None:
+    import nu
+    import nuspace
+    from nuspace import Space
+
+    await store.do(nuspace.plane.add("p", backend="async"))
+    await store.do(nuspace.cell.add("p", SOURCES[name], id="c"))
+    load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"})
+    nu.validate(nu.compile(await store.run(nuspace.atomic(load))))
+
+
+async def test_the_first_open_makes_every_page_once_and_the_checker(store) -> None:
+    import nu
+    import nuspace.specs
+    from nudemos.knowledge import PLANE, kit
+    from nuspace import Space
+    from nuspace.system.supervisor import ON_FAILURE, Policy
+
+    await store.run(nuspace.specs.add_plane(PLANE, "k"))
+    await store.run(kit.seed(nu.Str("k")))
+    await store.run(kit.seed(nu.Str("k")))
+    b = kit.base_at("k")
+    pages = await store.read(b.planes.extract())
+    assert set(pages["view"]) == {name for name, _, _ in kit.VIEWS}
+    docs = await store.read(b.docs.extract())
+    assert set(pages["doc"]) == set(docs)
+    assert await store.read(Space.planes["k"].name) == "Larkspur"
+    pricing = pages["doc"]["pricing"]
+    assert (
+        await store.read(Space.planes[pricing].parent) == pages["view"][docs["pricing"]["folder"]]
+    )
+    assert await store.read(Space.planes[pricing].meta.extract()) == {"subject": "pricing"}
+    assert await store.read(kit.base_of(pricing)) == "k"
+    assert await store.read(Space.planes[pricing].icon) == kit.ICONS[docs["pricing"]["kind"]]
+    # Seeded twice, made once: the root holds its folders and tools, then the checker.
+    kids = await store.read(nu.list(Space.planes["k"].children.keys()))
+    checker = await store.read(kit.job_of("k", "checker"))
+    assert kids == [pages["view"][name] for name, _, _ in kit.VIEWS] + [checker]
+    assert await store.read(Space.planes[checker].spec) == "knowledge_checker"
+    assert await store.read(kit.base_of(checker)) == "k"
+    policy = nuspace.at.plane(id="supervisor").state(Policy).planes[checker].policy
+    assert await store.read(policy) == ON_FAILURE
+    assert await store.read(kit.live("k", "checker")) is False
+    # A second start writes the job's prog again, on the same job.
+    await store.run(kit.start_checker(nu.Str("k")))
+    assert await store.read(kit.job_of("k", "checker")) == checker
+
+
+async def test_a_doc_page_links_the_pages_the_base_made(store) -> None:
+    import asyncio
+
+    import nu
+    import nuspace
+    import nuspace.places
+    import nuspace.specs
+    from nudemos.knowledge import PLANE, kit
+    from nuspace import Space
+    from nuspace.devices.web.env import session_env
+    from nuspace.specs import SpecCells
+    from nustd.ui.core import WsSession
+    from nustd.ui.core.session import Session
+
+    class Browser(WsSession):
+        def __init__(self) -> None:
+            super().__init__(ws=None)
+            self.drawn: list = []
+
+        async def send(self, frame) -> None:
+            if frame.ref and frame.ref[-1] == "page":
+                self.drawn.append(frame.payload)
+
+    await store.run(nuspace.specs.add_plane(PLANE, "k"))
+    await store.run(kit.seed(nu.Str("k")))
+    pages = await store.read(kit.base_at("k").planes.extract())
+    pricing = pages["doc"]["pricing"]
+    cell = await store.read(nuspace.at.plane(id=pricing).state(SpecCells).ids["page"])
+    env = session_env("127.0.0.1:9")("s1")
+    load = Space.cells[cell].prog.load(scope={"plane": pricing, "cell": cell}, rewrite=env.rewrite)
+    term = nuspace.places.inside(await store.run(nuspace.atomic(load)), plane=pricing, cell=cell)
+    browser = Browser()
+    task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
+    try:
+        for _ in range(200):
+            if browser.drawn:
+                break
+            await asyncio.sleep(0.05)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    md = str(browser.drawn[-1])
+    assert f"](/{pages['doc']['arlo']})" in md
+    assert f"](/{pages['view']['facts']})" in md

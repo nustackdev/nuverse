@@ -21,13 +21,12 @@ __all__ = ["BAR", "IMPORTS", "INTRO", "LAUNCHES", "PULSE", "ROOT", "TILES", "cel
 #: What every cell imports.
 IMPORTS = """\
 import nu
+import nuspace
 import nustd.time
 import nustd.ui
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.memes import control, views
 from nudemos.memes.book import RATE
-from nudemos.memes.state import Control, Memes, at_root, root_of
+from nudemos.memes.state import control_at, memes_at, root_of
 """
 
 
@@ -50,8 +49,8 @@ class View(nustd.ui.Column):
 
 
 def read(root):
-    stats = at_root(root, Memes.stats.fallback({}))
-    stop = at_root(root, Control.stop.fallback(False))
+    stats = memes_at(root).stats.fallback({})
+    stop = control_at(root).stop.fallback(False)
     return views.status(stats, control.live(root), stop, nustd.time.time())
 
 
@@ -72,18 +71,18 @@ def press(root):
         said = nu.Str(v["button"])
         return nu.IfDo(said == "Stop", control.stop(root), nu.IfDo(said == "Start", control.start(root)))
 
-    return nu.let(snap(read(root)), act)
+    return nu.let(nuspace.atomic(read(root)), act)
 
 
 def out(plane):
     def follow(root):
-        moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.stop.on_change())]
+        moves = [memes_at(root).beat.on_change(), control_at(root).stop.on_change()]
         return nu.ParallelAsync(
-            nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(read(root)), draw), every=1.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read(root)), draw), every=1.0),
             nu.ReactEvery(View.bar.toggle.on_click(), press(root)),
         )
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -116,10 +115,10 @@ def draw(t):
 
 def out(plane):
     def follow(root):
-        read = views.tiles(at_root(root, Memes.stats.fallback({})))
-        return nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), draw))
+        read = views.tiles(memes_at(root).stats.fallback({}))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), draw))
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -148,25 +147,24 @@ class View(nustd.ui.Column):
 
 
 def paint(root):
-    return nu.let(snap(views.pulse(at_root(root, Memes.pulse.fallback([])))), View.chart.set)
+    return nu.let(nuspace.atomic(views.pulse(memes_at(root).pulse.fallback([]))), View.chart.set)
 
 
 def out(plane):
     def follow(root):
         # One pass at a time: blocks landing while it paints merge into one more.
-        beat = snap(at_root(root, Memes.beat.on_change()))
+        beat = nuspace.atomic(memes_at(root).beat.on_change())
         return nu.Reconcile(beat, paint(root) >> nu.Delay(EVERY), every=5.0)
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
 INTRO = '''\
 import nu
-import nuspace.ui
+import nuspace
+import nuspace.devices.web
 import nustd.ui
-from nuspace import ops
-from nuspace.system.utils import snap
 
 TEXT = """\\
 ### The meme market, live
@@ -195,14 +193,16 @@ class View(nustd.ui.Column):
 
 def links(kids):
     def to(i):
-        return nuspace.ui.href(nu.List(kids)[i])
+        return nuspace.devices.web.href(nu.List(kids)[i])
 
     l = View.links
     return l.overview.set(href=to(0), label="Open the terminal") >> l.monitor.set(href=to(1), label="Monitor") >> l.sync.set(href=to(2), label="Sync settings")
 
 
 def out(plane):
-    return View.text.set(TEXT) >> nu.let(snap(ops.children(plane)), links) >> nu.ForeverDo(nu.Delay(3600.0))
+    # The spec makes Overview, Monitor and Sync as the root's first three children.
+    first = nuspace.Space.planes[plane].children.keys(limit=3)
+    return View.text.set(TEXT) >> nu.let(nuspace.atomic(first), links) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
@@ -259,14 +259,14 @@ def opener(root, i):
 def out(plane):
     def follow(root):
         # A coin's own image only once the Sync plane's "Show images" is on.
-        images = at_root(root, Control.images.fallback(False))
-        read = views.launch_cards(at_root(root, Memes.launches.fallback([])), nustd.time.time(), N, images)
-        moves = [at_root(root, Memes.beat.on_change()), at_root(root, Control.images.on_change())]
-        shown = nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(read), draw), every=5.0)
+        images = control_at(root).images.fallback(False)
+        read = views.launch_cards(memes_at(root).launches.fallback([]), nustd.time.time(), N, images)
+        moves = [memes_at(root).beat.on_change(), control_at(root).images.on_change()]
+        shown = nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw), every=5.0)
         opens = [opener(root, i) for i in range(N)]
         return View.head.set("New launches") >> nu.Frame(Shown, nu.ParallelAsync(shown, *opens), mints=[])
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 

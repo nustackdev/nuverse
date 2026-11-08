@@ -10,14 +10,17 @@ import asyncio
 import pytest
 
 import nu
+import nuspace
+import nuspace.places
+import nuspace.specs
 from nudemos.mnist import views
 from nudemos.mnist.ink import blank
 from nudemos.mnist.interactions import Classify, Holds, MnistDigit, Use
 from nudemos.mnist.job import job_source
 from nudemos.mnist.reader import KEEP, Reader, image_png
-from nudemos.mnist.state import Run
+from nudemos.mnist.state import Made, Runs, run_at
 from nudemos.mnist.trainer import Trainer
-from nuspace import ops
+from nuspace import Space
 
 
 SYNTHETIC = {"data": "synthetic", "device": "cpu", "batch_size": 16}
@@ -93,21 +96,17 @@ def test_a_test_digit_is_a_field_and_a_label():
 # --- from the store ----------------------------------------------------------------------------
 
 
-async def _trained(store, parent: str = "") -> None:
-    """A tiny run, trained to the end in plane ``job``, cell ``job_main``, under ``parent`` when given."""
-    from nuspace.shapes import Reroot, Space
-    from nustd.kv import Snapshot
-
+async def _trained(store, parent: str = "root") -> None:
+    """A tiny run, trained to the end in plane ``job``, cell ``job_main``, under ``parent``."""
     pace = {"chunk": 4, "look": 3, "eval": 2, "save": 2}
-    await store.run(
-        ops.add_plane("job", backend="mp", ui=False, made_by="mnist_job", parent=parent)
-        >> ops.add_cell("job", job_source({**SYNTHETIC, "epochs": 1}, **pace), cell_id="job_main")
+    source = job_source({**SYNTHETIC, "epochs": 1}, **pace)
+    await store.do(
+        nuspace.plane.add("job", backend="mp", spec="mnist_job", parent=parent)
+        >> nuspace.cell.add("job", source, id="job_main", fabrics=[])
     )
-    load = Space.cells["job_main"].prog.load(
-        scope={"plane": "job", "cell": "job_main"}, rewrite=Reroot("job", "job_main")
-    )
-    term = nu.Frame(
-        ops.Here, await store.run(Snapshot(load, scope=Space)), plane="job", cell="job_main"
+    load = Space.cells["job_main"].prog.load(scope={"plane": "job", "cell": "job_main"})
+    term = nuspace.places.inside(
+        await store.run(nuspace.atomic(load)), plane="job", cell="job_main"
     )
     await asyncio.wait_for(nu.arun(term, store.ctx), 60)
 
@@ -117,8 +116,8 @@ async def test_a_reader_reads_the_models_a_run_stored(store):
     job, image = nu.Str("job"), _digit()
 
     def read(slot: str) -> nu.Nu:
-        step = ops.snapshot(views.at(job, Run.models[slot].step))
-        blob = ops.snapshot(views.at(job, Run.models[slot].blob))
+        step = nuspace.atomic(run_at(job).models[slot].step)
+        blob = nuspace.atomic(run_at(job).models[slot].blob)
 
         def classify(key: nu.Nu) -> nu.Nu:
             used = nu.let(
@@ -148,10 +147,14 @@ async def test_the_shelf_lists_runs_with_their_models_and_no_bytes(store):
     from nudemos.mnist.run import PAGE
 
     await store.run(
-        ops.create_plane(PLANE, plane_id="m")
-        >> ops.create_plane(PAGE, parent="m", name="Run 1", plane_id="r")
+        nuspace.specs.add_plane(PLANE, "m")
+        >> nuspace.specs.add_plane(PAGE, "r", parent="m", name="Run 1")
     )
     await _trained(store, parent="r")
+    # What Launch keeps: the run in the MNIST plane's list, its job on the page.
+    made = nuspace.at.plane(id="r").state(Made)
+    kept = nuspace.at.plane(id="m").state(Runs).planes.set_item("r", True)
+    await store.do(kept >> made.job.set("job"))
     ((job, name, view, models),) = await store.read(views.shelf("m"))
     assert (job, name, view["status"]) == ("job", "Run 1", "done")
     assert models["latest"]["step"] == 12
@@ -159,6 +162,9 @@ async def test_the_shelf_lists_runs_with_their_models_and_no_bytes(store):
     assert set(models["latest"]) == {"step", "acc"}
     c, _ = nu.run(views.choices([[job, name, view, models]]))
     assert c["first"] == "job"
+    # A run page removed from the space drops off the shelf.
+    await store.do(nuspace.plane.remove("r"))
+    assert await store.read(views.shelf("m")) == []
 
 
 # --- shaping -----------------------------------------------------------------------------------

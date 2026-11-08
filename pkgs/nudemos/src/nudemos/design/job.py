@@ -19,11 +19,12 @@ from typing import Any
 
 import nu
 import nuspace
+import nuspace.specs
+import nuspace.system.supervisor
 import nustd.kv
-from nuspace import ops
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
+from nuspace import Space
 
+from .. import bases
 from . import logo, raster
 from . import spec as specs
 from .draw import tokens_css
@@ -33,6 +34,8 @@ __all__ = [
     "JOB",
     "PAGE",
     "Build",
+    "Made",
+    "build_at",
     "build_source",
     "cut",
     "export_of",
@@ -44,11 +47,14 @@ __all__ = [
 ]
 
 
-#: ``made_by`` of a release page and of its job.
+#: The spec names of a release page and of its job.
 PAGE, JOB = "design_release", "design_build"
 
+#: How many of a Design plane's first children are looked at for its Export page.
+_FIRST = 16
 
-class Build(nuspace.CellState):
+
+class Build(nu.Shape):
     """A release's build, on its job's one cell."""
 
     version = nustd.kv.StrRef.slot()
@@ -64,23 +70,36 @@ class Build(nuspace.CellState):
     blobs = nustd.kv.DictRef.slot(bytes)
 
 
+class Made(nu.Shape):
+    """A release page's, in its plane's state: its job."""
+
+    job = nustd.kv.StrRef.slot()
+
+
 def job_of(page: nu.StrArg) -> nu.Str:
-    """A release page's job: fixed under the page."""
-    return nu.Str(page) + ".build"
+    """A release page's job, ``""`` while it has none. Bare read."""
+    return nu.Str(nuspace.at.plane(id=page).state(Made).job.fallback(""))
 
 
 def job_cell(job: nu.StrArg) -> nu.Str:
-    """The job's one cell."""
-    return nu.Str(job) + "_main"
+    """The job's one cell, NULL for a job with none. Bare read: one seek."""
+    return nu.Str(Space.planes[job].cells.first())
 
 
-def made_by(plane: nu.StrArg) -> nu.Str:
-    return Space.planes[plane].props.made_by.fallback("")
+def build_at(job: nu.StrArg) -> Build:
+    """A release's build, at its job's cell, typed as :class:`Build`."""
+    return nuspace.at.cell(id=job_cell(job)).state(Build)
 
 
 def export_of(base: nu.StrArg) -> nu.Str:
-    """The Export page under a Design plane, ``""`` when it has none. Bare read."""
-    found = ops.children(base).iter().filter(lambda p: made_by(nu.Str(p)) == "design_export")
+    """The Export page under a Design plane, ``""`` when it has none. Bare read.
+
+    One page of the plane's first children: the spec makes Export among them.
+    """
+    first = nu.List(Space.planes[base].children.keys(limit=_FIRST))
+    found = first.iter().filter(
+        lambda p: Space.planes[nu.Str(p)].spec.fallback("") == "design_export"
+    )
     return nu.str(found.first(default=""))
 
 
@@ -90,45 +109,58 @@ def _slug(version: str) -> str:
 
 
 def release_page(base: nu.StrArg, version: nu.StrArg) -> nu.Str:
-    """A release page's id: the Design plane's, then the version."""
-    return nu.Str(base) + ".release." + _slug(version)
+    """A release page's id, as the Design plane keeps it by version, ``""`` for one not cut. Bare read."""
+    from .kit import system
+
+    return nu.Str(system(base).release_planes[_slug(version)].fallback(""))
 
 
 def cut(base: nu.StrArg, export: nu.StrArg, version: nu.StrArg, spec: nu.Nu) -> nu.Nu:
     """A release: its page under Export, and its job under the page, supervised so it starts now.
 
-    ``spec`` is read once and baked into the job's cell. A version already cut is left alone.
+    ``spec`` is read once and baked into the job's cell. A version already
+    cut is left alone. A row of commits: the page with its cells and web
+    row, its meta, the job and its cell (it draws nothing), then the ids kept
+    (the page on the Design plane, the job on the page, the Design plane on
+    both, :mod:`nudemos.bases`) and the job supervised.
     """
-    from nuspace import PlaneSpec
-
     from .cells import RELEASE
+    from .kit import system
 
-    page = release_page(base, version)
-    jb = job_of(page)
-    meta = nu.Dict.of(
-        base=base, version=version, icon="lucide:tag", full_width=True, editable=True, compact=True
+    page_spec = nuspace.specs.PlaneSpec(
+        PAGE,
+        "Release",
+        icon="tag",
+        cells=RELEASE,
+        web=nuspace.specs.WebOptions(editable=True, full_width=True, compact=True),
+        backend="async",
     )
-    make = (
-        ops.create_plane(
-            PlaneSpec(PAGE, "Release", cells=RELEASE, backend="async"),
-            parent=export,
-            name=version,
-            plane_id=page,
+    held = system(base).release_planes[_slug(version)]
+    source = build_source(version, spec)
+
+    def made(page: nu.ObjectRef, job: nu.ObjectRef) -> nu.Nu:
+        p, j = nu.Str(page), nu.Str(job)
+        meta = nu.Dict.of(version=version)
+        add = nuspace.plane.add(
+            parent=p, name="build", backend="mp", spec=JOB, into=job
+        ) >> nuspace.cell.add(j, source, name="build", fabrics=[])
+        ids = nuspace.at.plane(id=p).state(Made)
+        policy = nuspace.system.supervisor.ON_FAILURE
+        kept = (
+            held.set(p)
+            >> ids.job.set(j)
+            >> bases.belongs(p, base)
+            >> bases.belongs(j, base)
+            >> nuspace.system.supervisor.supervise(j, policy=policy, exists_ok=True)
         )
-        >> ops.set_plane_meta(page, meta)
-        >> ops.add_plane(
-            jb,
-            backend="mp",
-            name="build",
-            parent=page,
-            ui=False,
-            made_by=JOB,
-            meta=nu.Dict.of(base=base),
+        return (
+            nuspace.specs.add_plane(page_spec, parent=export, name=version, into=page)
+            >> nuspace.atomic(nuspace.plane.set_meta(p, meta) >> add)
+            >> nuspace.atomic(kept)
         )
-        >> ops.add_cell(jb, build_source(version, spec), cell_id=job_cell(jb), name="build")
-        >> nuspace.supervise(jb)
-    )
-    return nu.IfDo(nu.Bool(snap(ops.plane_exists(page))).not_(), make)
+
+    fresh = nu.Bool(nuspace.atomic(held.exists())).not_()
+    return nu.IfDo(fresh, nu.let("", lambda p: nu.let("", lambda j: made(p, j))))
 
 
 # --- the files ----------------------------------------------------------------------------------
@@ -225,12 +257,14 @@ def make(spec: dict[str, str], item: dict[str, Any], version: str = "") -> bytes
 
 BUILD = """\
 import nu
+import nuspace
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.design import job
 from nudemos.design.job import Build
-from nudemos.design.kit import System, root_of
+from nudemos.design.kit import root_of, system
+
+#: This release's build: the job's own cell's state.
+BUILT = nuspace.here(Build)
 
 #: This release: its version and the spec it was cut from, baked in when it was cut.
 VERSION = ""
@@ -269,32 +303,31 @@ def release(releases, page, index, now):
 
 def one(item):
     def land(m):
-        return ops.atomic_state(
-            Build.blobs[nu.Str(item["key"])].set(m["blob"])
-            >> Build.index.set(added(Build.index.fallback([]), m["line"]))
-            >> Build.done.set(Build.done.fallback(0) + 1)
-            >> Build.current.set(item["name"])
+        return nuspace.atomic(
+            BUILT.blobs[nu.Str(item["key"])].set(m["blob"])
+            >> BUILT.index.set(added(BUILT.index.fallback([]), m["line"]))
+            >> BUILT.done.set(BUILT.done.fallback(0) + 1)
+            >> BUILT.current.set(item["name"])
         )
 
     return nu.let(made(item), land)
 
 
 def out(plane):
-    page = snap(ops.parent(plane))
-    fresh = ops.atomic_state(
-        Build.version.set(VERSION) >> Build.status.set("building") >> Build.done.set(0)
-        >> Build.index.set([]) >> Build.total.set(count()) >> Build.started.set(nustd.time.time())
+    page = nuspace.atomic(nuspace.Space.planes[plane].parent)
+    fresh = nuspace.atomic(
+        BUILT.version.set(VERSION) >> BUILT.status.set("building") >> BUILT.done.set(0)
+        >> BUILT.index.set([]) >> BUILT.total.set(count()) >> BUILT.started.set(nustd.time.time())
     )
 
     def finish(root):
-        ended = ops.atomic_state(Build.status.set("done") >> Build.finished.set(nustd.time.time()) >> Build.current.set(""))
-        index = snap(Build.index.fallback([]))
-        return ended >> ops.atomic_state(ops.plane_state(root, System.releases.set(
-            release(System.releases.fallback([]), page, index, nustd.time.time())
-        )))
+        ended = nuspace.atomic(BUILT.status.set("done") >> BUILT.finished.set(nustd.time.time()) >> BUILT.current.set(""))
+        index = nuspace.atomic(BUILT.index.fallback([]))
+        releases = system(root).releases
+        return ended >> nuspace.atomic(releases.set(release(releases.fallback([]), page, index, nustd.time.time())))
 
-    work = fresh >> nu.ForEachDo(nu.List(files()), one) >> nu.let(snap(root_of(page)), lambda r: finish(nu.Str(r)))
-    return nu.IfDo(snap(Build.status.fallback("") == "done"), nu.Noop(), work)
+    work = fresh >> nu.ForEachDo(nu.List(files()), one) >> nu.let(nuspace.atomic(root_of(page)), lambda r: finish(nu.Str(r)))
+    return nu.IfDo(nuspace.atomic(BUILT.status.fallback("") == "done"), nu.Noop(), work)
 """
 
 

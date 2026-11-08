@@ -12,7 +12,7 @@ The order is each tab's own: two tabs sort two ways.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from .cells import BAR, LAUNCHES, TILES, cell
 
@@ -79,9 +79,9 @@ def out(plane):
     t = View.table
 
     def follow(root):
-        read = views.token_rows(at_root(root, Memes.board.fallback({})), Pick.sort, nustd.time.time())
-        draw = nu.let(snap(read), t.set_rows)
-        shown = nu.Reconcile(snap(at_root(root, Memes.beat.on_change())), draw, every=2.0)
+        read = views.token_rows(memes_at(root).board.fallback({}), Pick.sort, nustd.time.time())
+        draw = nu.let(nuspace.atomic(read), t.set_rows)
+        shown = nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), draw, every=2.0)
 
         def order(sort):
             # A new order: the picker, the header's arrows and the rows, at once.
@@ -96,7 +96,7 @@ def out(plane):
         head = View.head.title.set("Tokens") >> View.head.sort.set_options(ORDERS) >> View.head.sort.set("new")
         return head >> nu.Frame(Pick, body, sort="new")
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -124,15 +124,15 @@ def mint_of(key):
 
 def out(plane):
     def follow(root):
-        read = views.tape_rows(at_root(root, Memes.tape.fallback([])), nustd.time.time())
-        rows = nu.Reconcile(snap(nu.OnAny(*[at_root(root, Memes.beat.on_change())])), nu.let(snap(read), View.tape.set_rows), every=2.0)
+        read = views.tape_rows(memes_at(root).tape.fallback([]), nustd.time.time())
+        rows = nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), View.tape.set_rows), every=2.0)
         opened = nu.ReactEvery(
             View.tape.on_row_click(),
             lambda ev: control.open_token(root, mint_of(ev["key"]), View.history),
         )
         return View.head.set("Trades, as they print") >> nu.ParallelAsync(rows, opened)
 
-    return nu.let(snap(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 
@@ -141,7 +141,7 @@ PLANE = PlaneSpec(
     "Overview",
     icon="square-terminal",
     description="The memes terminal: tokens, trades and launches, live.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(
         ("sync", BAR),
         ("tiles", TILES),

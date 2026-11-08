@@ -125,3 +125,36 @@ def test_the_feed_opens_full() -> None:
     assert len(rows) == 12
     assert rows[0]["order"] == f"#{int(h['lines']['order'].max())}"
     assert all(r["customer"] and r["items"] for r in rows)
+
+
+# --- the first open, on a store ----------------------------------------------------------------
+
+
+async def test_the_first_open_writes_the_history_and_starts_the_jobs_once(store) -> None:
+    import nu
+    import nuspace
+    from nudemos import data
+    from nuspace import Space
+    from nuspace.system import supervisor
+
+    await store.run(nuspace.specs.add_plane(data.PLANE, "o"))
+    assert await store.read(kit.ROOT_ID) == "o"
+    await store.run(kit.seed(nu.Str("o")))
+    await store.run(kit.seed(nu.Str("o")))
+    assert await store.read(kit.SHOP.ready) is True
+    assert await store.read(kit.SHOP.beat) == 1
+    kids = await store.read(nu.list(Space.planes["o"].children.keys()))
+    for name in ("stream", "importer"):
+        # At an id minted once and kept in the store, made once.
+        jid = await store.read(kit.job_of("o", name))
+        assert kids.count(jid) == 1
+        assert await store.read(Space.planes[jid].spec) == kit.JOB
+        assert await store.read(supervisor.supervised()[jid].policy) == supervisor.ON_FAILURE
+    # The pages declared on the spec are found by what they were made from.
+    revenue = await store.read(kit.page_of("o", "data_revenue"))
+    assert await store.read(Space.planes[revenue].spec) == "data_revenue"
+    links = await store.read(kit.pages("o"))
+    assert links["revenue"] == f"/{revenue}"
+    # A view over the tables reads the shards.
+    got = await store.read(kit.read("revenue", kit.FILTERS))
+    assert got is not None

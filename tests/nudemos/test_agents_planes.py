@@ -7,14 +7,13 @@ from dataclasses import replace
 import pytest
 
 import nu
+import nuspace
 from nudemos.agents import PLANE, orchestrate, page
 from nudemos.agents.flows import KINDS, flow_source
 from nudemos.agents.job import job_source
-from nuspace import ops
-from nuspace.shapes import Reroot, Space
-from nuspace.system.devices.web.env import session_env
-from nuspace.system.kernel.body import Rewrites
-from nustd.kv import Snapshot
+from nudemos.agents.state import spec_of
+from nuspace import Space
+from nuspace.devices.web.env import session_env
 
 
 SPECS = [
@@ -35,14 +34,14 @@ for _kind in KINDS:
 
 
 def test_discovery_finds_the_agents_plane():
-    from nuspace.ext import discover
+    from nuspace.specs import discover
 
     ext = discover()["nudemos"]
     assert replace(PLANE, name=f"nudemos.{PLANE.name}") in ext.planes
 
 
 def test_the_agents_plane_nests_its_flows():
-    from nuspace.system.backends import BACKENDS
+    from nuspace.kernel.backends import BACKENDS
 
     assert PLANE.group == "Demos"
     assert PLANE.children == (
@@ -54,10 +53,9 @@ def test_the_agents_plane_nests_its_flows():
 
 
 async def test_the_agents_plane_is_created_with_its_children(store):
-    await store.run(ops.create_plane(PLANE, plane_id="a"))
-    kids = await store.read(ops.children("a"))
-    rows = {r["id"]: r for r in await store.read(ops.plane_rows())}
-    assert [rows[k]["props"]["made_by"] for k in kids] == [
+    await store.run(nuspace.specs.add_plane(PLANE, "a"))
+    kids = await store.read(Space.planes["a"].children.keys(limit=3))
+    assert [await store.read(spec_of(k)) for k in kids] == [
         "agents_fanout",
         "agents_chain",
         "agents_tasks",
@@ -67,10 +65,9 @@ async def test_the_agents_plane_is_created_with_its_children(store):
 @pytest.mark.parametrize("name", list(SOURCES))
 async def test_each_cell_loads_through_the_kernel_rewrites(store, name):
     source = SOURCES[name]
-    await store.run(ops.add_plane("p", backend="async") >> ops.add_cell("p", source, cell_id="c"))
+    await store.do(nuspace.plane.add("p", backend="async") >> nuspace.cell.add("p", source, id="c"))
     env = session_env("127.0.0.1:9")("s1")
-    rewrite = Rewrites(Reroot("p", "c"), env.rewrite)
-    load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"}, rewrite=rewrite)
-    term = await store.run(Snapshot(load, scope=Space))
+    load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"}, rewrite=env.rewrite)
+    term = await store.read(load)
     assert isinstance(term, nu.Nu)
     nu.validate(nu.compile(term))

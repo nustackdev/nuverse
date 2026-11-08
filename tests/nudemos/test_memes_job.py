@@ -15,14 +15,17 @@ from pathlib import Path
 import pytest
 
 import nu
+import nuspace
+import nuspace.devices.web
+import nuspace.places
+import nuspace.specs
 import nustd.http
-import nustd.kv
 from nudemos.memes import PLANE, control
 from nudemos.memes import book as booklib
 from nudemos.memes.chain import decode_block
-from nudemos.memes.state import Control, Memes, at_root, job_cell, job_of
-from nuspace import ops
-from nuspace.shapes import Reroot, Space
+from nudemos.memes.state import JOB, control_at, made_at, memes_at, root_of
+from nuspace import Space
+from nuspace.system.supervisor import ON_FAILURE, Policy
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "memes"
@@ -87,106 +90,106 @@ async def _until(check, timeout: float = 30.0) -> None:
 
 
 async def _run_job(store) -> asyncio.Task:
-    """The job's one cell, run as the kernel runs it: loaded with its rewrites, in its ``Here`` frame."""
-    job = await store.read(job_of("m"))
-    cell = await store.read(job_cell(job))
-    load = Space.cells[cell].prog.load(
-        scope={"plane": job, "cell": cell}, rewrite=Reroot(job, cell)
-    )
-    term = nu.Frame(
-        ops.Here, await store.run(nustd.kv.Snapshot(load, scope=Space)), plane=job, cell=cell
-    )
+    """The job's one cell, run as the kernel runs it: loaded from the store, in its ``Here`` frame."""
+    job = await store.read(made_at("m").job)
+    cell = await store.read(Space.planes[job].cells.first())
+    load = Space.cells[cell].prog.load(scope={"plane": job, "cell": cell})
+    term = nuspace.places.inside(await store.run(nuspace.atomic(load)), plane=job, cell=cell)
     return asyncio.create_task(nu.arun(term, store.ctx))
 
 
-def _at(term: nu.Nu) -> nu.Nu:
-    return at_root("m", term)
+M, C = memes_at("m"), control_at("m")
 
 
 async def test_starting_makes_the_job_once_under_the_root(store):
-    await store.run(ops.create_plane(PLANE, plane_id="m"))
+    await store.run(nuspace.specs.add_plane(PLANE, "m"))
     await store.run(control.start("m") >> control.start("m"))
-    kids = await store.read(ops.children("m"))
-    assert kids[-1] == "m.sync" and kids.count("m.sync") == 1
-    assert await store.read(Space.planes["m.sync"].props.backend) == "mp"
-    assert await store.read(Space.planes["m.sync"].props.ui) is False
-    assert await store.read(ops.cells("m.sync")) == ["m.sync_main"]
-    assert await store.read(_at(Control.stop)) is False
+    job = await store.read(made_at("m").job)
+    kids = await store.read(nu.list(Space.planes["m"].children.keys()))
+    assert kids[-1] == job and kids.count(job) == 1
+    row = Space.planes[job]
+    assert (await store.read(row.backend), await store.read(row.spec)) == ("mp", JOB)
+    assert await store.read(root_of(job)) == "m"
+    assert await store.read(nuspace.devices.web.Web.planes.contains(job)) is False
+    (cell,) = await store.read(nu.list(row.cells.keys()))
+    assert await store.read(Space.cells[cell].name) == "sync"
+    assert await store.read(Space.cells[cell].fabrics) == []
+    policy = nuspace.at.plane(id="supervisor").state(Policy).planes[job].policy
+    assert await store.read(policy) == ON_FAILURE
+    assert await store.read(C.stop) is False
     await store.run(control.stop("m"))
-    assert await store.read(_at(Control.stop)) is True
+    assert await store.read(C.stop) is True
 
 
 async def test_the_job_follows_the_chain_backs_off_and_stops(store, chain):
-    await store.run(ops.create_plane(PLANE, plane_id="m") >> control.start("m"))
+    await store.run(nuspace.specs.add_plane(PLANE, "m") >> control.start("m"))
     task = await _run_job(store)
 
     async def launched():
-        tokens = Memes.tokens
-        return await store.read(_at(nu.If(tokens.exists(), tokens.contains(CAP), False)))
+        tokens = M.tokens
+        return await store.read(nu.If(tokens.exists(), tokens.contains(CAP), False))
 
     await _until(launched)
     await _until(lambda: _points(store))
     await store.run(control.stop("m"))
     await asyncio.wait_for(task, 20)
 
-    stats = await store.read(_at(Memes.stats))
+    stats = await store.read(M.stats)
     assert stats["status"] == "stopped"
     totals = stats["totals"]
     assert totals["skipped"] >= 1 and totals["blocks"] >= 2
     assert totals["trades"] == 7 and totals["launches"] == 1
     assert totals["errors"] == 1
     assert stats["rpc"] == "rpc.example"
-    (error,) = await store.read(_at(Memes.errors))
+    (error,) = await store.read(M.errors)
     assert "429" in error["message"] and "SECRET" not in error["message"]
 
-    cap = await store.read(_at(Memes.tokens[CAP]))
+    cap = await store.read(M.tokens[CAP])
     assert (cap["name"], cap["symbol"], cap["trades"]) == ("dog wif cap", "cap", 1)
-    board = await store.read(_at(Memes.board))
+    board = await store.read(M.board)
     assert board["new"][0]["mint"] == CAP
-    tape = await store.read(_at(Memes.tape))
+    tape = await store.read(M.tape)
     assert tape[0]["mint"] == CAP and len(tape) == 4  # SOL trades only: 3 are in other quotes
-    assert len(await store.read(_at(Memes.trades[CAP]))) == 1
-    assert await store.read(_at(Memes.beat)) > 0
-    sync = await store.read(_at(Memes.sync))
+    assert len(await store.read(M.trades[CAP])) == 1
+    assert await store.read(M.beat) > 0
+    sync = await store.read(M.sync)
     assert sync["cursor"] > 1000 and sync["epoch"] == 0
     assert {"getSlot", "getBlock", "getMultipleAccounts"} <= set(chain.calls)
 
     # Run again: it picks up where it stopped, a stopped sync ends at once until the flag clears.
     task = await _run_job(store)
     await asyncio.wait_for(task, 20)
-    await store.run(ops.atomic_state(_at(Control.stop.set(False))))
+    await store.run(nuspace.atomic(C.stop.set(False)))
     task = await _run_job(store)
 
     async def moved():
-        return (await store.read(_at(Memes.sync)))["cursor"] > sync["cursor"]
+        return (await store.read(M.sync))["cursor"] > sync["cursor"]
 
     await _until(moved)
     await store.run(control.stop("m"))
     await asyncio.wait_for(task, 20)
-    again = await store.read(_at(Memes.stats))
+    again = await store.read(M.stats)
     assert again["totals"]["trades"] == 7  # the old blocks are not read twice
-    assert await store.read(_at(Memes.tokens.contains(CAP)))
+    assert await store.read(M.tokens.contains(CAP))
 
 
 async def _points(store) -> bool:
-    return len(await store.read(_at(Memes.blocks_s.sample(10)))) >= 1
+    return len(await store.read(M.blocks_s.sample(10))) >= 1
 
 
 async def test_starting_over_from_a_slot_reads_from_there(store, chain):
-    await store.run(ops.create_plane(PLANE, plane_id="m"))
+    await store.run(nuspace.specs.add_plane(PLANE, "m"))
     await store.run(control.restart("m", 998))
-    assert await store.read(_at(Control.epoch)) == 1
+    assert await store.read(C.epoch) == 1
     chain.limited = True
     task = await _run_job(store)
 
     async def read_it():
-        return (await store.read(_at(Memes.stats.fallback({})))).get("totals", {}).get(
-            "trades", 0
-        ) >= 7
+        return (await store.read(M.stats.fallback({}))).get("totals", {}).get("trades", 0) >= 7
 
     await _until(read_it)
     await store.run(control.stop("m"))
     await asyncio.wait_for(task, 20)
-    stats = await store.read(_at(Memes.stats))
+    stats = await store.read(M.stats)
     assert stats["mode"] == "from" and "jumped" not in stats["totals"]
     assert stats["cursor"] > 1000  # every block from 998 on, in order

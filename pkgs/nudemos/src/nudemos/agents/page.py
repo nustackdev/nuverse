@@ -12,7 +12,7 @@ job's state from there: the page holds no state of its own.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 
 __all__ = ["PAGE", "SAY", "SKETCH", "STATUS", "TRANSCRIPT"]
@@ -20,10 +20,10 @@ __all__ = ["PAGE", "SAY", "SKETCH", "STATUS", "TRANSCRIPT"]
 
 _IMPORTS = """\
 import nu
+import nuspace
 import nustd.ui
-from nuspace.system.utils import snap
 from nudemos.agents import launch, views
-from nudemos.agents.state import Agent, at
+from nudemos.agents.state import agent
 from nudemos.agents.views import with_job
 """
 
@@ -65,8 +65,8 @@ def draw(h):
 
 
 def follow(job):
-    moves = [at(job, Agent.n.on_change()), at(job, Agent.status.on_change())]
-    return nu.Reconcile(snap(nu.OnAny(*moves)), nu.let(snap(views.head(views.agent_view(job))), draw), every=2.0)
+    moves = [agent(job).n.on_change(), agent(job).status.on_change()]
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(views.head(views.agent_view(job))), draw), every=2.0)
 
 
 def out(plane):
@@ -96,21 +96,21 @@ def button(label):
 
 def sent(job):
     # The box's text into the agent's inbox: it is the next turn, now or after this one.
-    typed = snap(nu.Str(S.text).strip())
+    typed = nuspace.atomic(nu.Str(S.text).strip())
     return nu.let(typed, lambda t: nu.IfDo(nu.Str(t) != "", launch.say(job, t) >> S.text.set("")))
 
 
 def press(job):
-    status = snap(nu.Dict(views.head(views.agent_view(job)))["button"])
+    status = nuspace.atomic(nu.Dict(views.head(views.agent_view(job)))["button"])
     return nu.let(status, lambda b: nu.IfDo(nu.Str(b) == "Resume", launch.resume(job), launch.stop(job)))
 
 
 def follow(job):
-    status = at(job, Agent.status)
+    status = agent(job).status
     label = nu.Dict(views.head(views.agent_view(job)))["button"]
     placed = S.text.set("") >> S.send.set("Say") >> S.stop.set("Stop")
     return placed >> nu.ParallelAsync(
-        nu.Reconcile(snap(nu.OnAny(*[status.on_change()])), nu.let(snap(label), button), every=3.0),
+        nu.Reconcile(nuspace.atomic(nu.OnAny(*[status.on_change()])), nu.let(nuspace.atomic(label), button), every=3.0),
         nu.ReactEvery(S.send.on_click(), sent(job)),
         nu.ReactEvery(S.stop.on_click(), press(job)),
     )
@@ -155,11 +155,11 @@ def follow(job):
     # Every event past the last one drawn, on every one that lands.
     def drawn(seen):
         i = nu.Dict(seen)["i"]
-        new = snap(nu.list(at(job, Agent.log.slice(i, None))))
+        new = nuspace.atomic(nu.list(agent(job).log.slice(i, None)))
         each = lambda d: nu.ForEachDo(nu.List(nu.Dict(d)["entries"]), entry) >> seen.set(nu.Dict(d)["seen"])
-        behind = snap(at(job, Agent.n.fallback(0))) > i
+        behind = nuspace.atomic(agent(job).n.fallback(0)) > i
         step = nu.IfDo(behind, nu.let(views.entries(new, seen), each))
-        return nu.Reconcile(snap(at(job, Agent.n.on_change())), step, every=3.0)
+        return nu.Reconcile(nuspace.atomic(agent(job).n.on_change()), step, every=3.0)
 
     return View.head.set("Transcript") >> nu.let({"i": 0, "titles": {}}, drawn)
 
@@ -182,9 +182,9 @@ def draw(elements):
 
 
 def follow(job):
-    sketch = at(job, Agent.sketch)
+    sketch = agent(job).sketch
     hint = View.hint.set("Sketch board: ask the agent to sketch something and it draws here.")
-    return hint >> nu.Reconcile(snap(nu.OnAny(*[sketch.on_change()])), nu.let(snap(sketch.fallback([])), draw), every=10.0)
+    return hint >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[sketch.on_change()])), nu.let(nuspace.atomic(sketch.fallback([])), draw), every=10.0)
 
 
 def out(plane):
@@ -197,7 +197,7 @@ PAGE = PlaneSpec(
     "Agent",
     icon="bot",
     description="One Claude Code session: its transcript streamed live, steered from here.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=(
         ("status", STATUS),
         ("say", SAY),

@@ -16,10 +16,9 @@ __all__ = ["BOARD", "INTRO", "NEW"]
 
 INTRO = '''\
 import nu
-import nuspace.ui
+import nuspace
+import nuspace.devices.web as web
 import nustd.ui
-from nuspace import ops
-from nuspace.system.utils import snap
 
 TEXT = """\\
 Claude Code sessions, run, watched, steered and orchestrated from a space, with Nu as the control plane.
@@ -47,7 +46,7 @@ class View(nustd.ui.Column):
 
 def links(kids):
     def to(i):
-        return nuspace.ui.href(nu.List(kids)[i])
+        return web.href(nu.List(kids)[i])
 
     L = View.links
     return (
@@ -57,21 +56,22 @@ def links(kids):
 
 
 def out(plane):
-    return View.text.set(TEXT) >> nu.let(snap(ops.children(plane)), links) >> nu.ForeverDo(nu.Delay(3600.0))
+    # The three flow planes, made with this one: its first three children.
+    kids = nuspace.Space.planes[plane].children.keys(limit=3)
+    return View.text.set(TEXT) >> nu.let(nuspace.atomic(kids), links) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
 NEW = """\
 import nu
-import nuspace.ui
+import nuspace
+import nuspace.devices.web as web
 import nustd.ui
-from nuspace import ops
-from nuspace.system.utils import snap
 from nudemos.agents import views
 from nudemos.agents.claude import READY
 from nudemos.agents.flows import SCENARIO, launch_flow
 from nudemos.agents.launch import launch
-from nudemos.agents.state import agents_of, flows_of, made_by
+from nudemos.agents.state import agents_of, flows_of, spec_of
 
 
 def pick(options):
@@ -106,11 +106,11 @@ def started(root):
     # One agent from what the form says, its page opened.
     def made(spec):
         def opened(page):
-            return launch(root, spec, page=page) >> View.history.push(nuspace.ui.href(page))
+            return launch(root, spec, page=page) >> View.history.push(web.href(page))
 
         return nu.let("", opened) >> W.name.set("") >> View.brief.set("")
 
-    count = snap(agents_of(root).len())
+    count = nuspace.atomic(agents_of(root).len())
     spec = views.spec_of(
         nu.Str(W.name), nu.Str(W.cwd), nu.Str(W.model.choice), nu.Str(W.mode.choice), nu.Str(View.brief), count
     )
@@ -119,14 +119,16 @@ def started(root):
 
 def demo(root):
     # The built-in scenario: the Fan-out flow, three builders and a judge, on one brief.
-    fanout = ops.children(root).iter().filter(lambda p: made_by(p) == "agents_fanout").first(default="")
+    # The flow planes are the first three children, made with this one.
+    kids = nu.List(nuspace.Space.planes[root].children.keys(limit=3))
+    fanout = kids.iter().filter(lambda p: spec_of(p) == "agents_fanout").first(default="")
 
     def run(plane):
-        name = nu.Str("Fan-out ") + nu.str(nu.Int(snap(flows_of(plane).len())) + 1)
+        name = nu.Str("Fan-out ") + nu.str(nu.Int(nuspace.atomic(flows_of(plane).len())) + 1)
         spec = nu.Dict.of(brief=SCENARIO, n=3, tasks=[])
         return launch_flow(nu.Str(plane), root, "fanout", spec, name)
 
-    return nu.let(snap(nu.str(fanout)), run)
+    return nu.let(nuspace.atomic(nu.str(fanout)), run)
 
 
 def defaults():
@@ -151,10 +153,10 @@ def out(plane):
 
 BOARD = """\
 import nu
+import nuspace
 import nustd.ui
-from nuspace.shapes import Space
-from nuspace.system.utils import snap
 from nudemos.agents import views
+from nudemos.agents.state import agents_at
 
 
 class AgentCard(nustd.ui.Card):
@@ -184,6 +186,6 @@ def draw(cards):
 
 
 def out(plane):
-    kids = Space.planes[plane].children.on_change()
-    return View.head.set("All agents") >> View.empty.set("No agents yet") >> nu.Reconcile(snap(nu.OnAny(*[kids])), nu.let(snap(views.cards(views.board(plane))), draw), every=1.0)
+    kids = agents_at(plane).jobs.on_change()
+    return View.head.set("All agents") >> View.empty.set("No agents yet") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[kids])), nu.let(nuspace.atomic(views.cards(views.board(plane))), draw), every=1.0)
 """

@@ -21,12 +21,12 @@ from pathlib import Path
 from typing import Any
 
 import nu
+import nuspace
 import nustd.time
-from nuspace import ops
-from nuspace.system.utils import snap
 
+from .. import headless
 from .launch import launch, say
-from .state import Agent, Flow, at, flow_made
+from .state import FLOW, agent, flow_made
 
 
 __all__ = [
@@ -106,21 +106,21 @@ class Team:
 
     def begin(self, kind: str, spec: dict[str, Any]) -> nu.Nu:
         """Say what this flow is, once."""
-        return ops.atomic_state(
+        return nuspace.atomic(
             flow_made()
-            >> Flow.kind.set(kind)
-            >> Flow.spec.set(spec)
-            >> Flow.status.set("running")
-            >> Flow.started.set(Flow.started.fallback(nustd.time.time()))
+            >> FLOW.kind.set(kind)
+            >> FLOW.spec.set(spec)
+            >> FLOW.status.set("running")
+            >> FLOW.started.set(FLOW.started.fallback(nustd.time.time()))
         )
 
     def phase(self, text: str) -> nu.Nu:
         """Where the flow is now, in a few words."""
-        return ops.atomic_state(Flow.phase.set(text))
+        return nuspace.atomic(FLOW.phase.set(text))
 
     def job(self, role: str) -> nu.Nu:
         """The job of ``role``'s agent, ``""`` before it is made. Bare."""
-        return Flow.agents.get_item(role, "")
+        return FLOW.agents.get_item(role, "")
 
     def ask(self, role: str, brief: nu.StrArg, *, folder: str = "") -> nu.Nu:
         """``role`` made with ``brief`` as its first turn. Once: a role already made is left be.
@@ -134,19 +134,19 @@ class Team:
             cwd=made_dir(where),
             model=self.model,
             mode=self.mode,
-            brief=snap(nu.Str(brief)),
+            brief=nuspace.atomic(nu.Str(brief)),
         )
 
         def made(page: nu.Ref, job: nu.Ref) -> nu.Nu:
-            kept = ops.atomic_state(
-                Flow.agents.set_item(role, nu.Str(job))
-                >> Flow.pages.set_item(role, nu.Str(page))
-                >> Flow.roles.append(role)
+            kept = nuspace.atomic(
+                FLOW.agents.set_item(role, nu.Str(job))
+                >> FLOW.pages.set_item(role, nu.Str(page))
+                >> FLOW.roles.append(role)
             )
             return launch(self.root, spec, page=page, job=job, plane_id=self.plane_of(role)) >> kept
 
         fresh = nu.let("", lambda p: nu.let("", lambda j: made(p, j)))
-        return nu.IfDo(snap(Flow.agents.contains(role)), nu.Noop(), fresh)
+        return nu.IfDo(nuspace.atomic(FLOW.agents.contains(role)), nu.Noop(), fresh)
 
     def plane_of(self, role: str) -> str:
         """The page id of ``role``'s agent: fixed by the flow's folder and the role, so it is made once."""
@@ -155,21 +155,23 @@ class Team:
     def tell(self, role: str, text: nu.StrArg) -> nu.Nu:
         """``text`` for ``role``: its next turn, or its brief if it is not made yet."""
         return nu.IfDo(
-            snap(Flow.agents.contains(role)), say(snap(self.job(role)), text), self.ask(role, text)
+            nuspace.atomic(FLOW.agents.contains(role)),
+            say(nuspace.atomic(self.job(role)), text),
+            self.ask(role, text),
         )
 
     def answered(self, role: str) -> nu.Nu:
         """How many turns ``role`` has finished, 0 before it is made. Bare."""
         return nu.Int(
-            nu.If(Flow.agents.contains(role), at(self.job(role), Agent.answered.fallback(0)), 0)
+            nu.If(FLOW.agents.contains(role), agent(self.job(role)).answered.fallback(0), 0)
         )
 
     def busy(self, role: str) -> nu.Nu:
         """Whether ``role`` is in a turn or has one queued. Bare."""
         job = self.job(role)
-        working = at(job, Agent.status.fallback("")) == "working"
-        queued = at(job, Agent.inbox.fallback([]).len()) > 0
-        return nu.Bool(nu.If(Flow.agents.contains(role), working.or_(queued), False))
+        working = agent(job).status.fallback("") == "working"
+        queued = agent(job).inbox.fallback([]).len() > 0
+        return nu.Bool(nu.If(FLOW.agents.contains(role), working.or_(queued), False))
 
     def finished(self, role: str) -> nu.Nu:
         """Whether ``role`` has finished a turn and has nothing under way. Bare."""
@@ -180,11 +182,13 @@ class Team:
         done = self.finished(roles[0])
         for role in roles[1:]:
             done = done.and_(self.finished(role))
-        return nu.WaitUntil(snap(Flow.agents.on_change()), snap(done), every=1.5)
+        return nu.WaitUntil(
+            nuspace.atomic(FLOW.agents.on_change()), nuspace.atomic(done), every=1.5
+        )
 
     def answer(self, role: str) -> nu.Nu:
         """``role``'s latest answer. Bare."""
-        return at(self.job(role), Agent.answer.fallback(""))
+        return agent(self.job(role)).answer.fallback("")
 
     def brief(self, template: str, **parts: object) -> nu.Nu:
         """``template`` filled from ``parts``, Nu terms read when the flow gets there."""
@@ -192,8 +196,8 @@ class Team:
 
     def done(self, outcome: nu.StrArg) -> nu.Nu:
         """The flow is over, and this is what it came to (markdown)."""
-        return ops.atomic_state(
-            Flow.outcome.set(nu.Str(outcome)) >> Flow.phase.set("done") >> Flow.status.set("done")
+        return nuspace.atomic(
+            FLOW.outcome.set(nu.Str(outcome)) >> FLOW.phase.set("done") >> FLOW.status.set("done")
         )
 
     # --- a task board ---
@@ -202,7 +206,7 @@ class Team:
         """The board's tasks, once: a restarted flow keeps the ones it has."""
         board = [{"task": t, "status": "open", "by": "", "mark": 0, "answer": ""} for t in tasks]
         return nu.IfDo(
-            snap(Flow.tasks.exists()), nu.Noop(), ops.atomic_state(Flow.tasks.set(board))
+            nuspace.atomic(FLOW.tasks.exists()), nu.Noop(), nuspace.atomic(FLOW.tasks.set(board))
         )
 
     def pull(self, worker: str) -> nu.Nu:
@@ -211,15 +215,15 @@ class Team:
         def took(picked: nu.Ref) -> nu.Nu:
             def mark(r: nu.Nu) -> nu.Nu:
                 d = nu.Dict(r)
-                return nu.IfDo(d["task"] != "", Flow.tasks.set(d["tasks"]) >> picked.set(d["task"]))
+                return nu.IfDo(d["task"] != "", FLOW.tasks.set(d["tasks"]) >> picked.set(d["task"]))
 
-            pick = ops.atomic_state(
-                nu.let(_take(Flow.tasks.fallback([]), worker, self.answered(worker)), mark)
+            pick = nuspace.atomic(
+                nu.let(_take(FLOW.tasks.fallback([]), worker, self.answered(worker)), mark)
             )
             return pick >> nu.IfDo(nu.Str(picked) != "", self.tell(worker, nu.Str(picked)))
 
-        free = snap(
-            self.busy(worker).not_().and_(nu.Bool(_holding(Flow.tasks.fallback([]), worker)).not_())
+        free = nuspace.atomic(
+            self.busy(worker).not_().and_(nu.Bool(_holding(FLOW.tasks.fallback([]), worker)).not_())
         )
         return nu.IfDo(free, nu.let("", took))
 
@@ -228,22 +232,22 @@ class Team:
 
         def mark(r: nu.Nu) -> nu.Nu:
             d = nu.Dict(r)
-            return nu.IfDo(d["changed"], Flow.tasks.set(d["tasks"]))
+            return nu.IfDo(d["changed"], FLOW.tasks.set(d["tasks"]))
 
         over = self.finished(worker)
         shut = _close(
-            Flow.tasks.fallback([]), worker, self.answered(worker), self.answer(worker), over
+            FLOW.tasks.fallback([]), worker, self.answered(worker), self.answer(worker), over
         )
-        return ops.atomic_state(nu.let(shut, mark))
+        return nuspace.atomic(nu.let(shut, mark))
 
     def tally(self) -> nu.Nu:
         """The board's count, as its phase and outcome."""
 
         def write(t: nu.Nu) -> nu.Nu:
             d = nu.Dict(t)
-            return Flow.phase.set(d["phase"]) >> Flow.outcome.set(d["outcome"])
+            return FLOW.phase.set(d["phase"]) >> FLOW.outcome.set(d["outcome"])
 
-        return ops.atomic_state(nu.let(_tally(Flow.tasks.fallback([])), write))
+        return nuspace.atomic(nu.let(_tally(FLOW.tasks.fallback([])), write))
 
 
 # --- the task board, as plain Python ---------------------------------------------------------
@@ -429,20 +433,23 @@ def launch_flow(
         name: Its name, put before its agents' names.
         job: Set to the new job's id.
     """
-    import nuspace
+    from nuspace.utils import MintId
 
-    from .state import FLOW, flow_at, job_cell
+    from .state import FLOW_CELL, FLOW_JOB, flow_of, runs_at
 
     def made(called: nu.Ref, asked: nu.Ref, j: nu.Ref, folder: nu.Ref) -> nu.Nu:
+        jid = nu.Str(j)
         source = baked(kind, nu.Str(root), nu.Str(folder), nu.Str(called), asked)
-        kept = [] if job is None else [job.set(nu.Str(j))]
+        kept = [] if job is None else [job.set(jid)]
+        cells = [(FLOW_CELL, source)]
+        # The flow's containers, and the flow listed on its plane, in one commit.
+        listed = flow_made(flow_of(jid)) >> runs_at(plane).flows.set_item(jid, True)
         return nu.Sequential(
-            ops.add_plane(
-                backend="async", name=nu.Str(called), parent=plane, ui=False, made_by=FLOW, into=j
+            headless.make(
+                jid, parent=plane, name=nu.Str(called), backend="async", spec=FLOW_JOB, cells=cells
             ),
-            ops.add_cell(nu.Str(j), source, cell_id=job_cell(nu.Str(j)), name="flow"),
-            ops.atomic_state(flow_at(nu.Str(j), flow_made())),
-            nuspace.supervise(nu.Str(j)),
+            nuspace.atomic(listed),
+            headless.supervise(jid),
             *kept,
         )
 
@@ -451,6 +458,9 @@ def launch_flow(
     return nu.let(
         nu.Str(name),
         lambda n: nu.let(
-            spec, lambda s: nu.let("", lambda j: nu.let(flow_dir(kind), lambda f: made(n, s, j, f)))
+            spec,
+            lambda s: nu.let(
+                MintId("p"), lambda j: nu.let(flow_dir(kind), lambda f: made(n, s, j, f))
+            ),
         ),
     )

@@ -21,7 +21,7 @@ extra brings it, ``pip install "nudemos[memes]"``.
 
 from __future__ import annotations
 
-from nuspace import PlaneSpec
+from nuspace.specs import PlaneSpec, WebOptions
 
 from . import cells, monitor, overview, sync
 
@@ -34,7 +34,7 @@ PLANE = PlaneSpec(
     "Memes",
     icon="flame",
     description="A live terminal over meme launches, synced from Solana.",
-    meta={"editable": True, "full_width": True},
+    web=WebOptions(editable=True, full_width=True),
     cells=cells.ROOT,
     children=(overview.PLANE, monitor.PLANE, sync.PLANE),
     group="Demos",
