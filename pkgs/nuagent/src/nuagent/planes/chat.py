@@ -161,7 +161,8 @@ def _above(page: nu.StrArg, add: Callable[..., nu.Nu]) -> nu.Nu:
     """
     box = nuspace.at.plane(id=page).state(SpecCells).ids[BOX]
     row = Space.cells[box]
-    on_page = (row.plane.fallback("") == page).and_(row.removed_at.exists().not_())
+    live = (row.plane.fallback("") == page).and_(row.removed_at.exists().not_())
+    on_page = nu.If(nu.IsNull(box), False, live)
     return nu.IfDo(on_page, add(before=box), add())
 
 
