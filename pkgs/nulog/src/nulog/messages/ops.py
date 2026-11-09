@@ -44,16 +44,18 @@ def append(
     args: tuple[object, ...],
     extra: nu.DictArg[str, object] | None,
 ) -> nu.Nu:
-    """Build the Command tree that appends one entry to ``stream``."""
-    return Messages.streams[stream].entries.set_item(
-        nustd.uuid.uuid4().hex(),
-        nu.Dict.of(
-            ts_us=nustd.time.time_ns() // 1000,
-            level=level_name(level),
-            msg=percent_format(msg, *args),
-            fields=extra or {},
-        ),
-    )
+    """Build the Command tree that appends one entry to ``stream``, slot by slot."""
+
+    def write(key: nu.Attr) -> nu.Nu:
+        entry = Messages.streams[stream].entries[nu.Str(key)]
+        return (
+            entry.ts_us.set(nustd.time.time_ns() // 1000)
+            >> entry.level.set(level_name(level))
+            >> entry.msg.set(percent_format(msg, *args))
+            >> entry.fields.set(extra or {})
+        )
+
+    return nu.let(nustd.uuid.uuid4().hex(), write)
 
 
 # --- read ------------------------------------------------------------------
