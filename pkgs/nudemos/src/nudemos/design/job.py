@@ -83,7 +83,7 @@ def job_of(page: nu.StrArg) -> nu.Str:
 
 def job_cell(job: nu.StrArg) -> nu.Str:
     """The job's one cell, NULL for a job with none. Bare read: one seek."""
-    return nu.Str(Space.planes[job].cells.first())
+    return nu.Str(Space.planes[job].cells.first(default=nu.NullForm()))
 
 
 def build_at(job: nu.StrArg) -> Build:

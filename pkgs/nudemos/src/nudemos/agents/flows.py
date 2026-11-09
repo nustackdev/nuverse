@@ -187,8 +187,10 @@ class Team:
         )
 
     def answer(self, role: str) -> nu.Nu:
-        """``role``'s latest answer. Bare."""
-        return agent(self.job(role)).answer.fallback("")
+        """``role``'s latest answer, ``""`` before it is made. Bare."""
+        return nu.Str(
+            nu.If(FLOW.agents.contains(role), agent(self.job(role)).answer.fallback(""), "")
+        )
 
     def brief(self, template: str, **parts: object) -> nu.Nu:
         """``template`` filled from ``parts``, Nu terms read when the flow gets there."""
