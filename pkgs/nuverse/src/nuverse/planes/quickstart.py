@@ -322,11 +322,11 @@ def fill_rows(raw):
 
 def open_made(spec):
     \"\"\"Open the newest plane made from the spec, as with_plane does: made first when there is none.\"\"\"
-    newest = nuspace.Space.indexes.spec_planes[nuspace.specs.registered_name(spec)].ids.last()
+    newest = nuspace.Space.indexes.spec_planes[nuspace.specs.registered_name(spec)].ids.last(default="")
 
     def go(pid):
         gone = nuspace.plane.exists(nu.Str(pid)).not_()
-        return (pid.set(nuspace.atomic(newest.fallback("")))
+        return (pid.set(nuspace.atomic(newest))
                 >> nu.IfDo(nuspace.atomic(gone), nuspace.specs.add_plane(spec, into=pid))
                 >> track("quickstart_demo_opened") >> View.history.push(web.href(nu.Str(pid))))
     return nu.let("", go)

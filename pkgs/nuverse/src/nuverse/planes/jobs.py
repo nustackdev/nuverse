@@ -218,7 +218,7 @@ JOBS = nuspace.at.plane.state(Jobs)
 
 
 def main(job):
-    # A job's one cell, by the name its spec gave it, in the job's own plane state.
+    # A job's one cell, by the name its spec gave it, in the job's own plane state. NULL for none.
     return nu.Str(nuspace.at.plane(id=job).state(SpecCells).ids["main"])
 
 
@@ -261,9 +261,11 @@ def draw(job):
     d = View.detail
     held = supervisor.supervised()[job]
     policy = nu.Str(held.policy.fallback(""))
+    cell = main(job)
+    prog = nu.If(nu.IsNull(cell), "", nuspace.Space.cells[cell].prog.fallback(""))
     return nuspace.atomic(
         d.title.set(nuspace.plane.title(job))
-        >> d.editor.set(nu.str(nuspace.Space.cells[main(job)].prog.fallback("")))
+        >> d.editor.set(nu.str(prog))
         >> d.save.set("Save")
         >> d.boot.set(init.boot_list().contains(job))
         >> d.restart.policy.choice.set(nu.If(policy == "", OFF, policy))

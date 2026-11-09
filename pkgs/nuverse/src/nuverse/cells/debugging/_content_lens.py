@@ -89,7 +89,8 @@ def _door(key: nu.Nu, kind: str, preview: str = "") -> nu.Nu:
 
 def _keys(kind: type[Content[Any]], scope: tuple[str, str], limit: int) -> nu.List:
     """One page of the content keys of ``kind``'s items in ``scope``, ``[]`` for a scope with none."""
-    return nu.List(entries(kind, *scope).keys(limit=limit))
+    held = entries(kind, *scope)
+    return nu.List(nu.If(held.exists(), nu.List(held.keys(limit=limit)), []))
 
 
 def _kinds_column(specs: dict[str, ContentSpec], scope: tuple[str, str], max_rows: int) -> nu.Nu:

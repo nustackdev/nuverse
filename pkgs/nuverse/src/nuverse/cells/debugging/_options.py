@@ -71,9 +71,13 @@ Unique = nu.host(_unique, name="LensUnique")
 
 
 def content_planes() -> list[nu.Nu]:
-    """One page per installed kind of the planes holding its items: ``State.content_planes[kind].planes``."""
+    """One page per installed kind of the planes holding its items, ``[]`` for a kind with none: ``State.content_planes[kind].planes``."""
+
+    def page(planes: nu.Ref) -> nu.List:
+        return nu.list(nu.If(planes.exists(), nu.list(planes.keys(limit=MAX_PLANES)), []))
+
     held = nuspace.State.content_planes
-    return [held[name].planes.keys(limit=MAX_PLANES) for name in content_specs()]
+    return [page(held[name].planes) for name in content_specs()]
 
 
 def plane_options(first: nu.StrArg) -> nu.List:
