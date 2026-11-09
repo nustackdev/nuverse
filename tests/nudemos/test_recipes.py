@@ -59,11 +59,21 @@ async def _load(store, plane: str, cell: str) -> nu.Nu:
     return await store.read(load)
 
 
-async def _run_until_drawn(store, plane: str, cell: str, settle: float = 1.0) -> _Browser:
-    """Run the cell as the kernel does, let it draw, then stop it (it waits forever after)."""
+async def _run_until_drawn(
+    store, plane: str, cell: str, settle: float = 1.0, until=None, most: float = 10.0
+) -> _Browser:
+    """Run the cell as the kernel does, let it draw, then stop it (it waits forever after).
+
+    Given ``until``, an async check, it runs until the check holds, then ``settle`` more.
+    """
     browser = _Browser()
     term = inside(await _load(store, plane, cell), plane=plane, cell=cell)
     task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))
+    if until is not None:
+        deadline = asyncio.get_running_loop().time() + most
+        while not await until():
+            assert asyncio.get_running_loop().time() < deadline, "timed out"
+            await asyncio.sleep(0.05)
     await asyncio.sleep(settle)
     task.cancel()
     (result,) = await asyncio.gather(task, return_exceptions=True)
@@ -239,7 +249,12 @@ async def test_the_index_makes_every_page_once_under_itself(store):
 async def test_a_removed_page_stays_removed(store):
     await store.run(nuspace.specs.add_plane(recipes.PLANE, "r"))
     index = (await _cells(store, "r"))["index"]
-    await _run_until_drawn(store, "r", index, settle=0.5)
+
+    async def made() -> bool:
+        kids = await store.read(Space.planes["r"].children.keys(limit=10))
+        return len(kids) == len(recipes.RECIPES)
+
+    await _run_until_drawn(store, "r", index, settle=0.1, until=made)
     await store.do(nuspace.plane.remove("r.detail"))
     await _run_until_drawn(store, "r", index, settle=0.5)
     kids = await store.read(Space.planes["r"].children.keys(limit=10))
