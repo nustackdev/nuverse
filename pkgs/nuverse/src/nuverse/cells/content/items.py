@@ -1,7 +1,7 @@
 """An items cell: every item of one kind in one scope, listed, opened, added and removed.
 
 Its Config says which: the kind, by name, from the installed kinds, and
-the scope (:mod:`._editing`). Left as it is, it lists its own cell's text
+the scope, by id or key (:mod:`._editing`). Left as it is, it lists its own cell's text
 items. Each item is a line drawn with its kind's ``render_hit``, with Open
 and Remove. Add makes one under a fresh, time ordered content key
 (``nuspace.utils.MintId``) and opens it. The item open is drawn in full with ``render``. Editing is an
@@ -33,6 +33,7 @@ from ._editing import (
     ForKind,
     KindField,
     LevelField,
+    Scope,
     kind_of,
     kind_options,
     landed,
@@ -48,8 +49,8 @@ if TYPE_CHECKING:
 __all__ = ["CELL", "OPENED", "Open", "out"]
 
 
-#: What the Config asks: the kind, then the scope.
-FIELDS = ("kind", "level", "scope")
+#: What the Config asks: the kind, then the scope, by id or key.
+FIELDS = ("kind", "level", "scope", "by")
 
 
 class Open(nu.Shape):
@@ -67,7 +68,7 @@ class Which(nustd.ui.Column):
 
     kind = KindField.slot(label="Kind")
     level = LevelField.slot(label="Scope")
-    scope = nustd.ui.InputRef.slot(label="Scope id", placeholder="This cell or plane")
+    scope = Scope.slot(gap=3, align="end")
 
 
 class Config(nustd.ui.Accordion):
@@ -182,7 +183,10 @@ def _shown(held: nu.Nu) -> nu.Nu:
 
         return View.listing.erase() >> View.note.erase() >> nu.TryCatch(built, catch=failed)
 
-    return pointed(held, listed)
+    def missing(why: nu.Str) -> nu.Nu:
+        return View.listing.erase() >> View.note.set(why)
+
+    return pointed(held, listed, missing=missing)
 
 
 def out() -> nu.Nu:

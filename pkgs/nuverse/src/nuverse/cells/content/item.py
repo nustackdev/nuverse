@@ -1,9 +1,10 @@
 """An item cell: any one item, of any kind, drawn in full by its kind's ``render``.
 
 Its Config says which: the kind, by name, from the installed kinds, the
-scope and the item's content key (:mod:`._editing`). Left as it is, it
-shows its own cell's ``value`` text item. It only shows: an editor of the
-same item edits it, and every change of the item draws it again.
+scope (by id or key) and the item's content key (:mod:`._editing`). Left
+as it is, it shows its own cell's ``value`` text item. It only shows: an
+editor of the same item edits it, and every change of the item draws it
+again.
 
 What it draws is built for the kind when it runs (:class:`._editing.ForKind`).
 """
@@ -26,6 +27,7 @@ from ._editing import (
     ForKind,
     KindField,
     LevelField,
+    Scope,
     kind_of,
     kind_options,
     pointed,
@@ -40,8 +42,8 @@ if TYPE_CHECKING:
 __all__ = ["CELL", "out"]
 
 
-#: What the Config asks: the kind, then where the item is.
-FIELDS = ("kind", "level", "scope", "key")
+#: What the Config asks: the kind, then where the item is, the scope by id or key.
+FIELDS = ("kind", "level", "scope", "by", "key")
 
 
 class Which(nustd.ui.Column):
@@ -49,7 +51,7 @@ class Which(nustd.ui.Column):
 
     kind = KindField.slot(label="Kind")
     level = LevelField.slot(label="Scope")
-    scope = nustd.ui.InputRef.slot(label="Scope id", placeholder="This cell or plane")
+    scope = Scope.slot(gap=3, align="end")
     key = nustd.ui.InputRef.slot(label="Item key", placeholder=ITEM)
 
 
@@ -83,7 +85,10 @@ def _shown(held: nu.Nu) -> nu.Nu:
 
         return View.item.erase() >> View.note.erase() >> nu.TryCatch(built, catch=failed)
 
-    return pointed(held, draw)
+    def missing(why: nu.Str) -> nu.Nu:
+        return View.item.erase() >> View.note.set(why)
+
+    return pointed(held, draw, missing=missing)
 
 
 def out() -> nu.Nu:

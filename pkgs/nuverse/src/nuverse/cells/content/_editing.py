@@ -3,8 +3,9 @@
 An editor of one item (a text input, a number input, ...) edits its own
 cell's :data:`ITEM` by default. Its Config's Item section can point it at
 another item of its kind: the scope's level (a cell, a plane, the space),
-the scope's id (blank for this cell or this plane) and the item's content
-key (blank for :data:`ITEM`). Where it points is the cell's own state
+the scope's id or key (blank for this cell or this plane; an inline switch
+says which the input holds, id by default) and the item's content key
+(blank for :data:`ITEM`). Where it points is the cell's own state
 (:class:`Target`), so two editors pointed at one item edit it together, and
 a program can point one by writing it
 (``nuspace.at.cell(id=c).state(Target).target.set(...)``).
@@ -40,6 +41,9 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "BY_ID",
+    "BY_KEY",
+    "BY_OPTIONS",
     "DEFAULT_KIND",
     "ITEM",
     "LEVEL_OPTIONS",
@@ -48,6 +52,8 @@ __all__ = [
     "ForKind",
     "KindField",
     "LevelField",
+    "Scope",
+    "ScopeField",
     "Target",
     "Where",
     "bounded",
@@ -75,6 +81,13 @@ LEVEL_OPTIONS = [
     {"value": SPACE, "label": "Space"},
 ]
 
+#: A Config names the scope by its id (the default) or by its key. See identity.md.
+BY_ID = "id"
+BY_KEY = "key"
+
+#: The switch beside the scope input: what the input holds.
+BY_OPTIONS = [{"value": BY_ID, "label": "ID"}, {"value": BY_KEY, "label": "Key"}]
+
 #: An editor's Config: its own settings, then where its item is.
 SECTIONS = [{"id": "settings", "label": "Config"}, {"id": "item", "label": "Item"}]
 
@@ -84,10 +97,11 @@ DEFAULT_KIND = "nuverse.Text"
 
 
 class Target(nu.Shape):
-    """Where the cell's item is, plain data: ``level``, ``scope``, ``key``, and ``kind`` for a viewer.
+    """Where the cell's item is, plain data: ``level``, ``scope``, ``by``, ``key``, and ``kind`` for a viewer.
 
-    A field missing or blank takes its default: a cell, this cell or this
-    plane, :data:`ITEM`. Kept in the cell's own state (:data:`TARGET`).
+    ``by`` says what ``scope`` holds: :data:`BY_ID` or :data:`BY_KEY`. A
+    field missing or blank takes its default: a cell, this cell or this
+    plane, by id, :data:`ITEM`. Kept in the cell's own state (:data:`TARGET`).
     """
 
     target = nustd.kv.PrimitiveDictRef.slot()
@@ -105,16 +119,31 @@ class KindField(nustd.ui.Field):
     input = nustd.ui.SelectRef.slot(placeholder="No content kinds registered")
 
 
+class ScopeField(nustd.ui.Field):
+    input = nustd.ui.InputRef.slot(placeholder="This cell or plane")
+
+
+class Scope(nustd.ui.Row):
+    """The scope's id or key, with the switch saying which, inline."""
+
+    value = ScopeField.slot(label="Scope identity")
+    by = nustd.ui.RadioGroupRef.slot(options=BY_OPTIONS, selected=BY_ID, orientation="horizontal")
+
+
 class Where(nustd.ui.Column):
     """An editor's Item section: where the item it edits is."""
 
     level = LevelField.slot(label="Scope")
-    scope = nustd.ui.InputRef.slot(label="Scope id", placeholder="This cell or plane")
+    scope = Scope.slot(gap=3, align="end")
     key = nustd.ui.InputRef.slot(label="Item key", placeholder=ITEM)
 
 
 def _field(ui: nu.Nu, name: str) -> nu.Nu:
-    """The input of ``ui``'s field ``name``: a select sits in a Field, an input is one."""
+    """The input of ``ui``'s field ``name``: a select sits in a Field, the scope in a :class:`Scope`."""
+    if name == "scope":
+        return ui.scope.value.input
+    if name == "by":
+        return ui.scope.by
     held = getattr(ui, name)
     return held.input if name in ("level", "kind") else held
 
@@ -130,36 +159,66 @@ def kind_of(held: nu.Nu) -> nu.Str:
     return nu.Str(nu.If(kind == "", DEFAULT_KIND, kind))
 
 
-def pointed(held: nu.Nu, body: Callable[[str, nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
+def pointed(
+    held: nu.Nu,
+    body: Callable[[str, nu.Str, nu.Str], nu.Nu],
+    *,
+    missing: Callable[[nu.Str], nu.Nu] | None = None,
+) -> nu.Nu:
     """``body(level, scope id, key)`` for the item a target names, blanks filled.
 
     ``level`` is a python str, one of the three, so ``body`` can build a ref
     on it (:func:`~nuspace.shapes.content.entries`); the id and the key are
     terms.
 
+    Named by key, the scope is resolved to its id in one read of the key
+    index, the read ``nuspace.at.cell(key)`` and ``nuspace.at.plane(key)``
+    make, then everything goes by that id. Resolved again, ``body`` started
+    over, whenever that key's entry changes (set, moved, removed). A key no
+    live row holds addresses nothing: ``missing(why)`` runs instead of
+    ``body``. A blank key is this cell or this plane, as a blank id is.
+
     Args:
         held: A target, plain data (:class:`Target`).
         body: What to do with the item.
+        missing: What to do while the key finds no row, given why. Nothing
+            when left out.
     """
-    scope_id, key = _given(held, "scope"), _given(held, "key")
+    scope, key = _given(held, "scope"), _given(held, "key")
     key = nu.Str(nu.If(key == "", ITEM, key))
     level = _given(held, "level")
+    by_key = (_given(held, "by") == BY_KEY).and_(scope != "")
 
-    def on(at: str, own: nu.StrArg) -> nu.Nu:
-        return body(at, nu.Str(nu.If(scope_id == "", own, scope_id)), key)
+    def on(at: str, own: nu.StrArg, index: nustd.kv.DictRef) -> nu.Nu:
+        by_id = body(at, nu.Str(nu.If(scope == "", own, scope)), key)
+        gone = nu.Noop() if missing is None else missing(nu.Str(f"No {at} has the key ") + scope)
 
+        def found(id: nu.Nu) -> nu.Nu:
+            return nu.IfDo(nu.Str(id) == "", gone, body(at, nu.Str(id), key))
+
+        resolved = nu.let(nuspace.atomic(index.get_item(scope, "")), found)
+        keyed = nu.ReactLatest(index[scope].on_change(), resolved, initial=True)
+        return nu.IfDo(by_key, keyed, by_id)
+
+    keys = nuspace.Space.indexes
     return nu.IfDo(
         level == PLANE,
-        on(PLANE, Here.plane),
-        nu.IfDo(level == SPACE, body(SPACE, nu.Str(""), key), on(CELL, Here.cell)),
+        on(PLANE, Here.plane, keys.plane_keys),
+        nu.IfDo(level == SPACE, body(SPACE, nu.Str(""), key), on(CELL, Here.cell, keys.cell_keys)),
     )
 
 
-def editing(kind: type[Content[Any]], body: Callable[[Any], nu.Nu]) -> nu.Nu:
+def editing(
+    kind: type[Content[Any]],
+    body: Callable[[Any], nu.Nu],
+    *,
+    missing: Callable[[nu.Str], nu.Nu] | None = None,
+) -> nu.Nu:
     """``body(item)`` over the item of ``kind`` the cell points at, started again when it points elsewhere.
 
     Runs for as long as the cell does. Bare: inside :func:`editor`, or a
-    cell's ``nuspace.bracketed``.
+    cell's ``nuspace.bracketed``. ``missing(why)`` runs instead while the
+    cell points at a key no row holds (:func:`pointed`).
     """
     held = nuspace.atomic(TARGET.fallback({}))
 
@@ -167,13 +226,13 @@ def editing(kind: type[Content[Any]], body: Callable[[Any], nu.Nu]) -> nu.Nu:
         return body(entries(kind, at, scope_id)[key])
 
     return nu.ReactLatest(
-        TARGET.on_change(), nu.let(held, lambda t: pointed(t, edit)), initial=True
+        TARGET.on_change(), nu.let(held, lambda t: pointed(t, edit, missing=missing)), initial=True
     )
 
 
 def where(
     ui: nu.Nu,
-    fields: Sequence[str] = ("level", "scope", "key"),
+    fields: Sequence[str] = ("level", "scope", "by", "key"),
     *,
     shown: Mapping[str, str] | None = None,
 ) -> tuple[nu.Nu, list[nu.Nu]]:
@@ -181,15 +240,17 @@ def where(
 
     Args:
         ui: The section: a :class:`Where`, or a Column with ``fields`` of
-            the same names (``kind`` and ``level`` in a Field, as selects).
+            the same names (``kind`` and ``level`` in a Field, as selects;
+            ``scope`` and ``by`` in a :class:`Scope` named ``scope``).
         fields: The target's fields the section asks.
         shown: What a select shows for a field the target leaves blank, by
-            field. ``level`` shows :data:`~nuspace.shapes.content.CELL`.
+            field. ``level`` shows :data:`~nuspace.shapes.content.CELL`,
+            ``by`` :data:`BY_ID`.
 
     Returns:
         What draws it, and the reactions keeping it and the target in step.
     """
-    blanks = {"level": CELL, **(shown or {})}
+    blanks = {"level": CELL, "by": BY_ID, **(shown or {})}
     held = nu.Dict(TARGET.fallback({}))
 
     def given(name: str) -> nu.Nu:
@@ -241,9 +302,13 @@ def editor(
     show_name, renames = named(box.entry, box.config.settings.name)
     show_where, points = where(box.config.item)
     head = show_name >> show_where if first is None else first >> show_name >> show_where
-    return nuspace.bracketed(
-        head >> nu.ParallelAsync(editing(kind, body), *renames, *points, *also)
-    )
+
+    def found(item: nu.Nu) -> nu.Nu:
+        return box.entry.set_error("") >> body(item)
+
+    # A key that finds no row: said on the entry, nothing edited until it does.
+    edits = editing(kind, found, missing=box.entry.set_error)
+    return nuspace.bracketed(head >> nu.ParallelAsync(edits, *renames, *points, *also))
 
 
 def bounded(state: nu.Shape, entry: nu.Nu, settings: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:

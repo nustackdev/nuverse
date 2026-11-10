@@ -31,7 +31,7 @@ from nuverse.cells.content import (
     text_editor,
     text_input,
 )
-from nuverse.cells.content._editing import ITEM, Target
+from nuverse.cells.content._editing import BY_ID, BY_KEY, ITEM, Target
 from nuverse.cells.debugging import (
     cell_content_lens,
     cell_lens,
@@ -719,15 +719,16 @@ async def test_config_points_an_editor_at_another_cells_item(store):
     mine, first = await _input(store, text_input, "a")
     theirs, second = await _input(store, text_input, "b")
     try:
-        # Its Config shows where its item is: this cell's value.
+        # Its Config shows where its item is: this cell's value, the scope by id.
         assert theirs.shown("item", "level", "input")[-1] == CELL
         assert theirs.shown("item", "key")[-1] == ""
+        assert theirs.shown("scope", "by")[-1] == BY_ID
 
         mine.type("entry", "input", value="Basil")
         await _settles(store, _value(TextContent, "a"), lambda v: v == "Basil")
 
         # Pointed at a's item, b shows it and edits it.
-        theirs.type("item", "scope", value="a")
+        theirs.type("scope", "value", "input", value="a")
         target = _state("b", Target).target
         await _settles(store, target, lambda v: (v or {}).get("scope") == "a")
         await _until(lambda: theirs.shown("entry", "input")[-1] == "Basil")
@@ -760,6 +761,52 @@ async def test_a_program_points_an_editor_at_any_scope(store, level, scope, key)
         task.cancel()
 
 
+async def test_config_points_an_editor_at_a_cell_by_its_key(store):
+    mine, first = await _input(store, text_input, "a")
+    theirs, second = await _input(store, text_input, "b")
+    try:
+        await store.do(nuspace.cell.set_key("a", "herbs"))
+        mine.type("entry", "input", value="Basil")
+        await _settles(store, _value(TextContent, "a"), lambda v: v == "Basil")
+
+        # Switched to key, the input holds a's key: b edits a's item.
+        theirs.type("scope", "by", value=BY_KEY)
+        theirs.type("scope", "value", "input", value="herbs")
+        target = _state("b", Target).target
+        await _settles(store, target, lambda v: (v or {}).get("scope") == "herbs")
+        assert (await store.read(target))["by"] == BY_KEY
+        await _until(lambda: theirs.shown("entry", "input")[-1] == "Basil")
+        theirs.type("entry", "input", value="Thyme")
+        await _settles(store, _value(TextContent, "a"), lambda v: v == "Thyme")
+        assert await store.read(_value(TextContent, "b").exists()) is False
+    finally:
+        first.cancel()
+        second.cancel()
+
+
+async def test_an_editor_by_a_key_no_row_holds_says_so_and_follows_it_when_set(store):
+    await _spec_cell(store, text_input.CELL, "a")
+    await _write(store, _value(TextContent, "a").set("Basil"))
+    await _spec_cell(store, text_input.CELL, "b")
+    await _write(store, _state("b", Target).target.set({"scope": "herbs", "by": BY_KEY}))
+    browser = _Inputs()
+    task = await _running(store, "p", "b", browser)
+    try:
+        # Nothing holds the key: said on the entry, nothing written anywhere.
+        await _until(lambda: {"error": "No cell has the key herbs"} in browser.shown("entry"))
+        assert await store.read(_value(TextContent, "b").exists()) is False
+
+        # The key set on a: resolved, the error cleared, a's item edited.
+        await store.do(nuspace.cell.set_key("a", "herbs"))
+        await _until(lambda: browser.shown("entry", "input")[-1:] == ["Basil"])
+        assert browser.shown("entry")[-1] == {"error": ""}
+        await _listening()
+        browser.type("entry", "input", value="Thyme")
+        await _settles(store, _value(TextContent, "a"), lambda v: v == "Thyme")
+    finally:
+        task.cancel()
+
+
 # --- items of any kind ---------------------------------------------------------------
 
 
@@ -784,6 +831,24 @@ async def test_item_draws_any_item_in_full_and_again_when_it_changes(store):
         # The number written again: drawn again.
         await _write(store, _item(NumberContent, PLANE, "p", "n").set(7.0))
         await _until(lambda: {"value": "7"} in browser.shown("stat"))
+    finally:
+        task.cancel()
+
+
+async def test_item_draws_a_plane_item_by_the_planes_key(store):
+    await _spec_cell(store, item.CELL)
+    await _plane(store, "q", key="pantry")
+    await _write(store, _item(NumberContent, PLANE, "q", "n").set(42.0))
+    pointed = {"kind": NUMBER, "level": PLANE, "scope": "pantry", "by": BY_KEY, "key": "n"}
+    await _write(store, _state("c", Target).target.set(pointed))
+    browser = _Inputs()
+    task = await _running(store, "p", "c", browser)
+    try:
+        await _until(lambda: {"value": "42"} in browser.shown("stat"))
+        assert browser.shown("which", "scope", "by")[-1] == BY_KEY
+        # The key dropped: nothing left to draw, and why.
+        await store.do(nuspace.plane.remove_key("q"))
+        await _until(lambda: "No plane has the key pantry" in browser.shown("note"))
     finally:
         task.cancel()
 
