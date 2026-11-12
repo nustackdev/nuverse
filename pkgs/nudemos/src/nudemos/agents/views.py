@@ -295,7 +295,7 @@ def cards_of(rows: list) -> list:
         out.append(
             {
                 "key": job,
-                "href": f"/{page}",
+                "page": page,
                 "name": spec.get("name", "Agent"),
                 "where": f"{spec.get('model', '')} · {_where(spec)}",
                 "status": status,

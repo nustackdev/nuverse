@@ -21,6 +21,7 @@ from nudemos.recipes import meridian
 from nuspace import Space
 from nuspace.places import inside
 from nuspace.specs import SpecCells
+from nuspace.web import url
 from nuspace.web.env import session_env
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_INIT
@@ -181,6 +182,20 @@ def test_the_source_is_a_program_once_page_is_called(name):
     assert [f.to_dict() for f in _frames(scope["out"])] == _drawn(name)
 
 
+def test_a_card_puts_its_picture_state_and_buttons_in_its_own_parts():
+    # The catalog's instrument cards: what sits under each card's part, by kind.
+    parts: dict[str, set[str]] = {}
+    for f in _drawn("catalog"):
+        kinds = [typ for _, typ, _ in f["chain"]]
+        if "Grid" in kinds and "Card" in kinds[kinds.index("Grid") :]:
+            at = len(kinds) - 1 - kinds[::-1].index("Card")
+            if at + 1 < len(kinds):
+                parts.setdefault(f["chain"][at + 1][0], set()).add(kinds[-1])
+    assert {"ImageRef"} <= parts["media"]
+    assert parts["actions"] == {"StatusPillRef"}
+    assert parts["footer"] == {"ButtonRef"}
+
+
 def test_an_unknown_recipe_says_which_there_are():
     with pytest.raises(KeyError, match="dashboard"):
         recipes.module("nope")
@@ -231,7 +246,7 @@ async def test_the_index_makes_every_page_once_under_itself(store):
     index = (await _cells(store, "r"))["index"]
     browser = await _run_until_drawn(store, "r", index)
     kids = await store.read(Space.planes["r"].children.keys(limit=10))
-    assert kids == [f"r.{name}" for name in recipes.RECIPES]
+    assert kids == [recipes.page_id("r", name) for name in recipes.RECIPES]
     assert [await store.read(Space.planes[k].name) for k in kids] == [
         "Dashboard",
         "Detail",
@@ -240,7 +255,7 @@ async def test_the_index_makes_every_page_once_under_itself(store):
         "Landing",
     ]
     # A tile per page, pointing at it.
-    assert _hrefs(browser.frames) == {f"/r.{name}" for name in recipes.RECIPES}
+    assert _hrefs(browser.frames) == {url(recipes.page_id("r", name)) for name in recipes.RECIPES}
     # Run again: nothing made twice.
     await _run_until_drawn(store, "r", index, settle=0.5)
     assert await store.read(Space.planes["r"].children.keys(limit=10)) == kids
@@ -255,24 +270,24 @@ async def test_a_removed_page_stays_removed(store):
         return len(kids) == len(recipes.RECIPES)
 
     await _run_until_drawn(store, "r", index, settle=0.1, until=made)
-    await store.do(nuspace.plane.remove("r.detail"))
+    await store.do(nuspace.plane.remove(recipes.page_id("r", "detail")))
     await _run_until_drawn(store, "r", index, settle=0.5)
     kids = await store.read(Space.planes["r"].children.keys(limit=10))
-    assert "r.detail" not in kids
+    assert recipes.page_id("r", "detail") not in kids
     assert len(kids) == len(recipes.RECIPES) - 1
 
 
 async def test_a_page_draws_its_recipe_linked_to_its_siblings(store):
     await store.run(nuspace.specs.add_plane(recipes.PLANE, "r"))
     await _run_until_drawn(store, "r", (await _cells(store, "r"))["index"])
-    page = "r.catalog"
+    page = recipes.page_id("r", "catalog")
     browser = await _run_until_drawn(store, page, (await _cells(store, page))["catalog"])
     inits = [f for f in browser.frames if f.op == OP_INIT]
     assert inits
     # The recipe's root lands under the cell, everything else under it.
     roots = {f.ref.index("catalog") for f in inits}
     assert len(roots) == 1
-    siblings = {f"/r.{name}" for name in recipes.RECIPES}
+    siblings = {url(recipes.page_id("r", name)) for name in recipes.RECIPES}
     hrefs = _hrefs(browser.frames)
     assert hrefs
     assert hrefs <= siblings

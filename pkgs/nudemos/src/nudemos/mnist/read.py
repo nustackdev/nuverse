@@ -16,8 +16,7 @@ provided around the cell, and is read again only when the run stores a new
 one: a run still training on ``latest`` reads the same drawing anew with
 every checkpoint it lands.
 
-The pad is ``nustd.ui.SketchRef``. Where the installed nustd has none yet the
-page goes without it, and the two buttons still feed it.
+The pad is ``nustd.ui.SketchRef``.
 """
 
 from __future__ import annotations
@@ -49,56 +48,37 @@ On **Latest**, a run still training reads the same drawing again as each new che
 
 SLOTS = [{"value": "latest", "label": "Latest"}, {"value": "best", "label": "Best"}]
 
-#: The pad, where nustd has one.
-SKETCH = getattr(nustd.ui, "SketchRef", None)
+BARS = {"grid": {"left": 0, "right": 0, "top": 8, "bottom": 18}, "yAxis": {"show": False, "max": 100}, "animation": False}
 
 
-class RunField(nustd.ui.Field):
-    choice = nustd.ui.SelectRef.slot(placeholder="No runs yet: launch one", searchable=True)
+class View(nu.Shape):
+    page = nustd.ui.ColumnRef.slot(gap=4)
 
 
-class SlotField(nustd.ui.Field):
-    choice = nustd.ui.RadioGroupRef.slot(options=SLOTS, selected="latest", orientation="horizontal")
+text = View.page["text"].to(nustd.ui.MarkdownRef)
+pick = View.page["pick"].to(nustd.ui.GridRef.slot(cols=2, stack_below=640, gap=4))
+work = View.page["work"].to(nustd.ui.GridRef.slot(cols="1fr 1fr", stack_below=800, gap=4))
 
+run = pick[0, 0].to(nustd.ui.Field.slot(label="Run")).control.to(
+    nustd.ui.SelectRef.slot(placeholder="No runs yet: launch one", searchable=True)
+)
+checkpoint = pick[0, 1].to(nustd.ui.Field.slot(label="Checkpoint")).control.to(
+    nustd.ui.RadioGroupRef.slot(options=SLOTS, selected="latest", orientation="horizontal")
+)
 
-class Pick(nustd.ui.Grid):
-    run = RunField.slot(label="Run")
-    model = SlotField.slot(label="Checkpoint")
+pad = work[0, 0].to(nustd.ui.CardRef.slot(title="Draw", subtitle="read on every stroke"))
+sketch = pad["sketch"].to(nustd.ui.SketchRef.slot(
+    width=280, tools=["pen"], controls=["clear"], defaults={"size": 0.07}, label="Draw a digit, 0 to 9",
+))
+sample = pad.actions["sample"].to(nustd.ui.ButtonRef.slot(label="Draw a sample", variant="secondary", size="sm", icon="pencil"))
+test = pad.actions["test"].to(nustd.ui.ButtonRef.slot(label="Try a test digit", variant="secondary", size="sm", icon="refresh-cw"))
 
-
-class Tools(nustd.ui.Row):
-    sample = nustd.ui.ButtonRef.slot(label="Draw a sample", variant="secondary", icon="pencil")
-    test = nustd.ui.ButtonRef.slot(label="Try a test digit", variant="secondary", icon="refresh-cw")
-
-
-PAD = {"sketch": SKETCH.slot(width=280, tools=["pen"], controls=["clear"], defaults={"size": 0.07}, label="Draw a digit, 0 to 9")} if SKETCH else {}
-Pad = type("Pad", (nustd.ui.Card,), {**PAD, "tools": Tools.slot(gap=2, wrap=True)})
-
-
-class Seen(nustd.ui.Row):
-    image = nustd.ui.ImageRef.slot(width=112, height=112, rounded=True)
-    caption = nustd.ui.TextRef.slot()
-
-
-class Answer(nustd.ui.Card):
-    said = nustd.ui.StatRef.slot(label="It reads")
-    probs = nustd.ui.BarChart.slot(height=180, tooltip=False, option={
-        "grid": {"left": 0, "right": 0, "top": 8, "bottom": 18},
-        "yAxis": {"show": False, "max": 100}, "animation": False,
-    })
-    line = nustd.ui.TextRef.slot()
-    seen = Seen.slot(gap=3, align="center")
-
-
-class Work(nustd.ui.Grid):
-    pad = Pad.slot(title="Draw")
-    answer = Answer.slot(title="Read")
-
-
-class View(nustd.ui.Column):
-    text = nustd.ui.MarkdownRef.slot()
-    pick = Pick.slot(columns=2, min_width=240, gap=3)
-    work = Work.slot(columns=2, min_width=300, gap=3)
+answer = work[0, 1].to(nustd.ui.CardRef.slot(title="Read"))
+said = answer["said"].to(nustd.ui.StatRef.slot(label="It reads"))
+probs = answer["probs"].to(nustd.ui.BarChart.slot(height=180, tooltip=False, option=BARS))
+line = answer["line"].to(nustd.ui.TextRef.slot(tone="muted", size="sm"))
+seen_image = answer["seen"].to(nustd.ui.ImageRef.slot(width=112, height=112, radius="md"))
+seen_caption = answer.footer["caption"].to(nustd.ui.TextRef.slot(tone="muted", size="sm"))
 
 
 class Shown(nu.Shape):
@@ -113,8 +93,6 @@ class Shown(nu.Shape):
     seen = nu.StrRef.slot()
 
 
-P, W = View.pick, View.work
-
 CAPTION = "What the model is given: the ink cropped, scaled into 20x20 and centered by its mass in 28x28, as MNIST was made."
 AS_IS = "What the model is given: an MNIST test digit, as it is."
 
@@ -126,8 +104,7 @@ def model(job, slot):
 
 
 def draw(a):
-    A = W.answer
-    return A.said.set(a["digit"], label=nu.Str("It reads, ") + nu.Str(a["sure"])) >> A.probs.set(a["bars"]) >> A.line.set(a["line"])
+    return said.set(a["digit"], label=nu.Str("It reads, ") + nu.Str(a["sure"])) >> probs.set(a["bars"]) >> line.set(a["line"])
 
 
 def read(job, slot, m, look):
@@ -149,76 +126,67 @@ def settle():
     def picked(job, slot):
         return nu.let(nuspace.atomic(model(job, slot)), lambda m: go(job, slot, m))
 
-    return nu.let(nu.Str(Shown.job), lambda j: nu.let(nu.Str(Shown.kind), lambda s: picked(nu.Str(j), nu.Str(s))))
+    # No run picked yet (none launched): nothing to read with.
+    chosen = nu.let(nu.Str(Shown.job), lambda j: nu.let(nu.Str(Shown.kind), lambda s: picked(nu.Str(j), nu.Str(s))))
+    return nu.IfDo(Shown.job != "", chosen)
 
 
 def took(image, label):
-    seen = W.answer.seen
     return (
         Shown.image.set(image) >> Shown.label.set(label) >> Shown.n.set(Shown.n + 1)
-        >> seen.image.set(views.picture(Shown.image))
-        >> seen.caption.set(nu.If(Shown.label < 0, CAPTION, AS_IS)) >> settle()
+        >> seen_image.set(views.picture(Shown.image))
+        >> seen_caption.set(nu.If(Shown.label < 0, CAPTION, AS_IS)) >> settle()
     )
 
 
 def drew():
-    return nu.let(W.pad.sketch, lambda s: took(views.ink(s), -1))
+    return nu.let(sketch, lambda s: took(views.ink(s), -1))
 
 
 def sampled():
     def put(d):
         strokes = nu.List(d)[1]
-        shown = W.pad.sketch.set(strokes) if SKETCH else nu.Noop()
-        return shown >> took(views.ink(strokes), -1)
+        return sketch.set(strokes) >> took(views.ink(strokes), -1)
 
     return nu.let(views.drawn(Shown.n), put)
 
 
 def tested():
-    cleared = W.pad.sketch.set([]) if SKETCH else nu.Noop()
-    return nu.let(MnistDigit(), lambda d: cleared >> took(d["pixels"], d["label"]))
+    return nu.let(MnistDigit(), lambda d: sketch.set([]) >> took(d["pixels"], d["label"]))
 
 
 def options(c):
     # New runs show up. A tab with none picked takes the newest run with a model, and one nobody
     # has picked a run on follows the newest run as it is launched.
     def go(job):
-        return P.run.choice.set(job) >> Shown.job.set(job) >> settle()
+        return run.set(job) >> Shown.job.set(job) >> settle()
 
     newer = Shown.chosen.not_().and_(nu.Str(c["newest"]) != Shown.job).and_(Shown.job != "")
     return (
-        P.run.choice.set_options(c["options"])
+        run.set_options(c["options"])
         >> nu.IfDo(Shown.job == "", go(c["first"]))
         >> nu.IfDo(newer, go(c["newest"]))
     )
 
 
 def chose():
-    return Shown.chosen.set(True) >> Shown.job.set(nu.Str(P.run.choice)) >> settle()
-
-
-def placed():
-    # Slots show in the order first written: the text, the pickers, the pad, then the answer.
-    A, T = W.answer, W.pad.tools
-    pad = W.pad.sketch.set([]) if SKETCH else nu.Noop()
-    return (
-        View.text.set(TEXT) >> P.run.choice.set_options([]) >> P.model.choice.set("latest")
-        >> pad >> T.sample.set_label("Draw a sample") >> T.test.set_label("Try a test digit")
-        >> A.said.set("-") >> A.probs.set([]) >> A.line.set("") >> A.seen.caption.set(CAPTION)
-    )
+    return Shown.chosen.set(True) >> Shown.job.set(nu.Str(run)) >> settle()
 
 
 def body(root):
     runs = runs_change(nu.Str(root))
-    pad = [nu.ReactEvery(W.pad.sketch.on_change(), drew())] if SKETCH else []
-    return placed() >> took([], -1) >> nu.ParallelAsync(
+    start = (
+        text.set(TEXT) >> run.init() >> checkpoint.set("latest") >> sketch.init() >> sample.init() >> test.init()
+        >> said.set("-") >> probs.init() >> line.init()
+    )
+    return start >> took([], -1) >> nu.ParallelAsync(
         nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.choices(views.shelf(nu.Str(root)))), options), every=3.0),
-        nu.ReactEvery(P.run.choice.on_change(), chose()),
-        nu.ReactEvery(P.model.choice.on_change(), Shown.kind.set(nu.Str(P.model.choice)) >> settle()),
-        nu.ReactEvery(W.pad.tools.sample.on_click(), sampled()),
-        nu.ReactEvery(W.pad.tools.test.on_click(), tested()),
+        nu.ReactEvery(run.on_change(), chose()),
+        nu.ReactEvery(checkpoint.on_change(), Shown.kind.set(nu.Str(checkpoint)) >> settle()),
+        nu.ReactEvery(sample.on_click(), sampled()),
+        nu.ReactEvery(test.on_click(), tested()),
+        nu.ReactEvery(sketch.on_change(), drew()),
         nu.ForeverDo(nu.Delay(EVERY) >> settle()),
-        *pad,
     )
 
 

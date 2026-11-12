@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Demos rebuilt on the new layout: real links, live times, cards and tables
 - Planes and demos import the web device from its new home, nuspace.web
 - Release nuagent 0.2.5 on nuspace 0.6.4
 - A chat opened again answers messages its engine missed while it was not listening

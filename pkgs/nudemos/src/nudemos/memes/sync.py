@@ -31,17 +31,17 @@ class Knobs(nustd.ui.Grid):
 
 class Images(nustd.ui.Row):
     show = nustd.ui.SwitchRef.slot(label="Show images")
-    note = nustd.ui.TextRef.slot()
+    note = nustd.ui.TextRef.slot(tone="muted", size="sm")
 
 
 class Go(nustd.ui.Row):
     save = nustd.ui.ButtonRef.slot(label="Save", icon="save", variant="secondary")
     over = nustd.ui.ButtonRef.slot(label="Start over from there", icon="rotate-ccw", variant="secondary")
-    hint = nustd.ui.TextRef.slot()
+    hint = nustd.ui.TextRef.slot(tone="muted", size="sm")
 
 
 class View(nustd.ui.Column):
-    knobs = Knobs.slot(columns=3, min_width=240, gap=3)
+    knobs = Knobs.slot(max_columns=3, min_cell_width=240, gap=3)
     go = Go.slot(gap=3, align="center")
     images = Images.slot(gap=3, align="center")
 
@@ -73,22 +73,13 @@ def images(root):
     return nuspace.atomic(control_at(root).images.set(nu.Bool(View.images.show)))
 
 
-def placed():
-    # A slot shows once it is first written, in the order written: the knobs, the buttons, the hint.
-    go = View.go
-    return (
-        K.rpc.set("") >> K.rate.set_value(RATE) >> K.start.set_value(0)
-        >> go.save.set("Save", icon="save", variant="secondary")
-        >> go.over.set("Start over from there", icon="rotate-ccw", variant="secondary")
-        >> go.hint.set("")
-        >> View.images.show.set(False)
-        >> View.images.note.set("Coins' own images, off by default: anyone can launch a coin, and some images are explicit.")
-    )
+NOTE = "Coins' own images, off by default: anyone can launch a coin, and some images are explicit."
 
 
 def out(plane):
     def follow(root):
-        return placed() >> show(root) >> nu.ParallelAsync(
+        buttons = View.go.save.init() >> View.go.over.init() >> View.images.note.set(NOTE)
+        return buttons >> show(root) >> nu.ParallelAsync(
             nu.ReactEvery(View.go.save.on_click(), save(root)),
             nu.ReactEvery(View.go.over.on_click(), save(root) >> control.restart(root, nu.int(K.start))),
             nu.ReactEvery(View.images.show.on_change(), images(root)),
@@ -99,9 +90,11 @@ def out(plane):
 
 
 STATE = cell("""\
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    state = nustd.ui.JsonViewerRef.slot(expand_depth=2, max_height=420)
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="What the sync says", subtitle="its own state, as it writes it")
+
+
+state = View.card["state"].to(nustd.ui.JsonViewerRef.slot(expand_depth=2, max_height=420))
 
 
 @nu.host
@@ -123,9 +116,9 @@ def said(stats, sync):
 def out(plane):
     def follow(root):
         read = said(memes_at(root).stats.fallback({}), memes_at(root).sync.fallback({}))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), View.state.set_value), every=5.0)
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), state.set_value), every=5.0)
 
-    return View.head.set("What the sync says") >> nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 

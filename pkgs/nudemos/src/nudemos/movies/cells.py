@@ -31,45 +31,38 @@ from nudemos.movies import kit
 TEXT = """\\
 Films, the people who made them, and what we made of them.
 Every film and every person is a page, and every block on a page is a small program:
-open its code, change it, run it again.
+open its code, change it, run it again. Browse by the people, by year on the timeline, or the whole map in the atlas.
 """
 
-
-class Ways(nustd.ui.Line):
-    lead = nustd.ui.TextRef.slot()
-    people = nustd.ui.LinkRef.slot()
-    a = nustd.ui.TextRef.slot()
-    timeline = nustd.ui.LinkRef.slot()
-    b = nustd.ui.TextRef.slot()
-    atlas = nustd.ui.LinkRef.slot()
+#: The ways to browse, by the catalog's name for each page, and what each holds.
+WAYS = {
+    "people": "Every director, and everyone in two films or more",
+    "timeline": "Every film by year, and decade by decade",
+    "atlas": "Directors into genres, and the store under it all",
+}
 
 
-class View(nustd.ui.Column):
-    about = nustd.ui.MarkdownRef.slot()
-    ways = Ways.slot()
+class View(nu.Shape):
+    page = nustd.ui.ColumnRef.slot(gap=4)
+
+
+about = View.page["about"].to(nustd.ui.MarkdownRef)
+ways = View.page["ways"].to(nustd.ui.GridRef.slot(max_columns=3, min_cell_width=200, gap=3))
 
 
 def out(plane):
-    ways = View.ways
-
     def build(base):
         folder = kit.catalog(base).planes.folder
-        link = lambda name: nuspace.web.href(folder[name].fallback(base))
-        draw = (
-            ways.people.set(href=link("people"), label="people")
-            >> ways.timeline.set(href=link("timeline"), label="timeline")
-            >> ways.atlas.set(href=link("atlas"), label="atlas")
-        )
+
+        def way(name, what):
+            tile = ways[name].to(nustd.ui.PageLinkRef.slot(variant="tile"))
+            return nu.IfDo(folder.contains(name), nuspace.web.link(tile, folder[name].fallback(""), description=what))
+
+        draw = nu.Sequential(*(way(name, what) for name, what in WAYS.items()))
         # The browsing pages are made on the first run: the links follow once they are.
         return nu.Reconcile(nuspace.atomic(folder.on_change()), nuspace.atomic(draw))
 
-    return (
-        View.about.set(TEXT)
-        >> ways.lead.set("Browse by ")
-        >> ways.a.set(",  by year on the ")
-        >> ways.b.set(",  or the whole map in the ")
-        >> kit.on_catalog(plane, build)
-    )
+    return about.set(TEXT) >> kit.on_catalog(plane, build)
 '''
 
 
@@ -79,18 +72,18 @@ import nustd.ui
 import nuspace
 from nudemos.movies import kit
 
+KEYS = {
+    "films": "Films",
+    "watched": "Watched",
+    "rating": "Our average",
+    "hours": "Hours of film",
+    "people": "People",
+    "best": "Our favourite",
+}
 
-class Tiles(nustd.ui.Grid):
-    films = nustd.ui.StatRef.slot(label="Films")
-    watched = nustd.ui.StatRef.slot(label="Watched")
-    rating = nustd.ui.StatRef.slot(label="Our average")
-    hours = nustd.ui.StatRef.slot(label="Hours of film")
-    people = nustd.ui.StatRef.slot(label="People")
-    best = nustd.ui.StatRef.slot(label="Our favourite")
 
-
-class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=6, min_width=140, gap=3)
+class View(nu.Shape):
+    tiles = nustd.ui.GridRef.slot(max_columns=6, min_cell_width=140, gap=3)
 
 
 @nu.host
@@ -107,8 +100,12 @@ def tally(films):
     }
 
 
+def tile(k, label):
+    return View.tiles[k].to(nustd.ui.CardRef.slot(size="sm"))[0].to(nustd.ui.StatRef.slot(label=label))
+
+
 def draw(t):
-    return nu.Sequential(*(getattr(View.tiles, k).set_value(t[k]) for k in ("films", "watched", "rating", "hours", "people", "best")))
+    return nu.Sequential(*(tile(k, label).set_value(t[k]) for k, label in KEYS.items()))
 
 
 def out(plane):
@@ -126,26 +123,23 @@ import nustd.ui
 from nudemos.movies import kit
 
 
-class Form(nustd.ui.Row):
-    title = nustd.ui.InputRef.slot(placeholder="A film to add, eg Oppenheimer (2023)")
-    add = nustd.ui.ButtonRef.slot(label="Add film", icon="plus")
+class View(nu.Shape):
+    form = nustd.ui.RowRef.slot(gap=3, align="end", grow={"title": 1})
 
 
-class View(nustd.ui.Column):
-    form = Form.slot(gap=3, align="end")
+title = View.form["title"].to(nustd.ui.InputRef.slot(placeholder="A film to add, eg Oppenheimer (2023)"))
+add = View.form["add"].to(nustd.ui.ButtonRef.slot(label="Add film", icon="plus"))
 
 
 def out(plane):
-    form = View.form
-
-    def add(base):
-        typed = nu.Str(form.title).strip()
+    def added(base):
+        typed = nu.Str(title).strip()
         film = kit.add_film(base, kit.typed_film(typed))
-        return nu.IfDo(typed != "", film >> form.title.set(""))
+        return nu.IfDo(typed != "", film >> title.set(""))
 
     # The first run brings in the opening films, each with its page, then the people.
-    return form.title.set("") >> form.add.set_label("Add film") >> kit.on_catalog(
-        plane, lambda base: kit.seed(base) >> nu.ReactEvery(form.add.on_click(), add(base))
+    return title.set("") >> add.init() >> kit.on_catalog(
+        plane, lambda base: kit.seed(base) >> nu.ReactEvery(add.on_click(), added(base))
     )
 """
 
@@ -154,28 +148,30 @@ FILMS = """\
 import nu
 import nustd.ui
 import nuspace
+from nudemos import pages
 from nudemos.movies import kit
 
 COLUMNS = [
-    {"key": "title", "label": "Title", "editable": False},
-    {"key": "year", "label": "Year", "kind": "number", "editable": False, "width": 80},
-    {"key": "director", "label": "Director", "editable": False},
-    {"key": "genres", "label": "Genres", "editable": False},
-    {"key": "rating", "label": "Our rating", "kind": "number", "width": 120},
+    {"key": "title", "label": "Title", "editable": False, "cell": nustd.ui.PageLinkRef.slot(variant="inline")},
+    {"key": "year", "label": "Year", "kind": "number", "editable": False, "width": 80, "align": "end"},
+    {"key": "director", "label": "Director", "editable": False, "hide_below": 640},
+    {"key": "genres", "label": "Genres", "editable": False, "wrap": "truncate", "hide_below": 800},
+    {"key": "rating", "label": "Our rating", "kind": "number", "width": 120, "align": "end"},
     {"key": "watched", "label": "Watched", "kind": "bool", "width": 100},
 ]
 
 
-class View(nustd.ui.Column):
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", editable=True, label="Films", dense=True)
+class View(nu.Shape):
+    table = nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", editable=True, label="Films", density="compact")
 
 
 @nu.host
-def rows(films):
+def rows(films, planes):
     ordered = sorted(films.items(), key=lambda kv: kv[1].get("year") or 0)
     return [
-        {**{k: f.get(k) for k in ("title", "year", "director", "watched")},
-         "key": key, "rating": f.get("rating") or None, "genres": ", ".join(f.get("genres") or [])}
+        {"key": key, "title": {"page": kit.page_of(planes, "film", key), "label": f["title"]},
+         "year": f.get("year"), "director": f.get("director"), "genres": ", ".join(f.get("genres") or []),
+         "rating": f.get("rating") or None, "watched": f.get("watched")}
         for key, f in ordered
     ]
 
@@ -192,10 +188,11 @@ def out(plane):
     table = View.table
 
     def build(base):
-        films = kit.catalog(base).films
+        cat = kit.catalog(base)
+        read = pages.linked(rows(cat.films.extract(), cat.planes.extract()), "title")
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(rows(films.extract())), table.set_rows)),
-            nu.ReactEvery(table.on_edit(), lambda ev: edit(films, ev)),
+            nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), table.set_rows)),
+            nu.ReactEvery(table.on_edit(), lambda ev: edit(cat.films, ev)),
         )
 
     return kit.on_catalog(plane, build)
@@ -209,26 +206,28 @@ import nuspace
 from nudemos.movies import kit
 
 
-class View(nustd.ui.Column):
-    heading = nustd.ui.HeadingRef.slot(level=3)
-    wall = nustd.ui.GridRef.slot(kit.Tile, min_width=150, gap=4)
+class View(nu.Shape):
+    wall = nustd.ui.CardRef.slot(title="The wall", subtitle="our favourites first")
+
+
+posters = View.wall["posters"].to(nustd.ui.GridRef.slot(kit.Tile, max_columns=6, min_cell_width=150, gap=4))
 
 
 @nu.host
 def tiles(films, planes):
     best = sorted(films.items(), key=lambda kv: (-(kv[1].get("rating") or 0), kv[1]["title"]))
     return [
-        {"i": i, "src": kit.poster_url(f), "label": f["title"], "href": kit.plane_href(planes, "film", key),
+        {"key": key, "src": kit.poster_url(f), "label": f["title"], "page": kit.page_of(planes, "film", key),
          "note": f"{f.get('year') or ''}  {kit.stars(f.get('rating'))}"}
-        for i, (key, f) in enumerate(best)
+        for key, f in best
     ]
 
 
 def out(plane):
     def build(base):
         cat = kit.catalog(base)
-        draw = lambda t: kit.wall(View.wall, t)
-        return View.heading.set_label("The wall, our favourites first") >> nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(tiles(cat.films.extract(), cat.planes.extract())), draw))
+        read = tiles(cat.films.extract(), cat.planes.extract())
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), lambda t: kit.wall(posters, t)))
 
     return kit.on_catalog(plane, build)
 """
@@ -247,45 +246,61 @@ import nuspace
 from nudemos.movies import kit
 
 
-class Facts(nustd.ui.Column):
-    line = nustd.ui.TextRef.slot()
-    credits = nustd.ui.MarkdownRef.slot()
+class View(nu.Shape):
+    front = nustd.ui.GridRef.slot(cols="240px 1fr", stack_below=520, gap=6)
 
 
-class Front(nustd.ui.Row):
-    poster = nustd.ui.ImageRef.slot(width=240, rounded=True)
-    facts = Facts.slot(gap=3)
-
-
-class View(nustd.ui.Column):
-    front = Front.slot(gap=6, align="start")
+poster = View.front[0, 0].to(nustd.ui.ImageRef.slot(width=240, radius="md"))
+facts = View.front[0, 1].to(nustd.ui.ColumnRef.slot(gap=3))
+line = facts["line"].to(nustd.ui.TextRef.slot(tone="muted"))
+directed = facts["directed"].to(nustd.ui.LineRef)
+cast = facts["cast"].to(nustd.ui.RowRef.slot(gap=2, wrap=True))
+back = facts["back"].to(nustd.ui.LineRef)
 
 
 @nu.host
-def front(films, key, base, planes):
+def front(films, key, planes):
     f, people = films.get(key, {}), kit.people_of(films)
 
     def who(name):
-        href = kit.plane_href(planes, "person", kit.slug(name))
-        return f"[{name}]({href})" if href and kit.has_page(people.get(name, {"directed": [], "films": []})) else name
+        # A person draws as a link once they have a page, as plain text before.
+        shown = kit.has_page(people.get(name, {"directed": [], "films": []}))
+        page = kit.page_of(planes, "person", kit.slug(name)) if shown else ""
+        return {"key": ("p:" if page else "t:") + kit.slug(name), "label": name, "page": page}
 
     facts = [str(f.get("year") or ""), f"{f['runtime']} min" if f.get("runtime") else "", " / ".join(f.get("genres") or [])]
-    credits = [f"**Directed by** {who(f['director'])}" if f.get("director") else "",
-               "**With** " + ", ".join(who(c) for c in f.get("cast") or []) if f.get("cast") else "",
-               f"[Back to the shelf](/{base}), or Option+click it to keep this film open beside"]
-    return {"src": kit.poster_url(f), "title": f.get("title", ""), "line": "  ·  ".join(x for x in facts if x),
-            "credits": "\\n\\n".join(c for c in credits if c)}
+    crew = [who(c) for c in f.get("cast") or []]
+    return {
+        "src": kit.poster_url(f), "title": f.get("title", ""), "line": "  ·  ".join(x for x in facts if x),
+        "director": who(f["director"]) if f.get("director") else {"key": "", "label": "unknown", "page": ""},
+        "cast": crew, "keys": ["with"] + [c["key"] for c in crew],
+    }
 
 
-def draw(v):
-    front = View.front
-    return front.poster.set(v["src"], alt=v["title"]) >> front.facts.line.set(v["line"]) >> front.facts.credits.set(v["credits"])
+def person(at, p):
+    page = nu.Str(p["page"])
+    key = nu.Str(p["key"])
+    linked = at[key].to(nustd.ui.LinkRef).set(href=kit.href_of(page), label=p["label"])
+    plain = at[key].to(nustd.ui.TextRef).set(p["label"])
+    return nu.IfDo(page != "", linked, plain)
+
+
+def draw(v, base):
+    head = directed[0].to(nustd.ui.TextRef.slot(weight="medium")).set("Directed by")
+    with_ = cast["with"].to(nustd.ui.TextRef.slot(weight="medium")).set("With")
+    by = nu.Dict(v["director"])
+    who = directed[1].to(nustd.ui.LinkRef).set(href=kit.href_of(by["page"]), label=by["label"])
+    crew = nu.ForEachDo(nu.List(v["cast"]), lambda p: person(cast, p)) >> cast.keep(nu.List(v["keys"])) >> cast.set_order(nu.List(v["keys"]))
+    shelf = back[0].to(nustd.ui.LinkRef).set(href=nuspace.web.href(base), label="Back to the shelf")
+    hint = back[1].to(nustd.ui.TextRef.slot(tone="muted")).set(", or Option+click it to keep this film open beside")
+    return poster.set(v["src"], alt=v["title"]) >> line.set(v["line"]) >> head >> who >> with_ >> crew >> shelf >> hint
 
 
 def out(plane):
     def build(base, key):
         cat = kit.catalog(base)
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(front(cat.films.extract(), key, base, cat.planes.extract())), draw))
+        read = front(cat.films.extract(), key, cat.planes.extract())
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), lambda v: draw(v, base)))
 
     return kit.on_page(plane, "film", build)
 """
@@ -304,8 +319,8 @@ class Ours(nustd.ui.Row):
     rank = nustd.ui.StatRef.slot(label="On our shelf")
 
 
-class View(nustd.ui.Column):
-    ours = Ours.slot(gap=6)
+class View(nu.Shape):
+    ours = Ours.slot(gap=6, grow={"rating": 1})
 
 
 @nu.host
@@ -336,19 +351,20 @@ import nustd.ui
 from nudemos.movies import kit
 
 
-class View(nustd.ui.Column):
-    heading = nustd.ui.HeadingRef.slot(level=3)
-    notes = nustd.ui.MarkdownRef.slot()
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Our notes", subtitle="markdown, kept as you type")
+
+
+notes = View.card["notes"].to(nustd.ui.MarkdownRef)
 
 
 def out(plane):
     def build(base, key):
-        notes, kept = View.notes, kit.catalog(base).films[key].notes
+        kept = kit.catalog(base).films[key].notes
         return (
-            View.heading.set_label("Our notes")
-            >> notes.set(kept.fallback(""))
+            notes.set(kept.fallback(""))
             >> notes.set_editable(True)
-            >> notes.set_placeholder("What we thought. Markdown, kept as you type.")
+            >> notes.set_placeholder("What we thought.")
             >> nu.ParallelAsync(
                 nu.ReactEvery(notes.on_change(), kept.set(nu.Str(notes))),
                 nu.ReactEvery(kept.on_change(), notes.set(nu.str(kept))),
@@ -363,30 +379,49 @@ CONNECTED = """\
 import nu
 import nustd.ui
 import nuspace
+from nudemos import pages
 from nudemos.movies import kit
+
+COLUMNS = [
+    {"key": "film", "label": "Film", "cell": nustd.ui.PageLinkRef.slot(variant="inline")},
+    {"key": "year", "label": "Year", "kind": "number", "width": 80, "align": "end"},
+    {"key": "why", "label": "Shares", "wrap": "truncate"},
+]
+
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Connected", subtitle="films sharing a person, or two genres")
+
+
+films = View.card["films"].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", label="Connected", density="compact"))
+empty = View.card.footer["empty"].to(nustd.ui.TextRef.slot(tone="muted", size="sm"))
 
 
 @nu.host
-def connected(films, key, planes):
-    me = films.get(key, {})
+def connected(catalog, key, planes):
+    me = catalog.get(key, {})
     mine = {me.get("director")} | set(me.get("cast") or [])
-    links = []
-    for k, f in films.items():
+    found = []
+    for k, f in catalog.items():
         shared = sorted(n for n in mine & ({f.get("director")} | set(f.get("cast") or [])) if n)
         genres = set(me.get("genres") or []) & set(f.get("genres") or [])
         if k != key and (shared or len(genres) >= 2):
             why = ", ".join(shared) if shared else "also " + " / ".join(sorted(genres))
-            links.append((-len(shared), f.get("year") or 0, f"- [{f['title']}]({kit.plane_href(planes, 'film', k)}) {f.get('year') or ''}  ·  {why}"))
-    lines = [line for *_, line in sorted(links)][:8]
-    return "### Connected\\n\\n" + ("\\n".join(lines) if lines else "Nothing shares a person with this film yet.")
+            row = {"key": k, "film": {"page": kit.page_of(planes, "film", k), "label": f["title"]}, "year": f.get("year"), "why": why}
+            found.append((-len(shared), f.get("year") or 0, row))
+    rows = [row for *_, row in sorted(found, key=lambda x: x[:2])][:8]
+    return {"rows": rows, "empty": "" if rows else "Nothing shares a person with this film yet."}
+
+
+def draw(v):
+    return films.set_rows(pages.linked(v["rows"], "film")) >> empty.set(v["empty"])
 
 
 def out(plane):
-    text = nustd.ui.MarkdownRef("connected")
-
     def build(base, key):
         cat = kit.catalog(base)
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(connected(cat.films.extract(), key, cat.planes.extract())), text.set))
+        read = connected(cat.films.extract(), key, cat.planes.extract())
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), draw))
 
     return kit.on_page(plane, "film", build)
 """
@@ -412,7 +447,7 @@ class Edit(nustd.ui.Collapsible):
     save = nustd.ui.ButtonRef.slot(label="Save facts", icon="save")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     edit = Edit.slot(title="Edit the facts", open=False)
 
 
@@ -429,7 +464,7 @@ def out(plane):
         )
         # Saved facts can credit someone new, who gets a page under People, and the genre picks the icon.
         icon = nuspace.plane.set_icon(plane, kit.icon_of(nu.List(e.genres)))
-        return show >> e.save.set_label("Save facts") >> nu.ReactEvery(e.save.on_click(), save >> icon >> kit.ensure_people(base))
+        return show >> e.save.init() >> nu.ReactEvery(e.save.on_click(), save >> icon >> kit.ensure_people(base))
 
     return kit.on_page(plane, "film", build)
 """
@@ -454,18 +489,14 @@ import nuspace
 from nudemos.movies import kit
 
 
-class Who(nustd.ui.Column):
-    role = nustd.ui.TextRef.slot()
+class View(nu.Shape):
+    page = nustd.ui.ColumnRef.slot(gap=6)
 
 
-class Head(nustd.ui.Row):
-    face = nustd.ui.AvatarRef.slot(size="xl")
-    who = Who.slot(gap=1)
-
-
-class View(nustd.ui.Column):
-    head = Head.slot(gap=4)
-    films = nustd.ui.GridRef.slot(kit.Tile, min_width=130, gap=4)
+head = View.page["head"].to(nustd.ui.RowRef.slot(gap=4))
+face = head["face"].to(nustd.ui.AvatarRef.slot(size="xl"))
+role = head["role"].to(nustd.ui.TextRef)
+films = View.page["films"].to(nustd.ui.GridRef.slot(kit.Tile, max_columns=8, min_cell_width=130, gap=4))
 
 
 @nu.host
@@ -474,21 +505,21 @@ def profile(films, name, planes):
     years = [films[k].get("year") or 0 for k in me["films"]]
     roles = [r for r, ks in (("Director", me["directed"]), ("Actor", me["acted"])) if ks]
     rated = [films[k]["rating"] for k in me["films"] if films[k].get("rating")]
-    role = f"{' and '.join(roles)}  ·  {kit.films_count(len(years))}, {min(years)} to {max(years)}" if years else "No films here yet"
+    said = f"{' and '.join(roles)}  ·  {kit.films_count(len(years))}, {min(years)} to {max(years)}" if years else "No films here yet"
     if rated:
-        role += f"  ·  we give them {sum(rated) / len(rated):.1f} on average"
-    tiles = [{"i": i, "src": kit.poster_url(films[k]), "label": films[k]["title"], "href": kit.plane_href(planes, "film", k),
+        said += f"  ·  we give them {sum(rated) / len(rated):.1f} on average"
+    tiles = [{"key": k, "src": kit.poster_url(films[k]), "label": films[k]["title"], "page": kit.page_of(planes, "film", k),
               "note": f"{films[k].get('year') or ''}  {'directed' if k in me['directed'] else 'acted'}"}
-             for i, k in enumerate(me["films"])]
-    return {"role": role, "tiles": tiles}
+             for k in me["films"]]
+    return {"role": said, "tiles": tiles}
 
 
 def out(plane):
     def build(base, name):
-        head = View.head
-        draw = lambda v: head.who.role.set(v["role"]) >> kit.wall(View.films, v["tiles"])
+        draw = lambda v: role.set(v["role"]) >> kit.wall(films, v["tiles"])
         cat = kit.catalog(base)
-        return head.face.set_name(name) >> nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(profile(cat.films.extract(), name, cat.planes.extract())), draw))
+        read = profile(cat.films.extract(), name, cat.planes.extract())
+        return face.set_name(name) >> nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), draw))
 
     return kit.on_page(plane, "person", build)
 """
@@ -498,36 +529,47 @@ CIRCLE = """\
 import nu
 import nustd.ui
 import nuspace
+from nudemos import pages
 from nudemos.movies import kit
 
+COLUMNS = [
+    {"key": "person", "label": "Person", "cell": nustd.ui.PageLinkRef.slot(variant="inline"), "width": 200},
+    {"key": "films", "label": "Films together", "wrap": "truncate"},
+]
 
-class Both(nustd.ui.Row):
-    circle = nustd.ui.MarkdownRef.slot()
-    ratings = nustd.ui.BarChart.slot(title="Our ratings of their films", horizontal=True, y_max=10, height=220)
+
+class View(nu.Shape):
+    both = nustd.ui.GridRef.slot(cols=2, stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    both = Both.slot(gap=6, align="start", wrap=True, min_width=320)
+people = View.both[0, 0].to(nustd.ui.CardRef.slot(title="Worked with", subtitle="most films together first"))
+table = people["people"].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", label="Worked with", density="compact"))
+ratings = View.both[0, 1].to(nustd.ui.CardRef.slot(title="Our ratings", subtitle="their films, by year"))
+bars = ratings["ratings"].to(nustd.ui.BarChart.slot(horizontal=True, y_max=10, height=220))
 
 
 @nu.host
 def circle(films, name, planes):
-    people = kit.people_of(films)
-    mine = set(people.get(name, {}).get("films", []))
-    shared = {n: [films[k]["title"] for k in p["films"] if k in mine] for n, p in people.items() if n != name}
+    folks = kit.people_of(films)
+    mine = set(folks.get(name, {}).get("films", []))
+    shared = {n: [films[k]["title"] for k in p["films"] if k in mine] for n, p in folks.items() if n != name}
     close = sorted(((n, ts) for n, ts in shared.items() if ts), key=lambda x: (-len(x[1]), x[0]))[:10]
-    href = lambda n: kit.plane_href(planes, "person", kit.slug(n))
-    link = lambda n: f"[{n}]({href(n)})" if href(n) and kit.has_page(people[n]) else n
-    lines = [f"- {link(n)}  ·  {', '.join(ts)}" for n, ts in close]
+
+    def page(n):
+        return kit.page_of(planes, "person", kit.slug(n)) if kit.has_page(folks[n]) else ""
+
+    rows = [{"key": kit.slug(n), "person": {"page": page(n), "label": n}, "films": ", ".join(ts)} for n, ts in close]
     bars = [[films[k]["title"], films[k].get("rating") or 0] for k in sorted(mine, key=lambda k: films[k].get("year") or 0)]
-    return {"md": "### Worked with\\n\\n" + "\\n".join(lines), "bars": bars}
+    return {"rows": rows, "bars": bars}
 
 
 def out(plane):
-    draw = lambda v: View.both.circle.set(v["md"]) >> View.both.ratings.set(v["bars"])
+    draw = lambda v: table.set_rows(pages.linked(v["rows"], "person")) >> bars.set(v["bars"])
+
     def build(base, name):
         cat = kit.catalog(base)
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(circle(cat.films.extract(), name, cat.planes.extract())), draw))
+        read = circle(cat.films.extract(), name, cat.planes.extract())
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), draw))
 
     return kit.on_page(plane, "person", build)
 """
@@ -548,7 +590,7 @@ from nudemos.movies import kit
 
 class Name(nustd.ui.Column):
     link = nustd.ui.LinkRef.slot()
-    note = nustd.ui.TextRef.slot()
+    note = nustd.ui.TextRef.slot(tone="muted", size="sm")
 
 
 class Face(nustd.ui.Row):
@@ -556,34 +598,43 @@ class Face(nustd.ui.Row):
     name = Name.slot(gap=0)
 
 
-class View(nustd.ui.Column):
-    intro = nustd.ui.TextRef.slot()
-    faces = nustd.ui.GridRef.slot(Face, min_width=260, gap=3)
+class View(nu.Shape):
+    page = nustd.ui.ColumnRef.slot(gap=4)
+
+
+intro = View.page["intro"].to(nustd.ui.TextRef.slot(tone="muted"))
+grid = View.page["faces"].to(nustd.ui.GridRef.slot(Face, max_columns=4, min_cell_width=260, gap=3))
 
 
 @nu.host
 def faces(films, planes):
     people = [(n, p) for n, p in kit.people_of(films).items() if kit.has_page(p)]
     people.sort(key=lambda np: (not np[1]["directed"], -len(np[1]["films"]), np[0]))
-    return [{"i": str(i), "name": n, "href": kit.plane_href(planes, "person", kit.slug(n)),
+    return [{"key": kit.slug(n), "name": n, "page": kit.page_of(planes, "person", kit.slug(n)),
              "note": f"{'Director' if p['directed'] else 'Actor'}, {kit.films_count(len(p['films']))}"}
-            for i, (n, p) in enumerate(people)]
+            for n, p in people]
 
 
 def draw(rows):
+    shown = nu.List(rows)
+    keys = shown.iter().map(lambda r: nu.Dict(r)["key"]).to_list()
+
     def one(r):
-        face = View.faces[r["i"]]
-        return face.face.set_name(r["name"]) >> face.name.link.set(href=r["href"], label=r["name"]) >> face.name.note.set(r["note"])
-    return nu.ForEachDo(rows, one)
+        face = grid[nu.Str(r["key"])]
+        link = face.name.link.set(href=kit.href_of(r["page"]), label=r["name"])
+        return face.face.set_name(r["name"]) >> link >> face.name.note.set(r["note"])
+
+    return nu.ForEachDo(shown, one) >> grid.keep(keys) >> grid.set_order(keys)
 
 
 def out(plane):
-    intro = View.intro.set("Every director, and everyone who appears in two films or more. The web grows as films are added.")
+    said = intro.set("Every director, and everyone who appears in two films or more. The web grows as films are added.")
+
     def build(base):
         cat = kit.catalog(base)
         return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(faces(cat.films.extract(), cat.planes.extract())), draw))
 
-    return intro >> kit.on_catalog(plane, build)
+    return said >> kit.on_catalog(plane, build)
 """
 
 
@@ -597,11 +648,13 @@ import nuspace
 from nudemos.movies import kit
 
 
-class View(nustd.ui.Column):
-    chart = nustd.ui.ScatterChart.slot(
-        title="Every film by year and our rating", symbol_size=14, x_label="Year", y_label="Our rating",
-        x_format="{value}", tooltip_format="{b}", legend=True, height=360,
-    )
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Every film by year and our rating", subtitle="unrated and undated films are in the table below")
+
+
+chart = View.card["chart"].to(nustd.ui.ScatterChart.slot(
+    symbol_size=14, x_label="Year", y_label="Our rating", x_format="{value}", tooltip_format="{b}", legend=True, height=360,
+))
 
 
 @nu.host
@@ -609,7 +662,7 @@ def points(films):
     by = {}
     for f in films.values():
         if not f.get("rating") or not f.get("year"):
-            continue  # unrated or undated: on the list below, not on the chart
+            continue  # unrated or undated: in the table below, not on the chart
         genre = next(iter(f.get("genres") or []), "Other")
         by.setdefault(genre, []).append({"name": f"{f['title']} ({f.get('year')})  {kit.stars(f.get('rating'))}",
                                          "value": [f.get("year") or 0, f.get("rating") or 0]})
@@ -619,7 +672,7 @@ def points(films):
 def out(plane):
     def build(base):
         films = kit.catalog(base).films
-        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(points(films.extract())), View.chart.set))
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(points(films.extract())), chart.set))
 
     return kit.on_catalog(plane, build)
 """
@@ -629,24 +682,41 @@ DECADES = """\
 import nu
 import nustd.ui
 import nuspace
+from nudemos import pages
 from nudemos.movies import kit
+
+COLUMNS = [
+    {"key": "decade", "label": "Decade", "width": 100},
+    {"key": "year", "label": "Year", "kind": "number", "width": 80, "align": "end"},
+    {"key": "film", "label": "Film", "cell": nustd.ui.PageLinkRef.slot(variant="inline")},
+    {"key": "director", "label": "Director", "hide_below": 640},
+    {"key": "rating", "label": "Our rating", "width": 110, "align": "end"},
+]
+
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Decade by decade", subtitle="every film, oldest first")
+
+
+table = View.card["decades"].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", label="Decades", density="compact"))
 
 
 @nu.host
 def decades(films, planes):
-    by = {}
-    for key, f in sorted(films.items(), key=lambda kv: kv[1].get("year") or 0):
-        by.setdefault((f.get("year") or 0) // 10 * 10, []).append(
-            f"- **{f.get('year') or '?'}**  [{f['title']}]({kit.plane_href(planes, 'film', key)})  ·  {f.get('director') or 'unknown'}  ·  {kit.stars(f.get('rating'))}"
-        )
-    return "\\n\\n".join(f"### The {d}s\\n\\n" + "\\n".join(lines) for d, lines in by.items())
+    ordered = sorted(films.items(), key=lambda kv: kv[1].get("year") or 0)
+    return [
+        {"key": key, "decade": f"{(f.get('year') or 0) // 10 * 10}s" if f.get("year") else "undated", "year": f.get("year"),
+         "film": {"page": kit.page_of(planes, "film", key), "label": f["title"]},
+         "director": f.get("director") or "unknown", "rating": kit.stars(f.get("rating"))}
+        for key, f in ordered
+    ]
 
 
 def out(plane):
-    text = nustd.ui.MarkdownRef("decades")
     def build(base):
         cat = kit.catalog(base)
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(decades(cat.films.extract(), cat.planes.extract())), text.set))
+        read = pages.linked(decades(cat.films.extract(), cat.planes.extract()), "film")
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), table.set_rows))
 
     return kit.on_catalog(plane, build)
 """
@@ -662,8 +732,11 @@ import nuspace
 from nudemos.movies import kit
 
 
-class View(nustd.ui.Column):
-    flows = nustd.ui.SankeyChart.slot(title="Who makes what: directors into genres", height=520)
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Who makes what", subtitle="directors into genres")
+
+
+sankey = View.card["flows"].to(nustd.ui.SankeyChart.slot(height=520))
 
 
 @nu.host
@@ -679,7 +752,7 @@ def flows(films):
 def out(plane):
     def build(base):
         films = kit.catalog(base).films
-        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(flows(films.extract())), View.flows.set))
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(flows(films.extract())), sankey.set))
 
     return kit.on_catalog(plane, build)
 """

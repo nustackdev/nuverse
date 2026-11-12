@@ -40,9 +40,11 @@ __all__ = [
     "error_rows",
     "health",
     "launch_cards",
+    "ms",
     "picture",
     "pulse",
     "short",
+    "side",
     "status",
     "status_of",
     "tape_rows",
@@ -128,6 +130,20 @@ def ago(t: float | None, now: float | None = None) -> str:
 def clock(t: float | None) -> str:
     """``t`` as a wall clock time, ``14:03:22`` in the reader's local time."""
     return time.strftime("%H:%M:%S", time.localtime(t)) if t else "-"
+
+
+def ms(t: float | None) -> int | None:
+    """Seconds since the epoch as ms, for a relative time cell; None stays None."""
+    return int(t * 1000) if t else None
+
+
+def side(said: str) -> dict[str, str]:
+    """A trade's side as a badge: buys in the ok tone, sells in the danger tone."""
+    return (
+        {"label": "buy", "variant": "ok"}
+        if said == "buy"
+        else {"label": "sell", "variant": "danger"}
+    )
 
 
 def short(address: str | None, n: int = 4) -> str:
@@ -281,22 +297,19 @@ def tiles(stats: dict | None) -> dict[str, dict[str, str]]:
 
 @nu.host
 def token_rows(board: dict | None, sort: str, now: float) -> list[dict[str, Any]]:
-    """One board list as table rows, keyed by mint."""
+    """One board list as table rows, keyed by mint: age in ms, the curve as a fraction."""
     rows = []
     for r in (board or {}).get(sort) or []:
         q = "" if r["quote"] == "SOL" else f" {r['quote']}"
-        state = (
-            "migrated" if r["migrated"] else ("graduated" if r["complete"] else pct(r["progress"]))
-        )
         rows.append(
             {
                 "mint": r["mint"],
                 "token": label(r),
                 "name": (r["name"] or "")[:28],
-                "age": ago(r["created"], now) if r["known"] else "-",
+                "age": ms(r["created"]) if r["known"] else None,
                 "mc": amount(r["mc"]) + q,
                 "move": change(r["change"]),
-                "curve": state,
+                "curve": 1.0 if r["migrated"] or r["complete"] else float(r["progress"] or 0.0),
                 "vol": amount(r["vol"]) + q,
                 "trades": r["trades"],
                 "bs": f"{r['buys']}/{r['sells']}",
@@ -308,13 +321,13 @@ def token_rows(board: dict | None, sort: str, now: float) -> list[dict[str, Any]
 
 
 @nu.host
-def tape_rows(tape: list | None, now: float) -> list[dict[str, Any]]:
+def tape_rows(tape: list | None) -> list[dict[str, Any]]:
     """The newest trades, newest first, keyed ``<mint>:<n>`` so a click finds the token."""
     return [
         {
             "key": f"{t['mint']}:{t['n']}",
-            "age": ago(t["t"], now),
-            "side": "▲ BUY" if t["side"] == "buy" else "▼ SELL",
+            "age": ms(t["t"]),
+            "side": side(t["side"]),
             "token": label(t),
             "amount": f"{amount(t['amount'], 3)} {t['quote']}",
             "mc": amount(t["mc"]),
@@ -335,24 +348,23 @@ def launch_cards(
     """
     return [
         {
-            "i": str(i),
             "mint": x["mint"],
             "src": picture(x.get("image"), x["mint"], x["symbol"], images),
             "symbol": label(x),
             "name": (x["name"] or "")[:24] or "unnamed",
             "note": f"{ago(x['t'], now)} ago  ·  by {short(x['creator'])}",
         }
-        for i, x in enumerate((launches or [])[:n])
+        for x in (launches or [])[:n]
     ]
 
 
 @nu.host
-def error_rows(errors: list | None, now: float) -> list[dict[str, Any]]:
-    """The newest errors, newest first."""
+def error_rows(errors: list | None) -> list[dict[str, Any]]:
+    """The newest errors, newest first, ``when`` in ms."""
     return [
         {
             "key": str(i),
-            "when": f"{clock(e['t'])}  ({ago(e['t'], now)} ago)",
+            "when": ms(e["t"]),
             "call": e["what"] or "-",
             "slot": f"{e['slot']:,}" if e.get("slot") else "",
             "message": e["message"],
@@ -409,20 +421,28 @@ def token_view_of(
         else f"first seen {ago(r.get('seen'), now)} ago",
         f"paired with {unit}",
     ]
-    links = [
-        f"[Solscan](https://solscan.io/token/{mint})",
-    ]
+    links = [{"key": "token", "label": "Solscan", "href": f"https://solscan.io/token/{mint}"}]
     if creator:
-        links.append(f"[creator {short(creator)}](https://solscan.io/account/{creator})")
+        links.append(
+            {
+                "key": "creator",
+                "label": f"creator {short(creator)}",
+                "href": f"https://solscan.io/account/{creator}",
+            }
+        )
     if r.get("pool"):
-        links.append(f"[pool](https://solscan.io/account/{r['pool']})")
+        links.append(
+            {"key": "pool", "label": "pool", "href": f"https://solscan.io/account/{r['pool']}"}
+        )
     if r.get("sig"):
-        links.append(f"[launch tx](https://solscan.io/tx/{r['sig']})")
+        links.append(
+            {"key": "tx", "label": "launch tx", "href": f"https://solscan.io/tx/{r['sig']}"}
+        )
     rows = [
         {
             "key": f"{i}",
             "time": clock(t[0]),
-            "side": "▲ BUY" if t[1] == "buy" else "▼ SELL",
+            "side": side(t[1]),
             "amount": amount(t[2], 4),
             "tokens": amount(t[3]),
             "mc": amount(t[4]),
@@ -440,7 +460,8 @@ def token_view_of(
         "state": state,
         "tone": tone,
         "facts": "  ·  ".join(facts),
-        "links": "  ·  ".join(links),
+        "links": links,
+        "link_keys": [x["key"] for x in links],
         "mc": f"{amount(r.get('mc'))} {unit}",
         "move": change((r["mc"] / r["mc_open"] - 1.0) if r.get("mc_open") else 0.0),
         "trend": "up" if r.get("mc", 0) >= r.get("mc_open", 0) else "down",

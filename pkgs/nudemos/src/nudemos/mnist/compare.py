@@ -2,7 +2,7 @@
 
 - ``leader``: live prose, the best run and how it was trained.
 - ``table``: every run's hyperparameters, progress and scores. Tick a run's
-  Plot box to overlay it, click its row to open it.
+  Plot box to overlay it, click its name to open it.
 - ``overlay``: test accuracy and train loss of the ticked runs (all of them
   when none is ticked), one line per run.
 
@@ -36,13 +36,14 @@ def _cell(body: str) -> str:
 
 
 LEADER = _cell("""\
-class Board(nustd.ui.Column):
+class View(nustd.ui.Column):
     line = nustd.ui.MarkdownRef.slot()
-    best = nustd.ui.LinkRef.slot()
+    best = nustd.ui.LinkRef.slot(arrow=True)
 
 
 def draw(d):
-    return Board.line.set(d["text"]) >> nu.IfDo(nu.Str(d["href"]) != "", Board.best.set(href=d["href"], label=d["label"]))
+    page = nu.Str(d["page"])
+    return View.line.set(d["text"]) >> nu.IfDo(page != "", View.best.set(href=nuspace.web.href(page), label=d["label"]))
 
 
 def out(plane):
@@ -58,21 +59,26 @@ def out(plane):
 
 
 TABLE = _cell("""\
+from nudemos import pages
+
+
 def column(key, label=None, **more):
     return {"key": key, "label": label or key.capitalize(), "editable": False, **more}
 
 
 COLUMNS = [
     {"key": "plot", "label": "Plot", "kind": "bool", "width": 60},
-    column("run"), column("status"), column("optimizer"), column("lr", "LR"), column("batch"),
-    column("channels"), column("dropout"), column("epochs"), column("progress"),
-    column("loss", "Train loss"), column("best", "Best test"), column("final", "Final test"),
+    column("run", cell=nustd.ui.PageLinkRef.slot(variant="inline")),
+    column("status", cell=nustd.ui.StatusPillRef),
+    column("optimizer", hide_below=900), column("lr", "LR", align="end"), column("batch", align="end", hide_below=900),
+    column("channels", align="end", hide_below=1100), column("dropout", align="end", hide_below=1100),
+    column("epochs", align="end", hide_below=1100), column("progress", cell=nustd.ui.ProgressRef, width=120),
+    column("loss", "Train loss", align="end"), column("best", "Best test", align="end"), column("final", "Final test", align="end"),
 ]
 
 
-class View(nustd.ui.Column):
-    history = nustd.ui.HistoryRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="page", clickable_rows=True, editable=True, dense=True)
+class View(nu.Shape):
+    table = nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="page", editable=True, density="compact", label="Runs")
 
 
 def plot(ev):
@@ -88,11 +94,10 @@ def out(plane):
 
     def follow(root):
         runs = [runs_change(nu.Str(root)), PICK.planes.on_change()]
-        read = views.rows(views.board(nu.Str(root)), nu.list(PICK.planes.fallback([])))
+        read = pages.linked(views.rows(views.board(nu.Str(root)), nu.list(PICK.planes.fallback([]))), "run")
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*runs)), nu.let(nuspace.atomic(read), t.set_rows), every=2.0),
             nu.ReactEvery(t.on_edit(), plot),
-            nu.ReactEvery(t.on_row_click(), lambda ev: View.history.push(nuspace.web.href(ev["key"]))),
         )
 
     return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
@@ -101,27 +106,29 @@ def out(plane):
 
 OVERLAY = _cell("""\
 #: The legend under the lines, wrapping, so every run's name shows whole.
-UNDER = {"legend": {"type": "plain", "top": "auto", "bottom": 0}, "grid": {"top": 42, "bottom": 84}}
+UNDER = {"legend": {"type": "plain", "top": "auto", "bottom": 0}, "grid": {"top": 24, "bottom": 84}}
 
 
-class Charts(nustd.ui.Grid):
-    acc = nustd.ui.LineChart.slot(title="Test accuracy", y_format="{value}%", legend=True, height=340, option=UNDER)
-    loss = nustd.ui.LineChart.slot(title="Train loss", legend=True, height=340, option=UNDER)
+class View(nu.Shape):
+    charts = nustd.ui.GridRef.slot(cols=2, stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    charts = Charts.slot(columns=2, min_width=320, gap=3)
+acc = View.charts[0, 0].to(nustd.ui.CardRef.slot(title="Test accuracy"))["acc"].to(
+    nustd.ui.LineChart.slot(y_format="{value}%", legend=True, height=340, option=UNDER)
+)
+loss = View.charts[0, 1].to(nustd.ui.CardRef.slot(title="Train loss"))["loss"].to(
+    nustd.ui.LineChart.slot(legend=True, height=340, option=UNDER)
+)
 
 
 def draw(d):
-    c = View.charts
-    return c.acc.set(d["acc"]) >> c.loss.set(d["loss"]) >> c.acc.merge(d["legend"]) >> c.loss.merge(d["legend"])
+    return acc.set(d["acc"]) >> loss.set(d["loss"]) >> acc.merge(d["legend"]) >> loss.merge(d["legend"])
 
 
 def out(plane):
     def follow(root):
         read = views.overlay(views.series(nu.Str(root)), nu.list(PICK.planes.fallback([])))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[PICK.planes.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(PICK.planes.on_change()), nu.let(nuspace.atomic(read), draw), every=2.0)
 
     return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
 """)

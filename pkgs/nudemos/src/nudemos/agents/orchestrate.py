@@ -16,6 +16,7 @@ from nuspace.specs import PlaneSpec, WebOptions
 
 from .flows import BOARD, SCENARIO
 from .state import agent, flow_of, flows_of, status_of
+from .views import TONES
 
 
 __all__ = [
@@ -106,15 +107,27 @@ def flows_view(plane: nu.StrArg) -> nu.Nu:
 
 
 def shown_of(runs: list) -> list:
-    """Per run, what its card shows: ``{key, title, phase, tone, agents, outcome}``."""
+    """Per run, what its card shows: ``{key, title, phase, tone, agents, outcome}``.
+
+    ``agents`` is a line per agent, ``{i, role, page, tone, said}``: its status
+    dot, its role linking to its page (an empty page draws the role alone),
+    and its status with what it is doing while it works.
+    """
     out = []
     for v in runs:
-        lines = []
+        agents = []
         for role, page, status, doing in v["agents"]:
             live = status in ("working", "starting", "resuming")
-            tail = f" · {doing}" if live and doing else ""
-            link = f"[{role}](/{page})" if page else role
-            lines.append(f"- {link} · **{status}**{tail}")
+            said = f"{status}, {doing}" if live and doing else status
+            agents.append(
+                {
+                    "i": len(agents),
+                    "role": role,
+                    "page": page,
+                    "tone": TONES.get(status, "neutral"),
+                    "said": said,
+                }
+            )
         done = v["status"] == "done"
         out.append(
             {
@@ -122,7 +135,7 @@ def shown_of(runs: list) -> list:
                 "title": v["name"],
                 "phase": v["phase"],
                 "tone": "ok" if done else "info",
-                "agents": "\n".join(lines) or "_no agents yet_",
+                "agents": agents,
                 "outcome": v["outcome"] or "",
             }
         )
@@ -153,6 +166,7 @@ def add_task(job: nu.StrArg, text: nu.StrArg) -> nu.Nu:
 RUN = """\
 import nu
 import nuspace
+import nuspace.web as web
 import nustd.ui
 from nudemos.agents import orchestrate, views
 from nudemos.agents.claude import READY
@@ -169,8 +183,9 @@ class Ask(nustd.ui.Row):
 
 
 class Run(nustd.ui.Card):
-    pill = nustd.ui.StatusPillRef.slot()
-    agents = nustd.ui.MarkdownRef.slot()
+    # The phase pill sits in the card's actions place.
+    actions = nustd.ui.StatusPillRef.slot()
+    agents = nustd.ui.ColumnRef.slot(nustd.ui.LineRef, gap=2)
     outcome = nustd.ui.MarkdownRef.slot()
 
 
@@ -185,7 +200,7 @@ class View(nustd.ui.Column):
     ask = Ask.slot(gap=3, align="end")
     more = More.slot(gap=2, align="end")
     head = nustd.ui.HeadingRef.slot(level=4)
-    runs = nustd.ui.GridRef.slot(Run, columns=1, gap=3)
+    runs = nustd.ui.ColumnRef.slot(Run, gap=3)
 
 
 def started(plane):
@@ -209,12 +224,30 @@ def added(plane):
     return nu.let(text, lambda t: nu.let(newest, lambda j: add(t, j)))
 
 
+def member(r, a):
+    # One agent of a run, by its position: status dot, role linked to its page, what it says.
+    line = r.agents[nu.Int(a["i"])]
+    role = line[1].to(nustd.ui.LinkRef)
+    page = nu.Str(a["page"])
+    linked = nu.IfDo(page != "", role.set(href=web.href(page), label=a["role"]), role.set(label=a["role"]))
+    return line[0].to(nustd.ui.StatusDotRef).set(a["tone"], label=a["said"]) >> linked >> line[2].to(nustd.ui.TextRef.slot(tone="muted")).set(a["said"])
+
+
 def card(c):
     r = View.runs[c["key"]]
+    agents = nu.List(c["agents"])
+    each = nu.ForEachDo(agents, lambda a: member(r, nu.Dict(a)))
     return (
-        r.set_title(c["title"]) >> r.pill.set(c["phase"], tone=c["tone"])
-        >> r.agents.set(c["agents"]) >> r.outcome.set(c["outcome"])
+        r.set_title(c["title"]) >> r.actions.set(c["phase"], tone=c["tone"])
+        >> each >> r.agents.truncate(agents.len()) >> r.outcome.set(c["outcome"])
     )
+
+
+def draw(runs):
+    # Every run's card in place and in order, the ones gone dropped.
+    rows = nu.List(runs)
+    keys = rows.iter().map(lambda c: nu.Dict(c)["key"]).to_list()
+    return nu.ForEachDo(rows, card) >> View.runs.keep(keys) >> View.runs.set_order(keys)
 
 
 def out(plane):
@@ -229,7 +262,7 @@ def out(plane):
     return placed >> nu.ParallelAsync(
         nu.ReactEvery(View.ask.run.on_click(), started(plane)),
         nu.ReactEvery(View.more.add.on_click(), added(plane)),
-        nu.Reconcile(nuspace.atomic(nu.OnAny(*[kids])), nu.let(nuspace.atomic(runs), lambda rs: nu.ForEachDo(nu.List(rs), card)), every=1.5),
+        nu.Reconcile(nuspace.atomic(nu.OnAny(*[kids])), nu.let(nuspace.atomic(runs), draw), every=1.5),
     )
 """
 

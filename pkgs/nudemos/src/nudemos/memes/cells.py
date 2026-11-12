@@ -44,8 +44,8 @@ class Bar(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    bar = Bar.slot(gap=3, align="center")
-    notice = nustd.ui.TextRef.slot()
+    bar = Bar.slot(gap=3, align="center", grow={"line": 1})
+    notice = nustd.ui.TextRef.slot(tone="muted", size="sm")
 
 
 def read(root):
@@ -98,25 +98,27 @@ KEYS = {
     "lag": "Lag",
 }
 
-Tiles = type("Tiles", (nustd.ui.Grid,), {k: nustd.ui.StatRef.slot(label=v) for k, v in KEYS.items()})
+
+class View(nu.Shape):
+    tiles = nustd.ui.GridRef.slot(max_columns=4, min_cell_width=160, gap=3)
 
 
-class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=8, min_width=128, gap=3)
+def tile(k, label):
+    return View.tiles[k].to(nustd.ui.CardRef.slot(size="sm"))[0].to(nustd.ui.StatRef.slot(label=label))
 
 
 def draw(t):
-    def tile(k):
+    def one(k, label):
         s = t[k]
-        return getattr(View.tiles, k).set(s["value"], delta=s["delta"], trend=s["trend"])
+        return tile(k, label).set(s["value"], delta=s["delta"], trend=s["trend"])
 
-    return nu.Sequential(*(tile(k) for k in KEYS))
+    return nu.Sequential(*(one(k, label) for k, label in KEYS.items()))
 
 
 def out(plane):
     def follow(root):
         read = views.tiles(memes_at(root).stats.fallback({}))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), draw))
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), draw))
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -139,15 +141,17 @@ SHAPE = {
 }
 
 
-class View(nustd.ui.Column):
-    chart = nustd.ui.ScatterChart.slot(
-        ["buys", "sells"], title="The last few hundred trades, in SOL", symbol_size=7,
-        height=260, legend=True, option=SHAPE,
-    )
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="The last few hundred trades", subtitle="in SOL, one after another")
+
+
+chart = View.card["chart"].to(
+    nustd.ui.ScatterChart.slot(["buys", "sells"], symbol_size=7, height=260, legend=True, option=SHAPE)
+)
 
 
 def paint(root):
-    return nu.let(nuspace.atomic(views.pulse(memes_at(root).pulse.fallback([]))), View.chart.set)
+    return nu.let(nuspace.atomic(views.pulse(memes_at(root).pulse.fallback([]))), chart.set)
 
 
 def out(plane):
@@ -171,38 +175,39 @@ TEXT = """\\
 
 Every meme coin launched, every trade on its curve, every graduation, read straight off Solana as the blocks land.
 A headless job follows the chain and writes into this space's state; every page here is a small program reading it.
-
-- **Overview** is the terminal: the tokens, the trades as they print, the newest launches. Click a token to open its page.
-- **Monitor** watches the sync itself: blocks a second, lag behind the tip, the RPC's latency, errors.
-- **Sync** sets the RPC endpoint and the pace, and where to start.
-
 It only watches: no wallets, no buying, no advice.
 """
 
+#: What the root's first three children hold, in the order the spec makes them.
+WAYS = [
+    "The terminal: tokens, trades as they print, the newest launches",
+    "The sync itself: blocks a second, lag, RPC latency, errors",
+    "The RPC endpoint, the pace, and where to start",
+]
 
-class Links(nustd.ui.Row):
-    overview = nustd.ui.LinkRef.slot()
-    monitor = nustd.ui.LinkRef.slot()
-    sync = nustd.ui.LinkRef.slot()
+
+class View(nu.Shape):
+    page = nustd.ui.ColumnRef.slot(gap=4)
 
 
-class View(nustd.ui.Column):
-    text = nustd.ui.MarkdownRef.slot()
-    links = Links.slot(gap=4)
+text = View.page["text"].to(nustd.ui.MarkdownRef)
+ways = View.page["ways"].to(nustd.ui.GridRef.slot(max_columns=3, min_cell_width=200, gap=3))
 
 
 def links(kids):
-    def to(i):
-        return nuspace.web.href(nu.List(kids)[i])
+    def way(i, what):
+        pid = nu.Str(nu.List(kids)[i])
+        tile = ways[pid].to(nustd.ui.PageLinkRef.slot(variant="tile"))
+        return nuspace.web.link(tile, pid, description=what)
 
-    l = View.links
-    return l.overview.set(href=to(0), label="Open the terminal") >> l.monitor.set(href=to(1), label="Monitor") >> l.sync.set(href=to(2), label="Sync settings")
+    return nu.Sequential(*(way(i, what) for i, what in enumerate(WAYS)))
 
 
 def out(plane):
     # The spec makes Overview, Monitor and Sync as the root's first three children.
     first = nuspace.Space.planes[plane].children.keys(limit=3)
-    return View.text.set(TEXT) >> nu.let(nuspace.atomic(first), links) >> nu.ForeverDo(nu.Delay(3600.0))
+    shown = nu.let(first, lambda kids: links(kids))
+    return text.set(TEXT) >> nuspace.atomic(shown) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 
@@ -211,49 +216,44 @@ LAUNCHES = cell("""\
 N = 12
 
 
-class Body(nustd.ui.Row):
-    face = nustd.ui.ImageRef.slot(width=48, height=48, rounded=True, fit="contain")
-    note = nustd.ui.TextRef.slot()
-    open = nustd.ui.ButtonRef.slot(label="Open", icon="arrow-right", variant="soft", tooltip="Open its page")
-
-
-class Launch(nustd.ui.Card):
-    body = Body.slot(gap=3, align="center")
-
-
-Cards = type("Cards", (nustd.ui.Grid,), {f"c{i}": Launch.slot() for i in range(N)})
-
-
 class Shown(nu.Shape):
     # The mints this tab drew, card by card: a click opens what it shows.
     mints = nu.ObjectRef.slot()
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    head = nustd.ui.HeadingRef.slot(level=4)
-    cards = Cards.slot(min_width=240, gap=3)
+    launches = nustd.ui.CardRef.slot(title="New launches", subtitle="newest first")
 
 
-def draw(cards):
-    def one(i, c):
-        card = getattr(View.cards, f"c{i}")
+cards = View.launches["cards"].to(nustd.ui.GridRef.slot(max_columns=4, min_cell_width=240, gap=3))
+OPEN = nustd.ui.ButtonRef.slot(label="Open", icon="arrow-right", variant="soft", size="sm", tooltip="Open its page")
+
+
+def card(i):
+    return cards[i].to(nustd.ui.CardRef.slot(size="sm"))
+
+
+def draw(shown):
+    def one(i):
+        c, at = nu.Dict(shown[i]), card(i)
+        body = at["body"].to(nustd.ui.RowRef.slot(gap=3, align="center"))
         return (
-            card.set_title(c["symbol"]) >> card.set_subtitle(c["name"])
-            >> card.body.face.set(c["src"], alt=c["symbol"]) >> card.body.note.set(c["note"])
-            >> card.body.open.set("Open", icon="arrow-right", variant="soft")
+            at.set_title(c["symbol"]) >> at.set_subtitle(c["name"])
+            >> body["face"].to(nustd.ui.ImageRef.slot(width=48, height=48, radius="md", fit="contain")).set(c["src"], alt=c["symbol"])
+            >> body["note"].to(nustd.ui.TextRef.slot(tone="muted", size="sm")).set(c["note"])
+            >> at.actions["open"].to(OPEN).init()
         )
 
-    shown = nu.List(cards)
-    each = [nu.IfDo(shown.len() > i, nu.let(shown[i], lambda c, i=i: one(i, c))) for i in range(N)]
     mints = shown.iter().map(lambda c: nu.Dict(c)["mint"]).to_list()
-    return nu.Sequential(*each) >> Shown.mints.set(mints)
+    return nu.ForRangeDo(0, shown.len(), one) >> cards.truncate(shown.len()) >> Shown.mints.set(mints)
 
 
 def opener(root, i):
+    # A coin's page is made on its first open, so each card position has its own handler.
     mints = nu.List(Shown.mints)
     go = control.open_token(root, nu.Str(mints[i]), View.history)
-    return nu.ReactEvery(getattr(View.cards, f"c{i}").body.open.on_click(), nu.IfDo(mints.len() > i, go))
+    return nu.ReactEvery(card(i).actions["open"].to(OPEN).on_click(), nu.IfDo(mints.len() > i, go))
 
 
 def out(plane):
@@ -262,9 +262,9 @@ def out(plane):
         images = control_at(root).images.fallback(False)
         read = views.launch_cards(memes_at(root).launches.fallback([]), nustd.time.time(), N, images)
         moves = [memes_at(root).beat.on_change(), control_at(root).images.on_change()]
-        shown = nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw), every=5.0)
+        shown = nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), lambda c: draw(nu.List(c))), every=5.0)
         opens = [opener(root, i) for i in range(N)]
-        return View.head.set("New launches") >> nu.Frame(Shown, nu.ParallelAsync(shown, *opens), mints=[])
+        return nu.Frame(Shown, nu.ParallelAsync(shown, *opens), mints=[])
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)

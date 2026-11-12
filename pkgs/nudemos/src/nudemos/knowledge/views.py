@@ -2,7 +2,10 @@
 
 Each takes the base as plain dicts (``pages``, the page ids it keeps, for
 links, and the time, for anything that ages), and returns what one cell
-draws: markdown, table rows, tiles, a chart's data.
+draws: markdown, table rows, tiles, a chart's data. A row names a page as
+``{page, label}``, its plane id and its title, never a url: the cell turns
+it into a link with :func:`nudemos.pages.linked`. Times in rows are epoch ms,
+for the browser's relative time.
 """
 
 from __future__ import annotations
@@ -53,8 +56,33 @@ __all__ = [
 ]
 
 
-def _href(pages: dict, slug: str) -> str:
-    return text._href(pages, slug)
+#: The tone of a page's status, on its head and in tables.
+STATUS_TONES = {
+    "open": "warn",
+    "decided": "ok",
+    "active": "info",
+    "done": "ok",
+    "paused": "neutral",
+}
+
+#: The tone of each kind of issue the checker flags.
+ISSUE_TONES = {
+    "Stale": "warn",
+    "Broken link": "danger",
+    "Missing fact": "danger",
+    "Orphan": "neutral",
+    "Late task": "warn",
+}
+
+
+def _link(docs: dict, pages: dict, slug: str) -> dict[str, str]:
+    """A link to a doc page as a row carries it, ``{page, label}``: the plane id, never a url."""
+    return {"page": text.page_of(pages, slug), "label": _name(docs, slug)}
+
+
+def _ms(t: float) -> float:
+    """A stored time (seconds) as a stamp for the browser (ms)."""
+    return (t or 0.0) * 1000.0
 
 
 def _name(docs: dict, slug: str) -> str:
@@ -83,18 +111,12 @@ def page(docs: dict, facts: dict, slug: str, pages: dict, now: float) -> str:
 
 
 @nu.host
-def doc_head(docs: dict, health: dict, slug: str, pages: dict, now: float) -> dict[str, Any]:
-    """A doc's header line: kind, status, freshness, who owns and who edited it, and its tags."""
+def doc_head(docs: dict, health: dict, slug: str, pages: dict) -> dict[str, Any]:
+    """A doc's header line: kind, status or freshness, its owner, when and by whom it was edited, its tags."""
     d = (docs or {}).get(slug) or {}
     kind = KINDS.get(d.get("kind", ""), {}).get("one", "Page")
     status = d.get("status") or ""
-    tone = {
-        "open": "warn",
-        "decided": "ok",
-        "active": "info",
-        "done": "ok",
-        "paused": "neutral",
-    }.get(status, "neutral")
+    tone = STATUS_TONES.get(status, "neutral")
     stale = next((s for s in (health or {}).get("stale", []) if s["doc"] == slug), None)
     fresh = ("stale", "warn") if stale else ("fresh", "ok")
     if d.get("kind") == "meeting" and d.get("date"):
@@ -105,28 +127,25 @@ def doc_head(docs: dict, health: dict, slug: str, pages: dict, now: float) -> di
             "neutral",
         )
     editor = d.get("editor") or d.get("owner") or ""
-    when = f"Edited {ago(d.get('updated') or 0, now)} by {_name(docs, editor)}" if d else ""
+    rest = [f"by {_name(docs, editor)}"] if d else []
     if d.get("source"):
-        when += f"  ·  imported from {d['source'].split(' (')[0]}"
-    tags = "  ".join(f"#{t}" for t in d.get("tags") or [])
+        rest.append(f"imported from {d['source'].split(' (')[0]}")
+    rest += [" ".join(f"#{t}" for t in d.get("tags") or [])]
     return {
         "kind": kind,
-        "status": status or kind,
-        "tone": tone if status else "neutral",
-        "show_status": bool(status),
-        "fresh": fresh[0] or kind,
-        "fresh_tone": fresh[1],
-        "owner": _name(docs, d.get("owner", "")),
-        "owner_href": _href(pages, d.get("owner", "")),
-        "when": when + (f"  ·  {tags}" if tags else ""),
+        "second": status or fresh[0] or kind,
+        "second_tone": tone if status else fresh[1],
+        "owner": _link(docs, pages, d.get("owner", "")),
+        "edited": _ms(d.get("updated") or 0),
+        "rest": "  ·  ".join(r for r in rest if r),
     }
 
 
 @nu.host
-def doc_links(docs: dict, facts: dict, slug: str, pages: dict) -> str:
-    """What links here, with the line that does, and where this page links to."""
+def doc_links(docs: dict, facts: dict, slug: str, pages: dict) -> dict[str, Any]:
+    """What links here, each with the line that does, where this page links to, and its broken links."""
     docs = docs or {}
-    back = text.backlinks(docs, slug)
+    back = text.backlinks(docs, slug)[:12]
     out = text.links_of((docs.get(slug) or {}).get("body", ""))
 
     def excerpt(line: str) -> str:
@@ -137,19 +156,18 @@ def doc_links(docs: dict, facts: dict, slug: str, pages: dict) -> str:
         s = re.sub(r"\s*due:\S+", "", s).replace(" | ", " · ")
         return (s[:110] + "...") if len(s) > 110 else s
 
-    lines = [f"### Linked from {len(back)} {'page' if len(back) == 1 else 'pages'}", ""]
-    lines += [
-        f"- [{_name(docs, k)}]({_href(pages, k)}): {excerpt(line)}" for k, line in back[:12]
-    ] or ["_Nothing links here yet._"]
     known = [s for s in out if s in docs]
     missing = [s for s in out if s not in docs]
-    lines += ["", f"### Links to {len(known)}", ""]
-    lines += [
-        "  ·  ".join(f"[{_name(docs, s)}]({_href(pages, s)})" for s in known) or "_No links out._"
-    ]
-    if missing:
-        lines += ["", "Broken: " + ", ".join(f"~~{s}~~" for s in missing)]
-    return "\n".join(lines)
+    return {
+        "back": [
+            {"i": i, "link": _link(docs, pages, k), "excerpt": excerpt(line)}
+            for i, (k, line) in enumerate(back)
+        ],
+        "back_count": f"{len(back)} {'page' if len(back) == 1 else 'pages'}",
+        "out": [{"i": i, "link": _link(docs, pages, s)} for i, s in enumerate(known)],
+        "out_count": f"{len(known)} {'page' if len(known) == 1 else 'pages'}",
+        "broken": ("Broken: " + ", ".join(missing)) if missing else "",
+    }
 
 
 @nu.host
@@ -192,7 +210,7 @@ def tiles(docs: dict, facts: dict, health: dict, now: float) -> dict[str, dict[s
 
 @nu.host
 def task_rows(
-    docs: dict, now: float, who: str = "", within: int = -1, done: bool = False
+    docs: dict, pages: dict, now: float, who: str = "", within: int = -1, done: bool = False
 ) -> list[dict[str, Any]]:
     """Tasks as table rows: by owner (``""`` everyone), due within ``within`` days (-1 any), done ones or not."""
     today = day(now)
@@ -211,7 +229,7 @@ def task_rows(
                 "task": t["text"],
                 "owner": _name(docs, t["owner"]).split(" ")[0],
                 "due": _due_word(t["due"], today),
-                "page": _name(docs, t["doc"]),
+                "page": _link(docs, pages, t["doc"]),
             }
         )
     return rows
@@ -234,30 +252,44 @@ def tasks_chart(docs: dict, now: float) -> dict[str, list]:
 
 
 @nu.host
-def activity(log: list, docs: dict, pages: dict, now: float, n: int = 12) -> str:
-    """What happened lately, newest first, each line linking its page."""
-    lines = []
-    for e in (log or [])[:n]:
+def activity(log: list, docs: dict, pages: dict, n: int = 12) -> list[dict[str, Any]]:
+    """What happened lately, newest first: who, what, the page it touched (when still a page), when."""
+    rows = []
+    for i, e in enumerate((log or [])[:n]):
         who = e.get("who", "")
-        name = {"checker": "The checker", "importer": "The importer"}.get(who) or _name(docs, who)
         doc = e.get("doc", "")
-        page = f" [{_name(docs, doc)}]({_href(pages, doc)})" if doc in (docs or {}) else ""
-        lines.append(f"- **{name}** {e.get('what', '')}{page}  ·  _{ago(e.get('t') or 0, now)}_")
-    return "\n".join(lines) or "_Nothing has happened yet._"
+        rows.append(
+            {
+                "i": i,
+                "who": {"checker": "The checker", "importer": "The importer"}.get(who)
+                or _name(docs, who),
+                "what": e.get("what", ""),
+                "link": _link(docs, pages, doc)
+                if doc in (docs or {})
+                else {"page": "", "label": ""},
+                "at": _ms(e.get("t") or 0),
+            }
+        )
+    return rows
 
 
 @nu.host
-def search(docs: dict, facts: dict, q: str, pages: dict) -> str:
-    """Search results as markdown, or nothing when nothing is asked."""
+def search(docs: dict, facts: dict, q: str, pages: dict) -> dict[str, Any]:
+    """Search results as rows (``{i, link, kind, excerpt}``) and a note for when nothing matches."""
     q = (q or "").strip()
-    if not q:
-        return ""
-    hits = text.search(docs or {}, facts or {}, q, pages)
-    if not hits:
-        return f"_Nothing matches **{q}**._"
-    return "\n".join(
-        f"- [{h['title']}]({h['href']})  · _{h['kind']}_  \n  {h['excerpt']}" for h in hits
-    )
+    hits = text.search(docs or {}, facts or {}, q, pages) if q else []
+    return {
+        "hits": [
+            {
+                "i": i,
+                "link": {"page": h["page"], "label": h["title"]},
+                "kind": h["kind"],
+                "excerpt": h["excerpt"],
+            }
+            for i, h in enumerate(hits)
+        ],
+        "note": f"Nothing matches {q}." if q and not hits else "",
+    }
 
 
 @nu.host
@@ -288,7 +320,7 @@ def capture(title: str, docs: dict, now: float) -> dict[str, Any]:
 
 
 @nu.host
-def pages_rows(docs: dict, health: dict, kind: str, now: float) -> list[dict[str, Any]]:
+def pages_rows(docs: dict, health: dict, kind: str, pages: dict) -> list[dict[str, Any]]:
     """The pages of one kind as rows: title, owner, edited, freshness, links in."""
     stale = {s["doc"] for s in (health or {}).get("stale", [])}
     linked: dict[str, int] = {}
@@ -302,10 +334,12 @@ def pages_rows(docs: dict, health: dict, kind: str, now: float) -> list[dict[str
     return [
         {
             "key": k,
-            "title": d["title"],
+            "title": _link(docs, pages, k),
             "owner": _name(docs, d.get("owner", "")),
-            "edited": ago(d.get("updated") or 0, now),
-            "fresh": "stale" if k in stale else "fresh",
+            "edited": _ms(d.get("updated") or 0),
+            "fresh": {"label": "stale", "variant": "warn"}
+            if k in stale
+            else {"label": "fresh", "variant": "ok"},
             "links": linked.get(k, 0),
         }
         for k, d in mine
@@ -313,7 +347,7 @@ def pages_rows(docs: dict, health: dict, kind: str, now: float) -> list[dict[str
 
 
 @nu.host
-def notes_rows(docs: dict, now: float) -> list[dict[str, Any]]:
+def notes_rows(docs: dict, pages: dict) -> list[dict[str, Any]]:
     """My notes, newest first, with where they came from."""
     mine = sorted(
         ((k, d) for k, d in (docs or {}).items() if d.get("kind") == "note"),
@@ -322,11 +356,11 @@ def notes_rows(docs: dict, now: float) -> list[dict[str, Any]]:
     return [
         {
             "key": k,
-            "title": d["title"],
+            "title": _link(docs, pages, k),
             "from": d.get("source", "").split(" (")[0]
             or ("captured" if "inbox" in (d.get("tags") or []) else "written here"),
             "tags": ", ".join(d.get("tags") or []),
-            "edited": ago(d.get("updated") or 0, now),
+            "edited": _ms(d.get("updated") or 0),
         }
         for k, d in mine
     ]
@@ -339,7 +373,7 @@ def _progress(docs: dict, slug: str) -> tuple[int, int]:
 
 
 @nu.host
-def projects_view(docs: dict, now: float) -> dict[str, Any]:
+def projects_view(docs: dict, pages: dict, now: float) -> dict[str, Any]:
     """Projects as rows, with progress counted from the tasks in and around each, and the chart's bars."""
     docs, today = docs or {}, day(now)
     rows, names, done_b, open_b = [], [], [], []
@@ -357,13 +391,16 @@ def projects_view(docs: dict, now: float) -> dict[str, Any]:
             ),
             default="",
         )
+        status = d.get("status", "")
         rows.append(
             {
                 "key": k,
-                "title": d["title"],
+                "title": _link(docs, pages, k),
                 "owner": _name(docs, d.get("owner", "")),
-                "status": d.get("status", ""),
-                "progress": f"{round(100 * done / total)}%" if total else "-",
+                "status": {"label": status, "tone": STATUS_TONES.get(status, "neutral")}
+                if status
+                else "",
+                "progress": done / total if total else 0.0,
                 "open": total - done,
                 "next": _due_word(nxt, today),
             }
@@ -422,18 +459,18 @@ def person_view(docs: dict, slug: str, now: float) -> dict[str, str]:
 
 
 @nu.host
-def people_cards(docs: dict, now: float, pages: dict) -> list[dict[str, str]]:
-    """Everyone, with what they own and what is on them."""
+def people_cards(docs: dict, pages: dict) -> list[dict[str, Any]]:
+    """Everyone, keyed by slug, with what they own and what is on them."""
     docs, out = docs or {}, []
     tasks = [t for t in all_tasks(docs) if not t["done"]]
-    for i, (slug, (name, role)) in enumerate(PEOPLE.items()):
+    for slug, (name, role) in PEOPLE.items():
         owns = sum(1 for k, d in docs.items() if d.get("owner") == slug and k != slug)
         open_t = sum(1 for t in tasks if t["owner"] == slug)
         out.append(
             {
-                "i": str(i),
+                "slug": slug,
                 "name": name,
-                "href": _href(pages, slug),
+                "link": {"page": text.page_of(pages, slug), "label": name},
                 "role": role,
                 "note": f"owns {owns} pages  ·  {open_t} open tasks",
             }
@@ -442,17 +479,17 @@ def people_cards(docs: dict, now: float, pages: dict) -> list[dict[str, str]]:
 
 
 @nu.host
-def decisions(docs: dict, now: float) -> list[dict[str, Any]]:
+def decisions(docs: dict, pages: dict) -> list[dict[str, Any]]:
     """Decisions as rows, open first."""
     mine = [(k, d) for k, d in (docs or {}).items() if d.get("kind") == "decision"]
     mine.sort(key=lambda kv: (kv[1].get("status") != "open", kv[0]))
     return [
         {
             "key": k,
-            "title": d["title"],
+            "title": _link(docs, pages, k),
             "status": d.get("status") or "open",
             "owner": _name(docs, d.get("owner", "")),
-            "touched": ago(d.get("updated") or 0, now),
+            "touched": _ms(d.get("updated") or 0),
             "cited": sum(1 for dd in docs.values() if k in text.links_of(dd.get("body", ""))),
         }
         for k, d in mine
@@ -460,7 +497,7 @@ def decisions(docs: dict, now: float) -> list[dict[str, Any]]:
 
 
 @nu.host
-def meetings_rows(docs: dict, now: float) -> list[dict[str, Any]]:
+def meetings_rows(docs: dict, pages: dict) -> list[dict[str, Any]]:
     """Meetings, newest first: when, who, what they decided, what they left open."""
     docs = docs or {}
     mine = sorted(
@@ -477,7 +514,7 @@ def meetings_rows(docs: dict, now: float) -> list[dict[str, Any]]:
             {
                 "key": k,
                 "date": f"{day(d.get('date') or 0):%a %b} {day(d.get('date') or 0).day}",
-                "title": d["title"],
+                "title": _link(docs, pages, k),
                 "people": len(people),
                 "decisions": len(decided),
                 "open": sum(1 for t in tasks if not t["done"]),
@@ -532,7 +569,7 @@ def meeting_new(
 
 
 @nu.host
-def facts_rows(docs: dict, facts: dict, now: float) -> list[dict[str, Any]]:
+def facts_rows(docs: dict, facts: dict) -> list[dict[str, Any]]:
     """Facts as rows, with how many pages cite each."""
     cited: dict[str, int] = {}
     for d in (docs or {}).values():
@@ -546,22 +583,24 @@ def facts_rows(docs: dict, facts: dict, now: float) -> list[dict[str, Any]]:
             "cite": "{{" + k + "}}",
             "owner": _name(docs, f.get("owner", "")).split(" ")[0],
             "cited": cited.get(k, 0),
-            "changed": ago(f.get("updated") or 0, now),
+            "changed": _ms(f.get("updated") or 0),
         }
         for k, f in (facts or {}).items()
     ]
 
 
 @nu.host
-def fact_uses(docs: dict, facts: dict, pages: dict) -> str:
-    """Where each fact is cited, as markdown."""
-    lines = []
+def fact_uses(docs: dict, facts: dict, pages: dict) -> dict[str, list[dict[str, Any]]]:
+    """Where each cited fact is cited: a head per fact (``{i, label, value, n}``), its links (``{i, j, link}``)."""
+    heads, links = [], []
     for k, f in (facts or {}).items():
         where = [s for s, d in (docs or {}).items() if k in text.facts_of(d.get("body", ""))]
-        if where:
-            links = ", ".join(f"[{_name(docs, s)}]({_href(pages, s)})" for s in where)
-            lines.append(f"- **{f['label']}** ({f['value']}): {links}")
-    return "\n".join(lines) or "_No page cites a fact yet._"
+        if not where:
+            continue
+        i = len(heads)
+        heads.append({"i": i, "label": f["label"], "value": f["value"], "n": len(where)})
+        links += [{"i": i, "j": j, "link": _link(docs, pages, s)} for j, s in enumerate(where)]
+    return {"heads": heads, "links": links}
 
 
 @nu.host
@@ -621,89 +660,88 @@ def graph_option(docs: dict, pages: dict) -> dict[str, Any]:
 
 
 @nu.host
-def graph_side(docs: dict, pages: dict) -> str:
-    """The graph in words: the hubs, the islands."""
+def graph_side(docs: dict, pages: dict) -> dict[str, Any]:
+    """The graph in words: its size, the hubs, the islands."""
     g = text.graph(docs or {}, pages)
     hubs = sorted(g["nodes"], key=lambda n: -n["value"])[:6]
     alone = [n for n in g["nodes"] if n["value"] == 0]
-    lines = [f"**{len(g['nodes'])} pages, {len(g['edges'])} links.**", "", "Most connected:", ""]
-    lines += [f"- [{n['name']}]({_href(pages, n['slug'])}) · {n['value']}" for n in hubs]
-    lines += ["", f"Islands, linked to nothing ({len(alone)}):", ""]
-    lines += [f"- [{n['name']}]({_href(pages, n['slug'])})" for n in alone[:6]] or ["_None._"]
-    return "\n".join(lines)
+    link = lambda n: {"page": text.page_of(pages, n["slug"]), "label": n["name"]}  # noqa: E731
+    return {
+        "size": f"{len(g['nodes'])} pages, {len(g['edges'])} links",
+        "hubs": [
+            {"i": i, "link": link(n), "count": f"{n['value']} links"} for i, n in enumerate(hubs)
+        ],
+        "alone": [{"i": i, "link": link(n)} for i, n in enumerate(alone[:6])],
+        "alone_count": f"{len(alone)} linked to nothing" if alone else "none, every page is linked",
+    }
 
 
 @nu.host
-def health_view(health: dict, live: bool, docs: dict, now: float) -> dict[str, Any]:
+def health_view(health: dict, live: bool, docs: dict, pages: dict) -> dict[str, Any]:
     """The checker's word: its status line, the score, the issues as rows."""
     h, docs = health or {}, docs or {}
-    rows = []
-    for s in h.get("stale", []):
-        rows.append(
-            {
-                "key": f"stale:{s['doc']}",
-                "doc": s["doc"],
-                "issue": "Stale",
-                "page": _name(docs, s["doc"]),
-                "owner": _name(docs, s["owner"]).split(" ")[0],
-                "detail": f"untouched for {s['days']} days",
-            }
+
+    def issue(key: str, slug: str, what: str, owner: str, detail: str) -> dict[str, Any]:
+        return {
+            "key": key,
+            "issue": {"label": what, "variant": ISSUE_TONES[what]},
+            "page": _link(docs, pages, slug),
+            "owner": _name(docs, owner).split(" ")[0],
+            "detail": detail,
+        }
+
+    def owner_of(slug: str) -> str:
+        return docs.get(slug, {}).get("owner", "")
+
+    rows = [
+        issue(f"stale:{s['doc']}", s["doc"], "Stale", s["owner"], f"untouched for {s['days']} days")
+        for s in h.get("stale", [])
+    ]
+    rows += [
+        issue(
+            f"broken:{b['doc']}:{b['to']}",
+            b["doc"],
+            "Broken link",
+            owner_of(b["doc"]),
+            f"links to {b['to']}, which is not a page",
         )
-    for b in h.get("broken", []):
-        rows.append(
-            {
-                "key": f"broken:{b['doc']}:{b['to']}",
-                "doc": b["doc"],
-                "issue": "Broken link",
-                "page": _name(docs, b["doc"]),
-                "owner": _name(docs, docs.get(b["doc"], {}).get("owner", "")).split(" ")[0],
-                "detail": f"links to {b['to']}, which is not a page",
-            }
+        for b in h.get("broken", [])
+    ]
+    rows += [
+        issue(
+            f"missing:{m['doc']}:{m['fact']}",
+            m["doc"],
+            "Missing fact",
+            owner_of(m["doc"]),
+            f"cites {m['fact']}, which is not defined",
         )
-    for m in h.get("missing", []):
-        rows.append(
-            {
-                "key": f"missing:{m['doc']}:{m['fact']}",
-                "doc": m["doc"],
-                "issue": "Missing fact",
-                "page": _name(docs, m["doc"]),
-                "owner": _name(docs, docs.get(m["doc"], {}).get("owner", "")).split(" ")[0],
-                "detail": f"cites {m['fact']}, which is not defined",
-            }
+        for m in h.get("missing", [])
+    ]
+    rows += [
+        issue(f"orphan:{o['doc']}", o["doc"], "Orphan", o["owner"], "no page links here")
+        for o in h.get("orphans", [])
+    ]
+    rows += [
+        issue(
+            f"late:{t['key']}",
+            t["doc"],
+            "Late task",
+            t["owner"],
+            f"{t['text'][:60]}, due {short_date(t['due'])}",
         )
-    for o in h.get("orphans", []):
-        rows.append(
-            {
-                "key": f"orphan:{o['doc']}",
-                "doc": o["doc"],
-                "issue": "Orphan",
-                "page": _name(docs, o["doc"]),
-                "owner": _name(docs, o["owner"]).split(" ")[0],
-                "detail": "no page links here",
-            }
-        )
-    for t in h.get("overdue", []):
-        rows.append(
-            {
-                "key": f"late:{t['key']}",
-                "doc": t["doc"],
-                "issue": "Late task",
-                "page": _name(docs, t["doc"]),
-                "owner": _name(docs, t["owner"]).split(" ")[0],
-                "detail": f"{t['text'][:60]}, due {short_date(t['due'])}",
-            }
-        )
-    checked = h.get("checked_at") or 0
+        for t in h.get("overdue", [])
+    ]
     if not h:
         line, tone = "The checker has not run yet.", "neutral"
     else:
-        line = f"Checked {h.get('pages', 0)} pages and {h.get('links', 0)} links in {h.get('took_ms', 0)} ms, {ago(checked, now)}.  Run {h.get('runs', 0)} since it started."
+        line = f"Checked {h.get('pages', 0)} pages and {h.get('links', 0)} links in {h.get('took_ms', 0)} ms, run {h.get('runs', 0)} since it started. Last run"
         tone = "ok" if live else "neutral"
     return {
         "status": "running" if live else "stopped",
         "tone": tone,
         "pulse": bool(live),
         "line": line,
+        "checked": _ms(h.get("checked_at") or 0),
         "score": float(h.get("score", 0)),
         "gauge": float(h.get("score", 0)) / 100.0,
         "caption": f"{len(rows)} things to look at",
@@ -768,10 +806,10 @@ def first(rows: list, n: int) -> list:
 
 
 @nu.host
-def more(rows: list, n: int, pages: dict) -> str:
-    """A line saying how many rows are not shown, linking where they all are."""
+def more(rows: list, n: int) -> str:
+    """A line saying how many rows are not shown, ``""`` when all are."""
     left = len(rows or []) - n
-    return f"_And {left} more on [Tasks]({text._view(pages, 'tasks')})._" if left > 0 else ""
+    return f"And {left} more on Tasks" if left > 0 else ""
 
 
 @nu.host
@@ -789,10 +827,9 @@ def projects_chart(v: dict) -> dict[str, Any]:
         }
 
     return {
-        "title": {"text": "Tasks by project, done and open"},
         "tooltip": {"trigger": "axis"},
-        "legend": {"top": 28, "left": 0},
-        "grid": {"left": 4, "right": 16, "top": 60, "bottom": 4, "containLabel": True},
+        "legend": {"top": 0, "left": 0},
+        "grid": {"left": 4, "right": 16, "top": 32, "bottom": 4, "containLabel": True},
         "yAxis": {"type": "category", "data": v["names"], "inverse": True},
         "xAxis": {"type": "value", "minInterval": 1},
         "series": [bar("Done", "done", "var(--chart-2)"), bar("Open", "open", "var(--chart-4)")],
@@ -853,10 +890,9 @@ def tasks_option(v: dict) -> dict[str, Any]:
         }
 
     return {
-        "title": {"text": "Open tasks by person"},
         "tooltip": {"trigger": "axis"},
-        "legend": {"top": 28, "left": 0},
-        "grid": {"left": 4, "right": 16, "top": 64, "bottom": 4, "containLabel": True},
+        "legend": {"top": 0, "left": 0},
+        "grid": {"left": 4, "right": 16, "top": 32, "bottom": 4, "containLabel": True},
         "xAxis": {"type": "category", "data": v["names"]},
         "yAxis": {"type": "value", "minInterval": 1},
         "series": [

@@ -154,7 +154,7 @@ async def test_the_first_open_writes_the_history_and_starts_the_jobs_once(store)
     revenue = await store.read(kit.page_of("o", "data_revenue"))
     assert await store.read(Space.planes[revenue].spec) == "data_revenue"
     links = await store.read(kit.pages("o"))
-    assert links["revenue"] == f"/{revenue}"
+    assert links["revenue"] == revenue
     # A view over the tables reads the shards.
     got = await store.read(kit.read("revenue", kit.FILTERS))
     assert got is not None

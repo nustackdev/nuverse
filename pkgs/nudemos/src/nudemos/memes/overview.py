@@ -21,10 +21,11 @@ __all__ = ["PLANE", "TAPE", "TOKENS"]
 
 
 TOKENS = cell("""\
-def column(key, label, width=0, number=True, sortable=True):
-    c = {"key": key, "label": label, "sortable": sortable}
+def column(key, label, width=0, number=True, sortable=True, **more):
+    c = {"key": key, "label": label, "sortable": sortable, **more}
     if number:
         c["kind"] = "number"
+        c["align"] = "end"
     if width:
         c["width"] = width
     return c
@@ -32,32 +33,30 @@ def column(key, label, width=0, number=True, sortable=True):
 
 COLUMNS = [
     column("token", "Token", 120, number=False, sortable=False),
-    column("name", "Name", number=False, sortable=False),
-    column("age", "Age", 72),
+    column("name", "Name", number=False, sortable=False, wrap="truncate", hide_below=900),
+    column("age", "Age", 96, number=False, cell=nustd.ui.RelativeTimeRef),
     column("mc", "Market cap", 116),
     column("move", "Since launch", 116, sortable=False),
-    column("curve", "Curve", 92),
+    column("curve", "Curve", 110, number=False, cell=nustd.ui.ProgressRef),
     column("vol", "Volume", 104),
-    column("trades", "Trades", 84, sortable=False),
-    column("bs", "Buys / sells", 110, sortable=False),
-    column("last", "Last trade", 104),
+    column("trades", "Trades", 84, sortable=False, hide_below=1100),
+    column("bs", "Buys / sells", 110, sortable=False, hide_below=1100),
+    column("last", "Last trade", 104, number=False),
 ]
 
 ORDERS = [{"value": k, "label": v} for k, v in views.SORTS.items()]
 
 
-class Head(nustd.ui.Row):
-    title = nustd.ui.HeadingRef.slot(level=4)
-    sort = nustd.ui.SelectRef.slot(options=ORDERS, selected="new")
-
-
-class View(nustd.ui.Column):
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    head = Head.slot(gap=3, align="center", justify="between")
-    table = nustd.ui.TableRef.slot(
-        columns=COLUMNS, row_key="mint", clickable_rows=True, dense=True, label="Tokens",
-        sort_column="age", sort_direction="desc",
-    )
+    tokens = nustd.ui.PageSectionRef.slot(title="Tokens", description="every coin the sync follows; a click opens its page")
+
+
+sort = View.tokens.actions["sort"].to(nustd.ui.SelectRef.slot(options=ORDERS, selected="new"))
+table = View.tokens["table"].to(nustd.ui.DataTableRef.slot(
+    columns=COLUMNS, row_key="mint", clickable_rows=True, density="compact", label="Tokens",
+    sort_column="age", sort_direction="desc",
+))
 
 
 class Pick(nu.Shape):
@@ -71,30 +70,26 @@ def by_column(column):
 
 
 @nu.host
-def column_of(sort):
-    return {v: k for k, v in views.COLUMN_SORTS.items()}.get(sort, "")
+def column_of(order):
+    return {v: k for k, v in views.COLUMN_SORTS.items()}.get(order, "")
 
 
 def out(plane):
-    t = View.table
-
     def follow(root):
         read = views.token_rows(memes_at(root).board.fallback({}), Pick.sort, nustd.time.time())
-        draw = nu.let(nuspace.atomic(read), t.set_rows)
+        draw = nu.let(nuspace.atomic(read), table.set_rows)
         shown = nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), draw, every=2.0)
 
-        def order(sort):
+        def order(picked):
             # A new order: the picker, the header's arrows and the rows, at once.
-            s = nu.Str(sort)
-            return Pick.sort.set(s) >> View.head.sort.set(s) >> t.set_sort(column_of(s), "desc") >> draw
+            s = nu.Str(picked)
+            return Pick.sort.set(s) >> sort.set(s) >> table.set_sort(column_of(s), "desc") >> draw
 
-        picked = nu.ReactEvery(View.head.sort.on_change(), order(nu.Str(View.head.sort)))
-        clicked = nu.ReactEvery(t.on_sort(), lambda ev: nu.let(by_column(ev["sort_column"]), lambda s: nu.IfDo(nu.Str(s) != "", order(s))))
-        opened = nu.ReactEvery(t.on_row_click(), lambda ev: control.open_token(root, nu.Str(ev["key"]), View.history))
-        body = nu.ParallelAsync(shown, picked, clicked, opened)
-        # A slot shows once it is first written: the title, then the picker.
-        head = View.head.title.set("Tokens") >> View.head.sort.set_options(ORDERS) >> View.head.sort.set("new")
-        return head >> nu.Frame(Pick, body, sort="new")
+        picked = nu.ReactEvery(sort.on_change(), order(nu.Str(sort)))
+        clicked = nu.ReactEvery(table.on_sort(), lambda ev: nu.let(by_column(ev["sort_column"]), lambda s: nu.IfDo(nu.Str(s) != "", order(s))))
+        # A token's page is made on its first open, so a row click opens it.
+        opened = nu.ReactEvery(table.on_row_click(), lambda ev: control.open_token(root, nu.Str(ev["key"]), View.history))
+        return sort.set("new") >> nu.Frame(Pick, nu.ParallelAsync(shown, picked, clicked, opened), sort="new")
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -102,19 +97,23 @@ def out(plane):
 
 TAPE = cell("""\
 COLUMNS = [
-    {"key": "age", "label": "Age", "kind": "number", "width": 64, "sortable": False},
-    {"key": "side", "label": "Side", "width": 84, "sortable": False},
+    {"key": "age", "label": "Age", "width": 96, "sortable": False, "cell": nustd.ui.RelativeTimeRef},
+    {"key": "side", "label": "Side", "width": 84, "sortable": False, "cell": nustd.ui.BadgeRef.slot(size="sm")},
     {"key": "token", "label": "Token", "width": 120, "sortable": False},
-    {"key": "amount", "label": "Amount", "kind": "number", "sortable": False},
-    {"key": "mc", "label": "Market cap", "kind": "number", "width": 110, "sortable": False},
-    {"key": "trader", "label": "Trader", "width": 116, "sortable": False},
+    {"key": "amount", "label": "Amount", "kind": "number", "align": "end", "sortable": False},
+    {"key": "mc", "label": "Market cap", "kind": "number", "align": "end", "width": 110, "sortable": False},
+    {"key": "trader", "label": "Trader", "width": 116, "sortable": False, "hide_below": 800},
 ]
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    head = nustd.ui.HeadingRef.slot(level=4)
-    tape = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Trades")
+    card = nustd.ui.CardRef.slot(title="Trades, as they print", subtitle="every token, newest first; a click opens it")
+
+
+tape = View.card["tape"].to(nustd.ui.DataTableRef.slot(
+    columns=COLUMNS, row_key="key", clickable_rows=True, density="compact", label="Trades",
+))
 
 
 @nu.host
@@ -124,13 +123,10 @@ def mint_of(key):
 
 def out(plane):
     def follow(root):
-        read = views.tape_rows(memes_at(root).tape.fallback([]), nustd.time.time())
-        rows = nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), View.tape.set_rows), every=2.0)
-        opened = nu.ReactEvery(
-            View.tape.on_row_click(),
-            lambda ev: control.open_token(root, mint_of(ev["key"]), View.history),
-        )
-        return View.head.set("Trades, as they print") >> nu.ParallelAsync(rows, opened)
+        read = views.tape_rows(memes_at(root).tape.fallback([]))
+        rows = nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), tape.set_rows), every=2.0)
+        opened = nu.ReactEvery(tape.on_row_click(), lambda ev: control.open_token(root, mint_of(ev["key"]), View.history))
+        return nu.ParallelAsync(rows, opened)
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)

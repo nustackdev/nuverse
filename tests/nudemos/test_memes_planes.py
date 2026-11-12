@@ -68,6 +68,12 @@ class _Browser(WsSession):
     def drawn(self, name: str) -> list:
         return [f.payload for f in self.frames if f.ref and f.ref[-1] == name]
 
+    def tile(self, name: str) -> list:
+        """Every payload sent to the stat in tile ``name`` (the card's body, ``<name>/0``)."""
+        return [
+            f.payload for f in self.frames if f.ref and tuple(map(str, f.ref[-2:])) == (name, "0")
+        ]
+
 
 def _small(spec: PlaneSpec) -> PlaneSpec:
     """``spec`` with two launch cards, not twelve: the same cells, a smaller program to check."""
@@ -143,13 +149,13 @@ async def test_every_cell_runs_and_draws(store):
     bar = drawn["memes.sync"]
     assert bar.drawn("pill")[0]["label"] in ("idle", "down")
     assert bar.drawn("toggle")[-1]["label"] == "Start"
-    assert bar.drawn("notice")[-1] == ""
+    assert bar.drawn("notice")[-1] == {"value": ""}
 
     # The tokens table lists the launch first: only coins whose launch the sync saw have a date.
     tokens = drawn["memes_overview.tokens"]
     rows = [p["rows"] for p in tokens.drawn("table") if isinstance(p, dict) and "rows" in p][-1]
     assert [(r["mint"], r["token"], r["curve"]) for r in rows] == [(CAP, "cap", rows[0]["curve"])]
-    assert rows[0]["age"] != "-"
+    assert rows[0]["age"] is not None
 
     # Coins' own images are off until the Sync plane's switch is on.
     settings = drawn["memes_sync.settings"]
@@ -186,9 +192,9 @@ async def test_a_token_page_shows_its_token(store):
     assert head.drawn("title")[-1]["label"] == "dog wif cap"
     assert head.drawn("face")[0]["src"].startswith("data:image/svg+xml")
     assert await store.read(nuspace.plane.title(page)) == "cap"
-    assert numbers.drawn("mc")[-1]["value"].endswith(" SOL")
+    assert numbers.tile("mc")[-1]["value"].endswith(" SOL")
     rows = [p["rows"] for p in trades.drawn("table") if isinstance(p, dict) and "rows" in p][-1]
-    assert [r["side"] for r in rows] == ["▲ BUY"]
+    assert [r["side"] for r in rows] == [{"label": "buy", "variant": "ok"}]
 
 
 def test_the_planes_hang_as_the_docs_say():

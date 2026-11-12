@@ -22,6 +22,7 @@ import nu
 import nuspace
 import nuspace.web
 import nustd.ui
+from nudemos import pages
 from nudemos.knowledge import kit, text, views
 """
 
@@ -39,24 +40,35 @@ CHANGES = "[B.docs.on_change(), B.facts.on_change()]"
 
 
 WELCOME = cell("""\
-class Find(nustd.ui.Row):
-    q = nustd.ui.InputRef.slot(placeholder="Search pages and facts: battery, price, Ravi, LoRa...")
-
-
 class View(nustd.ui.Column):
     intro = nustd.ui.MarkdownRef.slot()
-    find = Find.slot()
-    hits = nustd.ui.MarkdownRef.slot()
+    q = nustd.ui.InputRef.slot(placeholder="Search pages and facts: battery, price, Ravi, LoRa...")
+    hits = nustd.ui.ColumnRef.slot(nustd.ui.LineRef, gap=2)
+    note = nustd.ui.TextRef.slot(tone="muted")
+
+
+def hit(h):
+    h = nu.Dict(h)
+    line, link = View.hits[nu.Int(h["i"])], nu.Dict(h["link"])
+    return (
+        line[0].to(nustd.ui.LinkRef).set(href=link.get_item("href", ""), label=link["label"])
+        >> line[1].to(nustd.ui.BadgeRef.slot(size="sm")).set(h["kind"])
+        >> line[2].to(nustd.ui.TextRef.slot(tone="muted", size="sm")).set(h["excerpt"])
+    )
+
+
+def draw(v):
+    rows = pages.linked(nu.Dict(v)["hits"], "link", "label")
+    return nu.ForEachDo(rows, hit) >> View.hits.truncate(nu.List(rows).len()) >> View.note.set(v["note"])
 
 
 def out(plane):
     def build(base, B):
-        q = nu.Str(View.find.q)
-        hits = views.search(B.docs.extract(), B.facts.extract(), q, B.planes.extract())
+        found = views.search(B.docs.extract(), B.facts.extract(), nu.Str(View.q), B.planes.extract())
         intro = views.welcome(B.facts.extract(), B.planes.extract(), kit.now())
-        return View.find.q.set("") >> nu.ParallelAsync(
+        return View.intro.init() >> View.q.set("") >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.facts.on_change()])), nu.let(nuspace.atomic(intro), View.intro.set), every=600.0),
-            nu.ReactEvery(View.find.q.on_change(), View.hits.set(hits)),
+            nu.ReactEvery(View.q.on_change(), nu.let(found, draw)),
         )
 
     return kit.on_base(plane, build)
@@ -73,17 +85,15 @@ KEYS = {
     "health": "Health score",
 }
 
-Tiles = type("Tiles", (nustd.ui.Grid,), {k: nustd.ui.StatRef.slot(label=v) for k, v in KEYS.items()})
 
-
-class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=6, min_width=120, gap=3)
+class View(nu.Shape):
+    tiles = nustd.ui.GridRef.slot(nustd.ui.CardRef.slot(size="sm"), max_columns=6, min_cell_width=150, gap=3)
 
 
 def draw(t):
     def tile(k):
         s = t[k]
-        return getattr(View.tiles, k).set(s["value"], delta=s["delta"], trend=s["trend"])
+        return View.tiles[k][0].to(nustd.ui.StatRef).set(s["value"], label=KEYS[k], delta=s["delta"], trend=s["trend"])
 
     return nu.Sequential(*(tile(k) for k in KEYS))
 
@@ -103,7 +113,7 @@ class Form(nustd.ui.Row):
     add = nustd.ui.ButtonRef.slot(label="Capture", icon="plus")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
     form = Form.slot(gap=3, align="end")
 
@@ -132,9 +142,9 @@ TASK_COLUMNS = """\
 COLUMNS = [
     {"key": "done", "label": "Done", "kind": "bool", "width": 72},
     {"key": "task", "label": "Task", "editable": False},
-    {"key": "owner", "label": "Owner", "editable": False, "width": 96},
+    {"key": "owner", "label": "Owner", "editable": False, "width": 96, "hide_below": 640},
     {"key": "due", "label": "Due", "editable": False, "width": 130},
-    {"key": "page", "label": "Written in", "editable": False, "width": 240},
+    {"key": "page", "label": "Written in", "editable": False, "width": 240, "hide_below": 800, "cell": nustd.ui.PageLinkRef.slot(variant="inline")},
 ]
 
 
@@ -147,39 +157,71 @@ DUE = cell(
     TASK_COLUMNS
     + """
 
-class View(nustd.ui.Column):
-    head = nustd.ui.MarkdownRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", editable=True, dense=True, label="Due this week")
-    more = nustd.ui.MarkdownRef.slot()
+class View(nu.Shape):
+    due = nustd.ui.CardRef.slot(
+        title="Due this week",
+        subtitle="Every task in every page, due in the next seven days or late. Tick one and its page changes.",
+    )
+
+
+TABLE = View.due[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", editable=True, density="compact", label="Due this week"))
+MORE = View.due.footer[0].to(nustd.ui.LinkRef.slot(variant="muted", arrow=True))
 
 
 def out(plane):
     def build(base, B):
-        rows = views.task_rows(B.docs.extract(), kit.now(), "", 7, False)
-        draw = lambda r: View.table.set_rows(views.first(r, 10)) >> View.more.set(views.more(r, 10, B.planes.extract()))
+        rows = views.task_rows(B.docs.extract(), B.planes.extract(), kit.now(), "", 7, False)
+        tasks = nuspace.web.href(nuspace.atomic(kit.folder_page(B, "tasks")))
+
+        def draw(r):
+            left = views.more(r, 10)
+            more = nu.IfDo(nu.Str(left) != "", MORE.set(href=tasks, label=left), MORE.erase())
+            return TABLE.set_rows(pages.linked(views.first(r, 10), "page")) >> more
+
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), draw), every=60.0),
-            nu.ReactEvery(View.table.on_edit(), lambda ev: tick(B, ev)),
+            nu.ReactEvery(TABLE.on_edit(), lambda ev: tick(B, ev)),
         )
 
-    head = "### Due this week\\n\\nEvery task in every page, due in the next seven days or late. Tick one and its page changes."
-    return View.head.set(head) >> kit.on_base(plane, build)
+    return kit.on_base(plane, build)
 """
 )
 
 
 ACTIVITY = cell("""\
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=3)
-    feed = nustd.ui.MarkdownRef.slot()
+class View(nu.Shape):
+    activity = nustd.ui.CardRef.slot(title="What changed", subtitle="Newest first")
+
+
+FEED = View.activity[0].to(nustd.ui.ColumnRef.slot(nustd.ui.LineRef, gap=0, max_height=360, scroll="y"))
+EMPTY = View.activity[1].to(nustd.ui.TextRef.slot(tone="muted"))
+
+
+def event(e):
+    e = nu.Dict(e)
+    line, link = FEED[nu.Int(e["i"])], nu.Dict(e["link"])
+    page = line[2].to(nustd.ui.LinkRef)
+    href = nu.Str(link.get_item("href", ""))
+    return (
+        line[0].to(nustd.ui.TextRef.slot(weight="medium")).set(e["who"])
+        >> line[1].to(nustd.ui.TextRef).set(e["what"])
+        >> nu.IfDo(href != "", page.set(href=href, label=link["label"]), page.erase())
+        >> line[3].to(nustd.ui.RelativeTimeRef).set(e["at"])
+    )
+
+
+def draw(rows):
+    rows = pages.linked(rows, "link", "label")
+    n = nu.List(rows).len()
+    return nu.ForEachDo(rows, event) >> FEED.truncate(n) >> EMPTY.set(nu.If(n == 0, "Nothing has happened yet.", ""))
 
 
 def out(plane):
     def build(base, B):
-        read = views.activity(B.log.fallback([]), B.docs.extract(), B.planes.extract(), kit.now(), 12)
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.log.on_change()])), nu.let(nuspace.atomic(read), View.feed.set), every=30.0)
+        read = views.activity(B.log.fallback([]), B.docs.extract(), B.planes.extract(), 12)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.log.on_change()])), nu.let(nuspace.atomic(read), draw))
 
-    return View.head.set_label("What changed") >> kit.on_base(plane, build)
+    return kit.on_base(plane, build)
 """)
 
 
@@ -196,30 +238,33 @@ ROOT = (
 
 
 HEAD = cell("""\
-class Head(nustd.ui.Row):
-    kind = nustd.ui.BadgeRef.slot()
+class Head(nustd.ui.Line):
+    kind = nustd.ui.BadgeRef.slot(variant="neutral")
     status = nustd.ui.BadgeRef.slot()
-    by = nustd.ui.TextRef.slot()
+    by = nustd.ui.TextRef.slot(value="Owner", tone="muted")
     owner = nustd.ui.LinkRef.slot()
-    when = nustd.ui.TextRef.slot()
+    edited = nustd.ui.TextRef.slot(value="edited", tone="muted")
+    when = nustd.ui.RelativeTimeRef.slot()
+    rest = nustd.ui.TextRef.slot(tone="muted")
 
 
-class View(nustd.ui.Column):
-    head = Head.slot(gap=3, align="center", wrap=True)
+class View(nu.Shape):
+    head = Head.slot(wrap=True)
 
 
 def draw(v):
-    h = View.head
-    second = nu.If(nu.Bool(v["show_status"]), v["status"], v["fresh"])
-    tone = nu.If(nu.Bool(v["show_status"]), v["tone"], v["fresh_tone"])
+    h, owner = View.head, nu.Dict(v["owner"])
+    page = nu.Str(owner["page"])
     return (
-        h.kind.set(v["kind"], variant="neutral") >> h.status.set(second, variant=tone)
-        >> h.by.set("Owner") >> h.owner.set(href=v["owner_href"], label=v["owner"]) >> h.when.set(v["when"])
+        h.kind.set(v["kind"]) >> h.status.set(v["second"], variant=v["second_tone"])
+        >> h.owner.set(href=nu.If(page != "", nuspace.web.href(page), ""), label=owner["label"])
+        >> h.when.set(v["edited"]) >> h.rest.set(v["rest"])
     )
 
 
 def out(plane):
-    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(views.doc_head(B.docs.extract(), B.health.fallback({}), slug, B.planes.extract(), kit.now())), draw), every=60.0))
+    read = lambda B, slug: views.doc_head(B.docs.extract(), B.health.fallback({}), slug, B.planes.extract())
+    return View.head.init() >> kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(read(B, slug)), draw)))
 """)
 
 
@@ -231,9 +276,49 @@ def out(plane):
 
 
 LINKS = cell("""\
+class View(nu.Shape):
+    links = nustd.ui.GridRef.slot(cols="3fr 2fr", gap=4, stack_below=800)
+
+
+BACK = View.links[0, 0].to(nustd.ui.CardRef.slot(title="Linked from", size="sm"))
+BACK_LINES = BACK[0].to(nustd.ui.ColumnRef.slot(nustd.ui.LineRef, gap=2))
+BACK_NONE = BACK[1].to(nustd.ui.TextRef.slot(tone="muted"))
+OUT = View.links[0, 1].to(nustd.ui.CardRef.slot(title="Links to", size="sm"))
+OUT_LINKS = OUT[0].to(nustd.ui.RowRef.slot(gap=3, wrap=True))
+OUT_NONE = OUT[1].to(nustd.ui.TextRef.slot(tone="muted"))
+BROKEN = OUT.footer[0].to(nustd.ui.TextRef.slot(tone="danger", size="sm"))
+
+
+def back(r):
+    r = nu.Dict(r)
+    line, link = BACK_LINES[nu.Int(r["i"])], nu.Dict(r["link"])
+    return (
+        line[0].to(nustd.ui.LinkRef).set(href=link.get_item("href", ""), label=link["label"])
+        >> line[1].to(nustd.ui.TextRef.slot(tone="muted", size="sm")).set(r["excerpt"])
+    )
+
+
+def out_link(r):
+    r = nu.Dict(r)
+    link = nu.Dict(r["link"])
+    return OUT_LINKS[nu.Int(r["i"])].to(nustd.ui.LinkRef).set(href=link.get_item("href", ""), label=link["label"])
+
+
+def draw(v):
+    v = nu.Dict(v)
+    backs, outs = pages.linked(v["back"], "link", "label"), pages.linked(v["out"], "link", "label")
+    nb, no = nu.List(backs).len(), nu.List(outs).len()
+    return (
+        BACK.set_subtitle(v["back_count"]) >> nu.ForEachDo(backs, back) >> BACK_LINES.truncate(nb)
+        >> BACK_NONE.set(nu.If(nb == 0, "Nothing links here yet.", ""))
+        >> OUT.set_subtitle(v["out_count"]) >> nu.ForEachDo(outs, out_link) >> OUT_LINKS.truncate(no)
+        >> OUT_NONE.set(nu.If(no == 0, "No links out.", "")) >> BROKEN.set(v["broken"])
+    )
+
+
 def out(plane):
-    links = nustd.ui.MarkdownRef("links")
-    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.facts.on_change()])), nu.let(nuspace.atomic(views.doc_links(B.docs.extract(), B.facts.extract(), slug, B.planes.extract())), links.set)))
+    read = lambda B, slug: views.doc_links(B.docs.extract(), B.facts.extract(), slug, B.planes.extract())
+    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.facts.on_change()])), nu.let(nuspace.atomic(read(B, slug)), draw)))
 """)
 
 
@@ -246,7 +331,7 @@ class Edit(nustd.ui.Collapsible):
     hint = nustd.ui.TextRef.slot()
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     edit = Edit.slot(title="Edit the source", open=False)
 
 
@@ -282,7 +367,7 @@ class Numbers(nustd.ui.Grid):
 
 class View(nustd.ui.Column):
     progress = nustd.ui.ProgressRef.slot()
-    numbers = Numbers.slot(columns=3, min_width=150, gap=3)
+    numbers = Numbers.slot(max_columns=3, min_cell_width=150, gap=3)
 
 
 def draw(v):
@@ -304,7 +389,7 @@ class Decide(nustd.ui.Row):
     note = nustd.ui.TextRef.slot()
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     decide = Decide.slot(gap=3, align="center")
 
 
@@ -325,13 +410,9 @@ def out(plane):
 
 
 PROFILE = cell("""\
-class Who(nustd.ui.Column):
-    role = nustd.ui.TextRef.slot()
-
-
 class Head(nustd.ui.Row):
     face = nustd.ui.AvatarRef.slot(size="xl")
-    who = Who.slot(gap=1)
+    role = nustd.ui.TextRef.slot(tone="secondary")
 
 
 class Numbers(nustd.ui.Grid):
@@ -343,13 +424,13 @@ class Numbers(nustd.ui.Grid):
 
 class View(nustd.ui.Column):
     head = Head.slot(gap=4, align="center")
-    numbers = Numbers.slot(columns=4, min_width=130, gap=3)
+    numbers = Numbers.slot(max_columns=4, min_cell_width=130, gap=3)
 
 
 def draw(v):
     n = View.numbers
     return (
-        View.head.who.role.set(v["role"]) >> n.owns.set(v["owns"]) >> n.open.set(v["open"])
+        View.head.role.set(v["role"]) >> n.owns.set(v["owns"]) >> n.open.set(v["open"])
         >> n.late.set(v["late"]) >> n.edits.set(v["edits"])
     )
 
@@ -380,41 +461,53 @@ DOC_CELLS = {
 # --- the folder and tool pages --------------------------------------------------------------
 
 
-def _opens(name: str, extra: str = "") -> str:
-    """A table of pages whose row click opens the page: the shared part of a folder's cell."""
+def _folder(name: str, title: str, subtitle: str = "", extra: str = "") -> str:
+    """The shared part of a folder's cell: a card holding a table of its pages, each title a link."""
     return f"""\
 class View(nustd.ui.Column):
-    history = nustd.ui.HistoryRef.slot()
-    head = nustd.ui.HeadingRef.slot(level=3)
-    note = nustd.ui.TextRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="{name}")
+    pages = nustd.ui.CardRef.slot(title="{title}", subtitle="{subtitle}")
 {extra}
 
-def opens(B):
-    return nu.ReactEvery(View.table.on_row_click(), lambda ev: View.history.push(kit.doc_href(B, nu.Str(ev["key"]))))
+TABLE = View.pages[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="{name}"))
+
+
+def shown(rows):
+    return TABLE.set_rows(pages.linked(rows, "title"))
 """
+
+
+#: A folder's page column: the title, a link to the page.
+TITLE = '{"key": "title", "label": "%s", "cell": nustd.ui.PageLinkRef.slot(variant="inline")}'
+
+#: A column of when something was last edited, drawn as time from now.
+EDITED = (
+    '{"key": "%s", "label": "%s", "width": 130, "align": "end", "cell": nustd.ui.RelativeTimeRef}'
+)
 
 
 HANDBOOK = cell(
-    """\
+    f"""\
 COLUMNS = [
-    {"key": "title", "label": "Page"},
-    {"key": "owner", "label": "Owner", "width": 160},
-    {"key": "edited", "label": "Edited", "width": 140, "sortable": False},
-    {"key": "fresh", "label": "Fresh", "width": 100},
-    {"key": "links", "label": "Linked from", "kind": "number", "width": 120},
+    {TITLE % "Page"},
+    {{"key": "owner", "label": "Owner", "width": 160, "hide_below": 640}},
+    {EDITED % ("edited", "Edited")},
+    {{"key": "fresh", "label": "Fresh", "width": 100, "cell": nustd.ui.BadgeRef.slot(size="sm")}},
+    {{"key": "links", "label": "Linked from", "kind": "number", "width": 120, "align": "end", "hide_below": 640}},
 ]
 """
-    + _opens("Handbook")
+    + _folder(
+        "Handbook",
+        "Every topic",
+        "How Larkspur works, one page per topic. A page untouched for too long is flagged by the checker.",
+    )
     + """
 
 def out(plane):
     def build(base, B):
-        rows = views.pages_rows(B.docs.extract(), B.health.fallback({}), "wiki", kit.now())
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(rows), View.table.set_rows), every=60.0), opens(B))
+        rows = views.pages_rows(B.docs.extract(), B.health.fallback({}), "wiki", B.planes.extract())
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(rows), shown))
 
-    note = "How Larkspur works, one page per topic. A page untouched for too long is flagged by the checker."
-    return View.note.set(note) >> kit.on_base(plane, build)
+    return kit.on_base(plane, build)
 """
 )
 
@@ -428,31 +521,37 @@ def out(plane):
 
 
 PROJECTS = cell(
-    """\
+    f"""\
 COLUMNS = [
-    {"key": "title", "label": "Project"},
-    {"key": "owner", "label": "Owner", "width": 150},
-    {"key": "status", "label": "Status", "width": 100},
-    {"key": "progress", "label": "Done", "width": 90},
-    {"key": "open", "label": "Open tasks", "kind": "number", "width": 120},
-    {"key": "next", "label": "Next due", "width": 140},
+    {TITLE % "Project"},
+    {{"key": "owner", "label": "Owner", "width": 150, "hide_below": 640}},
+    {{"key": "status", "label": "Status", "width": 110, "cell": nustd.ui.StatusPillRef}},
+    {{"key": "progress", "label": "Done", "width": 140, "cell": nustd.ui.ProgressRef}},
+    {{"key": "open", "label": "Open tasks", "kind": "number", "width": 110, "align": "end"}},
+    {{"key": "next", "label": "Next due", "width": 140, "hide_below": 800}},
 ]
 """
-    + _opens("Projects", "    chart = nustd.ui.Chart.slot(height=240)\n")
+    + _folder(
+        "Projects",
+        "Every project",
+        "Progress is counted from the tasks in each project page and in every page that links it.",
+        '    tasks = nustd.ui.CardRef.slot(title="Tasks by project", subtitle="Done and open")\n',
+    )
     + """
+
+CHART = View.tasks[0].to(nustd.ui.Chart.slot(height=240))
 
 
 def draw(v):
-    return View.table.set_rows(nu.Dict(v)["rows"]) >> View.chart.set(option=views.projects_chart(v))
+    return shown(nu.Dict(v)["rows"]) >> CHART.set(option=views.projects_chart(v))
 
 
 def out(plane):
     def build(base, B):
-        read = views.projects_view(B.docs.extract(), kit.now())
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(read), draw), every=60.0), opens(B))
+        read = views.projects_view(B.docs.extract(), B.planes.extract(), kit.now())
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(read), draw), every=60.0)
 
-    note = "Progress is counted from the tasks in each project page and in every page that links it."
-    return View.note.set(note) >> kit.on_base(plane, build)
+    return kit.on_base(plane, build)
 """
 )
 
@@ -500,42 +599,43 @@ def out(plane):
 
 
 MEETINGS = cell(
-    """\
+    f"""\
 COLUMNS = [
-    {"key": "date", "label": "Date", "width": 120, "sortable": False},
-    {"key": "title", "label": "Meeting"},
-    {"key": "people", "label": "People", "kind": "number", "width": 90},
-    {"key": "decisions", "label": "Decisions", "kind": "number", "width": 110},
-    {"key": "open", "label": "Open items", "kind": "number", "width": 110},
+    {{"key": "date", "label": "Date", "width": 120, "sortable": False}},
+    {TITLE % "Meeting"},
+    {{"key": "people", "label": "People", "kind": "number", "width": 90, "align": "end", "hide_below": 640}},
+    {{"key": "decisions", "label": "Decisions", "kind": "number", "width": 110, "align": "end"}},
+    {{"key": "open", "label": "Open items", "kind": "number", "width": 110, "align": "end"}},
 ]
 """
-    + _opens("Meetings")
+    + _folder("Meetings", "Every meeting", "Newest first.")
     + """
 
 def out(plane):
-    def build(base, B):
-        rows = views.meetings_rows(B.docs.extract(), kit.now())
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), View.table.set_rows)), opens(B))
-
-    return View.head.set_label("Every meeting, newest first") >> View.note.set("") >> kit.on_base(plane, build)
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.meetings_rows(B.docs.extract(), B.planes.extract())), shown)))
 """
 )
 
 
-DECISIONS = cell("""\
+DECISIONS = cell(
+    f"""\
 COLUMNS = [
-    {"key": "title", "label": "Decision", "editable": False},
-    {"key": "status", "label": "Status", "kind": "select", "options": ["open", "decided", "superseded"], "width": 140},
-    {"key": "owner", "label": "Owner", "editable": False, "width": 150},
-    {"key": "touched", "label": "Last touched", "editable": False, "width": 140, "sortable": False},
-    {"key": "cited", "label": "Cited by", "kind": "number", "editable": False, "width": 100},
+    {{"key": "title", "label": "Decision", "editable": False, "cell": nustd.ui.PageLinkRef.slot(variant="inline")}},
+    {{"key": "status", "label": "Status", "kind": "select", "options": ["open", "decided", "superseded"], "width": 140}},
+    {{"key": "owner", "label": "Owner", "editable": False, "width": 150, "hide_below": 640}},
+    {EDITED[:-1] % ("touched", "Last touched")}, "editable": False}},
+    {{"key": "cited", "label": "Cited by", "kind": "number", "editable": False, "width": 100, "align": "end"}},
 ]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=3)
-    note = nustd.ui.TextRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", editable=True, dense=True, label="Decisions")
+class View(nu.Shape):
+    decisions = nustd.ui.CardRef.slot(
+        title="Decisions",
+        subtitle="Change a status here and the decision's page, Home, the digest and every open-decisions table follow.",
+    )
+
+
+TABLE = View.decisions[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", editable=True, density="compact", label="Decisions"))
 
 
 def edit(B, ev):
@@ -544,19 +644,19 @@ def edit(B, ev):
 
 def out(plane):
     def build(base, B):
-        rows = views.decisions(B.docs.extract(), kit.now())
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), View.table.set_rows), every=60.0), nu.ReactEvery(View.table.on_edit(), lambda ev: edit(B, ev)))
+        rows = pages.linked(views.decisions(B.docs.extract(), B.planes.extract()), "title")
+        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), TABLE.set_rows)), nu.ReactEvery(TABLE.on_edit(), lambda ev: edit(B, ev)))
 
-    note = "Change a status here and the decision's page, Home, the digest and every open-decisions table follow."
-    return View.note.set(note) >> kit.on_base(plane, build)
-""")
+    return kit.on_base(plane, build)
+"""
+)
 
 
 PEOPLE = cell("""\
 class Name(nustd.ui.Column):
     link = nustd.ui.LinkRef.slot()
-    role = nustd.ui.TextRef.slot()
-    note = nustd.ui.TextRef.slot()
+    role = nustd.ui.TextRef.slot(tone="secondary", size="sm")
+    note = nustd.ui.TextRef.slot(tone="muted", size="sm")
 
 
 class Face(nustd.ui.Row):
@@ -565,42 +665,46 @@ class Face(nustd.ui.Row):
 
 
 class View(nustd.ui.Column):
-    intro = nustd.ui.TextRef.slot()
-    faces = nustd.ui.GridRef.slot(Face, min_width=280, gap=3)
+    intro = nustd.ui.TextRef.slot(value="Seven of us. Each person's page lists what they own and what is on them, live.", tone="muted")
+    faces = nustd.ui.GridRef.slot(nustd.ui.CardRef.slot(size="sm"), max_columns=3, min_cell_width=260, gap=3)
+
+
+def one(r):
+    r = nu.Dict(r)
+    f, link = View.faces[nu.Str(r["slug"])][0].to(Face.slot(gap=3)), nu.Dict(r["link"])
+    return (
+        f.face.set("", name=r["name"]) >> f.name.link.set(href=link.get_item("href", ""), label=link["label"])
+        >> f.name.role.set(r["role"]) >> f.name.note.set(r["note"])
+    )
 
 
 def draw(rows):
-    def one(r):
-        f = View.faces[r["i"]]
-        return f.face.set("", name=r["name"]) >> f.name.link.set(href=r["href"], label=r["name"]) >> f.name.role.set(r["role"]) >> f.name.note.set(r["note"])
-
-    return nu.ForEachDo(rows, one)
+    return nu.ForEachDo(pages.linked(rows, "link", "label"), one)
 
 
 def out(plane):
-    intro = View.intro.set("Seven of us. Each person's page lists what they own and what is on them, live.")
-    return intro >> kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.people_cards(B.docs.extract(), kit.now(), B.planes.extract())), draw), every=60.0))
+    return View.intro.init() >> kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.people_cards(B.docs.extract(), B.planes.extract())), draw)))
 """)
 
 
 NOTES = cell(
-    """\
+    f"""\
 COLUMNS = [
-    {"key": "title", "label": "Note"},
-    {"key": "from", "label": "From", "width": 170},
-    {"key": "tags", "label": "Tags", "width": 200},
-    {"key": "edited", "label": "Edited", "width": 140, "sortable": False},
+    {TITLE % "Note"},
+    {{"key": "from", "label": "From", "width": 170, "hide_below": 640}},
+    {{"key": "tags", "label": "Tags", "width": 200, "hide_below": 800}},
+    {EDITED % ("edited", "Edited")},
 ]
 """
-    + _opens("My notes")
+    + _folder(
+        "My notes",
+        "Every note",
+        "My second brain: reading notes, half thoughts, captures from Home, and notebooks brought in from elsewhere.",
+    )
     + """
 
 def out(plane):
-    def build(base, B):
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.notes_rows(B.docs.extract(), kit.now())), View.table.set_rows), every=60.0), opens(B))
-
-    note = "My second brain: reading notes, half thoughts, captures from Home, and notebooks brought in from elsewhere."
-    return View.note.set(note) >> kit.on_base(plane, build)
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.notes_rows(B.docs.extract(), B.planes.extract())), shown)))
 """
 )
 
@@ -609,46 +713,43 @@ TASKS = cell(
     TASK_COLUMNS
     + """
 
-class Filter(nustd.ui.Row):
-    who = nustd.ui.SelectRef.slot(placeholder="Everyone")
-    done = nustd.ui.SwitchRef.slot(label="Show done")
-    note = nustd.ui.TextRef.slot()
+class View(nu.Shape):
+    tasks = nustd.ui.CardRef.slot(title="Tasks", subtitle="Tasks live in the pages they are written in. This is a query over all of them.")
 
 
-class View(nustd.ui.Column):
-    filter = Filter.slot(gap=4, align="center")
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", editable=True, dense=True, label="Tasks")
-
+WHO = View.tasks.actions[0].to(nustd.ui.SelectRef.slot(placeholder="Everyone"))
+DONE = View.tasks.actions[1].to(nustd.ui.SwitchRef.slot(label="Show done"))
+TABLE = View.tasks[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", editable=True, density="compact", label="Tasks"))
 
 PEOPLE = [{"value": "", "label": "Everyone"}] + [{"value": k, "label": v} for k, v in kit.NAMES.items()]
 
 
 def out(plane):
-    f = View.filter
-
     def build(base, B):
-        rows = views.task_rows(B.docs.extract(), kit.now(), nu.Str(f.who), -1, nu.Bool(f.done))
-        again = nu.let(rows, View.table.set_rows)
+        rows = pages.linked(views.task_rows(B.docs.extract(), B.planes.extract(), kit.now(), nu.Str(WHO), -1, nu.Bool(DONE)), "page")
+        again = nu.let(rows, TABLE.set_rows)
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), View.table.set_rows), every=60.0),
-            nu.ReactEvery(f.who.on_change(), again),
-            nu.ReactEvery(f.done.on_change(), again),
-            nu.ReactEvery(View.table.on_edit(), lambda ev: tick(B, ev)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), TABLE.set_rows), every=60.0),
+            nu.ReactEvery(WHO.on_change(), again),
+            nu.ReactEvery(DONE.on_change(), again),
+            nu.ReactEvery(TABLE.on_edit(), lambda ev: tick(B, ev)),
         )
 
-    note = "Tasks live in the pages they are written in. This is a query over all of them."
-    return f.who.set_options(PEOPLE) >> f.who.set("") >> f.done.set(False) >> f.note.set(note) >> kit.on_base(plane, build)
+    return WHO.set_options(PEOPLE) >> WHO.set("") >> DONE.set(False) >> kit.on_base(plane, build)
 """
 )
 
 
 TASKS_CHART = cell("""\
-class View(nustd.ui.Column):
-    chart = nustd.ui.Chart.slot(height=260)
+class View(nu.Shape):
+    chart = nustd.ui.CardRef.slot(title="Open tasks by person", subtitle="Late, due this week, and later")
+
+
+CHART = View.chart[0].to(nustd.ui.Chart.slot(height=260))
 
 
 def draw(v):
-    return View.chart.set(option=views.tasks_option(v))
+    return CHART.set(option=views.tasks_option(v))
 
 
 def out(plane):
@@ -657,21 +758,25 @@ def out(plane):
 
 
 FACTS = cell(
-    """\
+    f"""\
 COLUMNS = [
-    {"key": "label", "label": "Fact", "editable": False},
-    {"key": "value", "label": "Value", "width": 240},
-    {"key": "cite", "label": "Cite as", "editable": False, "width": 170},
-    {"key": "owner", "label": "Owner", "editable": False, "width": 100},
-    {"key": "cited", "label": "Cited on", "kind": "number", "editable": False, "width": 100},
-    {"key": "changed", "label": "Changed", "editable": False, "width": 130, "sortable": False},
+    {{"key": "label", "label": "Fact", "editable": False}},
+    {{"key": "value", "label": "Value", "width": 240}},
+    {{"key": "cite", "label": "Cite as", "editable": False, "width": 170, "hide_below": 800}},
+    {{"key": "owner", "label": "Owner", "editable": False, "width": 100, "hide_below": 640}},
+    {{"key": "cited", "label": "Cited on", "kind": "number", "editable": False, "width": 100, "align": "end"}},
+    {EDITED[:-1] % ("changed", "Changed")}, "editable": False}},
 ]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=3)
-    note = nustd.ui.TextRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", editable=True, dense=True, label="Facts")
+class View(nu.Shape):
+    facts = nustd.ui.CardRef.slot(
+        title="Facts",
+        subtitle="Each fact is written once and cited on pages as {{{{key}}}}. Change a value here and every page citing it follows.",
+    )
+
+
+TABLE = View.facts[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", editable=True, density="compact", label="Facts"))
 
 
 def edit(B, ev):
@@ -681,66 +786,135 @@ def edit(B, ev):
 
 def out(plane):
     def build(base, B):
-        rows = views.facts_rows(B.docs.extract(), B.facts.extract(), kit.now())
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*CHANGES)), nu.let(nuspace.atomic(rows), View.table.set_rows), every=60.0), nu.ReactEvery(View.table.on_edit(), lambda ev: edit(B, ev)))
+        rows = views.facts_rows(B.docs.extract(), B.facts.extract())
+        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(nuspace.atomic(rows), TABLE.set_rows)), nu.ReactEvery(TABLE.on_edit(), lambda ev: edit(B, ev)))
 
-    note = "Each fact is written once and cited on pages as {{key}}. Change a value here and every page citing it follows."
-    return View.note.set(note) >> kit.on_base(plane, build)
-""".replace("CHANGES", CHANGES)
+    return kit.on_base(plane, build)
+"""
 )
 
 
 FACT_USES = cell(f"""\
+class Use(nustd.ui.Column):
+    head = nustd.ui.LineRef.slot()
+    where = nustd.ui.RowRef.slot(gap=3, wrap=True)
+
+
+class View(nu.Shape):
+    uses = nustd.ui.CardRef.slot(title="Where each fact is cited")
+
+
+USES = View.uses[0].to(nustd.ui.ColumnRef.slot(Use.slot(gap=1), gap=3, divided=True))
+EMPTY = View.uses[1].to(nustd.ui.TextRef.slot(tone="muted"))
+
+
+def head(h):
+    h = nu.Dict(h)
+    use = USES[nu.Int(h["i"])]
+    return (
+        use.head[0].to(nustd.ui.TextRef.slot(weight="medium")).set(h["label"])
+        >> use.head[1].to(nustd.ui.BadgeRef.slot(variant="neutral", size="sm")).set(h["value"])
+        >> use.where.truncate(h["n"])
+    )
+
+
+def link(r):
+    r = nu.Dict(r)
+    to = nu.Dict(r["link"])
+    return USES[nu.Int(r["i"])].where[nu.Int(r["j"])].to(nustd.ui.LinkRef).set(href=to.get_item("href", ""), label=to["label"])
+
+
+def draw(v):
+    v = nu.Dict(v)
+    n = nu.List(v["heads"]).len()
+    return (
+        nu.ForEachDo(pages.linked(v["links"], "link", "label"), link) >> nu.ForEachDo(v["heads"], head)
+        >> USES.truncate(n) >> EMPTY.set(nu.If(n == 0, "No page cites a fact yet.", ""))
+    )
+
+
 def out(plane):
-    md = nustd.ui.MarkdownRef("uses")
-    read = lambda B: nu.Str("### Where each fact is cited\\n\\n") + views.fact_uses(B.docs.extract(), B.facts.extract(), B.planes.extract())
-    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(nuspace.atomic(read(B)), md.set)))
+    read = lambda B: views.fact_uses(B.docs.extract(), B.facts.extract(), B.planes.extract())
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(nuspace.atomic(read(B)), draw)))
 """)
 
 
 GLOSSARY = cell("""\
 COLUMNS = [
     {"key": "term", "label": "Term", "width": 220},
-    {"key": "meaning", "label": "What it means"},
-    {"key": "used", "label": "Used on", "kind": "number", "width": 100},
+    {"key": "meaning", "label": "What it means", "wrap": "wrap"},
+    {"key": "used", "label": "Used on", "kind": "number", "width": 100, "align": "end"},
 ]
 
 
-class View(nustd.ui.Column):
-    note = nustd.ui.TextRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Glossary")
+class View(nu.Shape):
+    glossary = nustd.ui.CardRef.slot(
+        title="Glossary",
+        subtitle="The words we use. How many pages use each is counted from the pages as they are now.",
+    )
+
+
+TABLE = View.glossary[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Glossary"))
 
 
 def out(plane):
-    note = "The words we use. How many pages use each is counted from the pages as they are now."
-    return View.note.set(note) >> kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.glossary_rows(B.docs.extract())), View.table.set_rows)))
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.glossary_rows(B.docs.extract())), TABLE.set_rows)))
 """)
 
 
 GRAPH = cell("""\
-class Both(nustd.ui.Column):
-    chart = nustd.ui.Chart.slot(height=560)
-    side = nustd.ui.MarkdownRef.slot()
-
-
-class View(nustd.ui.Column):
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    note = nustd.ui.TextRef.slot()
-    both = Both.slot(gap=4)
+    board = nustd.ui.GridRef.slot(cols="2fr 1fr", gap=4, stack_below=900)
+
+
+MAP = View.board[0, 0].to(nustd.ui.CardRef.slot(title="Every page and every link"))
+CHART = MAP[0].to(nustd.ui.Chart.slot(height=560))
+NOTE = MAP.footer[0].to(nustd.ui.TextRef.slot(tone="muted", size="sm"))
+SIDE = View.board[0, 1].to(nustd.ui.ColumnRef.slot(gap=4))
+HUBS = SIDE[0].to(nustd.ui.CardRef.slot(title="Most connected", size="sm"))
+HUB_LINES = HUBS[0].to(nustd.ui.ColumnRef.slot(nustd.ui.LineRef, gap=2))
+ALONE = SIDE[1].to(nustd.ui.CardRef.slot(title="Islands", size="sm"))
+ALONE_LINES = ALONE[0].to(nustd.ui.ColumnRef.slot(nustd.ui.LineRef, gap=2))
+
+
+def hub(r):
+    r = nu.Dict(r)
+    line, link = HUB_LINES[nu.Int(r["i"])], nu.Dict(r["link"])
+    return (
+        line[0].to(nustd.ui.LinkRef).set(href=link.get_item("href", ""), label=link["label"])
+        >> line[1].to(nustd.ui.TextRef.slot(tone="muted", size="sm")).set(r["count"])
+    )
+
+
+def alone(r):
+    r = nu.Dict(r)
+    link = nu.Dict(r["link"])
+    return ALONE_LINES[nu.Int(r["i"])][0].to(nustd.ui.LinkRef).set(href=link.get_item("href", ""), label=link["label"])
+
+
+def side(v):
+    v = nu.Dict(v)
+    hubs, lone = pages.linked(v["hubs"], "link", "label"), pages.linked(v["alone"], "link", "label")
+    return (
+        MAP.set_subtitle(v["size"]) >> nu.ForEachDo(hubs, hub) >> HUB_LINES.truncate(nu.List(hubs).len())
+        >> ALONE.set_subtitle(v["alone_count"]) >> nu.ForEachDo(lone, alone) >> ALONE_LINES.truncate(nu.List(lone).len())
+    )
 
 
 def out(plane):
     def build(base, B):
         docs = B.docs.extract()
-        draw = lambda v: View.both.chart.set(option=v)
-        side = nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.graph_side(docs, B.planes.extract())), View.both.side.set))
-        # A node opens its page; an edge or the legend names no page, and does nothing.
+        changed = nu.OnAny(*[B.docs.on_change()])
+        drawn = nu.Reconcile(nuspace.atomic(changed), nu.let(nuspace.atomic(views.graph_option(docs, B.planes.extract())), lambda v: CHART.set(option=v)))
+        sided = nu.Reconcile(nuspace.atomic(changed), nu.let(nuspace.atomic(views.graph_side(docs, B.planes.extract())), side))
+        # A page's dot opens its page; an edge or the legend names no page, and does nothing.
         go = lambda s: nu.IfDo(nu.Str(s) != "", View.history.push(kit.doc_href(B, nu.Str(s))))
-        opened = nu.ReactEvery(View.both.chart.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev).get_item("name", "")), B.docs.extract()), go))
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.graph_option(docs, B.planes.extract())), draw)), side, opened)
+        opened = nu.ReactEvery(CHART.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev).get_item("name", "")), B.docs.extract()), go))
+        return nu.ParallelAsync(drawn, sided, opened)
 
-    note = "Every page and every link, drawn from the pages as they are. Hover to see a page's neighbours, click to open it."
-    return View.note.set(note) >> kit.on_base(plane, build)
+    note = "Drawn from the pages as they are. Hover a page to see its neighbours, click it to open it."
+    return NOTE.set(note) >> kit.on_base(plane, build)
 """)
 
 
@@ -765,6 +939,7 @@ class Bar(nustd.ui.Row):
     dot = nustd.ui.StatusDotRef.slot(tone="neutral")
     pill = nustd.ui.StatusPillRef.slot()
     line = nustd.ui.TextRef.slot()
+    when = nustd.ui.RelativeTimeRef.slot()
 
 
 class Top(nustd.ui.Row):
@@ -774,36 +949,37 @@ class Top(nustd.ui.Row):
 
 class Act(nustd.ui.Row):
     reviewed = nustd.ui.ButtonRef.slot(label="Mark stale pages reviewed", icon="square-check-big", variant="secondary")
-    hint = nustd.ui.TextRef.slot()
+    hint = nustd.ui.TextRef.slot(tone="muted")
 
 
 class View(nustd.ui.Column):
-    history = nustd.ui.HistoryRef.slot()
-    bar = Bar.slot(gap=3, align="center")
-    top = Top.slot(gap=6, align="center")
-    act = Act.slot(gap=3, align="center")
-    table = nustd.ui.TableRef.slot(
+    bar = Bar.slot(gap=3, wrap=True)
+    top = Top.slot(gap=6, grow={"trend": 1})
+    act = Act.slot(gap=3, wrap=True)
+    issues = nustd.ui.CardRef.slot(title="Issues")
+
+
+TABLE = View.issues[0].to(
+    nustd.ui.DataTableRef.slot(
         columns=[
-            {"key": "issue", "label": "Issue", "width": 130},
-            {"key": "page", "label": "Page", "width": 260},
-            {"key": "owner", "label": "Owner", "width": 100},
-            {"key": "detail", "label": "Detail"},
+            {"key": "issue", "label": "Issue", "width": 140, "cell": nustd.ui.BadgeRef.slot(size="sm")},
+            {"key": "page", "label": "Page", "width": 260, "cell": nustd.ui.PageLinkRef.slot(variant="inline")},
+            {"key": "owner", "label": "Owner", "width": 100, "hide_below": 640},
+            {"key": "detail", "label": "Detail", "hide_below": 800},
         ],
-        row_key="key", clickable_rows=True, dense=True, label="Issues",
+        row_key="key", density="compact", label="Issues",
     )
+)
 
 
 def draw(v):
     b, t = View.bar, View.top
     return (
         b.dot.set(v["tone"], pulse=v["pulse"]) >> b.pill.set(v["status"], tone=v["tone"]) >> b.line.set(v["line"])
-        >> t.score.set(v["gauge"], caption=v["caption"]) >> t.trend.set(v["history"]) >> View.table.set_rows(v["rows"])
+        >> nu.IfDo(nu.Float(v["checked"]) > 0, b.when.set(v["checked"]), b.when.erase())
+        >> t.score.set(v["gauge"], caption=v["caption"]) >> t.trend.set(v["history"])
+        >> TABLE.set_rows(pages.linked(v["rows"], "page"))
     )
-
-
-@nu.host
-def doc_of(key):
-    return str(key).split(":")[1]
 
 
 @nu.host
@@ -813,16 +989,16 @@ def stale(health):
 
 def out(plane):
     def build(base, B):
-        read = views.health_view(B.health.fallback({}), kit.live(base, "checker"), B.docs.extract(), kit.now())
-        opened = lambda ev: View.history.push(kit.doc_href(B, doc_of(ev["key"])))
+        read = views.health_view(B.health.fallback({}), kit.live(base, "checker"), B.docs.extract(), B.planes.extract())
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.health.on_change()])), nu.let(nuspace.atomic(read), draw), every=5.0),
             nu.ReactEvery(View.act.reviewed.on_click(), kit.reviewed(B, stale(B.health.fallback({})))),
-            nu.ReactEvery(View.table.on_row_click(), opened),
         )
 
-    hint = "The checker runs in its own process: on every change, and every 20 seconds. Click an issue to open its page."
-    return View.act.hint.set(hint) >> View.act.reviewed.set_label("Mark stale pages reviewed") >> kit.on_base(plane, build)
+    hint = "The checker runs in its own process: on every change, and every 20 seconds. Each issue links its page."
+    # The bar and the gauge first, so they draw above the button whatever lands first.
+    drawn = View.bar.init() >> View.top.init() >> View.act.hint.set(hint) >> View.act.reviewed.set_label("Mark stale pages reviewed")
+    return drawn >> View.issues.init() >> kit.on_base(plane, build)
 """)
 
 
@@ -879,22 +1055,15 @@ from nudemos.knowledge.ask import OPTIONS, Asker, answered, asked, shown
 TRIES = ("What is still blocking the launch?", "Why did we pick LoRa?", "What is Theo working on this week?")
 
 
-class Box(nustd.ui.Row):
+class Asking(nustd.ui.Row):
     q = nustd.ui.InputRef.slot(placeholder="Ask anything the base knows: dates, owners, why we decided something...")
     go = nustd.ui.ButtonRef.slot(label="Ask", icon="sparkles")
 
 
-class Tries(nustd.ui.Row):
-    lead = nustd.ui.TextRef.slot()
-    a = nustd.ui.ButtonRef.slot(variant="secondary")
-    b = nustd.ui.ButtonRef.slot(variant="secondary")
-    c = nustd.ui.ButtonRef.slot(variant="secondary")
-
-
 class View(nustd.ui.Column):
-    note = nustd.ui.TextRef.slot()
-    box = Box.slot(gap=3, align="end")
-    tries = Tries.slot(gap=2, align="center", wrap=True)
+    note = nustd.ui.TextRef.slot(tone="muted")
+    box = Asking.slot(gap=3, align="end")
+    tries = nustd.ui.RowRef.slot(gap=2, wrap=True)
     status = nustd.ui.TextRef.slot()
     answer = nustd.ui.MarkdownRef.slot()
     line = nustd.ui.TextRef.slot()
@@ -902,10 +1071,12 @@ class View(nustd.ui.Column):
 
 
 NOTE = "Claude reads the whole base as it is right now, every page with its facts filled in, and answers with links to the pages it used."
+LEAD = View.tries[0].to(nustd.ui.TextRef.slot(tone="muted", size="sm"))
+TRY = [View.tries[i + 1].to(nustd.ui.ButtonRef.slot(variant="secondary", size="sm")) for i in range(len(TRIES))]
 
 
 def out(plane):
-    b, t = View.box, View.tries
+    b = View.box
 
     def build(base, B):
         def ask(question):
@@ -931,13 +1102,13 @@ def out(plane):
         body = nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.asks.on_change(), B.docs.on_change()])), nu.let(nuspace.atomic(read), draw), every=30.0),
             nu.ReactEvery(b.go.on_click(), nu.IfDo(typed != "", ask(typed))),
-            tried(t.a, TRIES[0]), tried(t.b, TRIES[1]), tried(t.c, TRIES[2]),
+            *(tried(ref, q) for ref, q in zip(TRY, TRIES, strict=True)),
         )
         return nu.With(nustd.cc.bind(Asker, **OPTIONS), body=body)
 
     shown_first = (
-        View.note.set(NOTE) >> b.q.set("") >> b.go.set_label("Ask") >> t.lead.set("Try")
-        >> t.a.set_label(TRIES[0]) >> t.b.set_label(TRIES[1]) >> t.c.set_label(TRIES[2])
+        View.note.set(NOTE) >> b.q.set("") >> b.go.set_label("Ask") >> LEAD.set("Try")
+        >> nu.Sequential(*(ref.set(q) for ref, q in zip(TRY, TRIES, strict=True)))
     )
     return shown_first >> kit.on_base(plane, build)
 """)
@@ -947,27 +1118,30 @@ COLLECTION = (
     (
         "pages",
         cell(
-            """\
+            f"""\
 COLUMNS = [
-    {"key": "title", "label": "Note"},
-    {"key": "tags", "label": "Tags", "width": 200},
-    {"key": "edited", "label": "Edited", "width": 140, "sortable": False},
+    {TITLE % "Note"},
+    {{"key": "tags", "label": "Tags", "width": 200, "hide_below": 640}},
+    {EDITED % ("edited", "Edited")},
 ]
 """
-            + _opens("Notes")
+            + _folder("Notes", "In this notebook")
             + """
 
 @nu.host
-def rows(docs, folder, now):
+def rows(docs, folder, planes):
     mine = sorted(((k, d) for k, d in docs.items() if d.get("folder") == folder), key=lambda kv: kv[1]["title"])
-    return [{"key": k, "title": d["title"], "tags": ", ".join(d.get("tags") or []), "edited": text.ago(d.get("updated") or 0, now)} for k, d in mine]
+    return [
+        {"key": k, "title": {"page": text.page_of(planes, k), "label": d["title"]}, "tags": ", ".join(d.get("tags") or []), "edited": (d.get("updated") or 0) * 1000}
+        for k, d in mine
+    ]
 
 
 def out(plane):
     def build(base, B, folder):
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows(B.docs.extract(), folder, kit.now())), View.table.set_rows)), opens(B))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows(B.docs.extract(), folder, B.planes.extract())), shown))
 
-    return View.head.set_label("In this notebook") >> View.note.set("") >> kit.on_doc(plane, build)
+    return kit.on_doc(plane, build)
 """
         ),
     ),

@@ -9,6 +9,11 @@ job pages, one program each.
 - :data:`FOLDERS`: Jobs, Traffic, Logs, Machine, Deploys, Incidents,
   Runbooks, Rules, Status, each with its cells.
 - A job page (:data:`JOB`), an incident page (:data:`INCIDENT_CELLS`).
+
+A cell with one part declares it as the one slot of a ``nu.Shape`` and
+reaches what is inside by descent (``View.board[0].to(ui.DataTableRef...)``);
+tables take rows from :mod:`.views`, a page column turned into a link by
+:func:`nudemos.pages.linked`.
 """
 
 from __future__ import annotations
@@ -24,9 +29,9 @@ WELCOME = '''\
 import nu
 import nuspace
 import nuspace.web as web
-import nustd.ui
+from nustd import ui
 from nudemos.ops import kit
-from nudemos.ops.state import OPS
+from nudemos.ops.state import folder_of
 
 TEXT = """\\
 Halcyon sells camping gear online. This is the space its two-person platform team runs it from.
@@ -34,36 +39,33 @@ Halcyon sells camping gear online. This is the space its two-person platform tea
 Everything here is running: the storefront API is a real HTTP server in its own process, shoppers hit it,
 backups archive real orders, a crawler checks the help center, and alert rules written as a few lines of Nu
 watch the live numbers. Every block on every page is a small program: open its code, change it, run it again.
+
+Start at the jobs, ship a release from deploys, follow incidents, or see what customers see on the status page.
 """
 
-
-class Ways(nustd.ui.Line):
-    lead = nustd.ui.TextRef.slot()
-    jobs = nustd.ui.LinkRef.slot()
-    a = nustd.ui.TextRef.slot()
-    deploys = nustd.ui.LinkRef.slot()
-    b = nustd.ui.TextRef.slot()
-    incidents = nustd.ui.LinkRef.slot()
-    c = nustd.ui.TextRef.slot()
-    status = nustd.ui.LinkRef.slot()
+#: The folders the welcome points at, and a line on each.
+WAYS = {
+    "jobs": "Every job, its runs, its log and its controls",
+    "deploys": "Ship a release, or roll one back",
+    "incidents": "What the rules opened, and who was paged",
+    "status": "What customers see right now",
+}
 
 
-class View(nustd.ui.Column):
-    about = nustd.ui.MarkdownRef.slot()
-    ways = Ways.slot()
+class View(ui.Column):
+    about = ui.MarkdownRef.slot()
+    ways = ui.GridRef.slot(max_columns=4, min_cell_width=200, gap=3)
+
+
+def way(key):
+    tile = View.ways[key].to(ui.PageLinkRef.slot(variant="tile"))
+    # Each folder by the id the first open minted for it, one read of the root's state.
+    return nuspace.atomic(web.link(tile, folder_of(key), description=WAYS[key]))
 
 
 def out(plane):
     def draw(root):
-        # Each folder by the id the first open minted for it, one read of the root's state.
-        w, to = View.ways, lambda key: web.href(nuspace.atomic(nu.Str(OPS.made.folders[key])))
-        return (
-            View.about.set(TEXT)
-            >> w.lead.set("Start at ") >> w.jobs.set(href=to("jobs"), label="the jobs")
-            >> w.a.set(",  ship a release from ") >> w.deploys.set(href=to("deploys"), label="deploys")
-            >> w.b.set(",  follow ") >> w.incidents.set(href=to("incidents"), label="incidents")
-            >> w.c.set(",  or see what customers see on ") >> w.status.set(href=to("status"), label="the status page")
-        )
+        return View.about.set(TEXT) >> nu.Sequential(*(way(key) for key in WAYS))
 
     # The first open brings up the pages, the jobs and their schedules, once.
     return kit.on_root(plane, lambda root: kit.seed(root) >> draw(root) >> nu.ForeverDo(nu.Delay(3600.0)))
@@ -73,33 +75,24 @@ def out(plane):
 PULSE = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-KEYS = ("release", "rps", "err", "p95", "orders", "incidents", "jobs")
+TILES = {"release": "Release", "rps": "Requests/s", "err": "Failing", "p95": "p95", "orders": "Orders/min", "incidents": "Incidents", "jobs": "Jobs up"}
 
 
-class Tiles(nustd.ui.Grid):
-    release = nustd.ui.StatRef.slot(label="Release")
-    rps = nustd.ui.StatRef.slot(label="Requests/s")
-    err = nustd.ui.StatRef.slot(label="Failing")
-    p95 = nustd.ui.StatRef.slot(label="p95")
-    orders = nustd.ui.StatRef.slot(label="Orders/min")
-    incidents = nustd.ui.StatRef.slot(label="Incidents")
-    jobs = nustd.ui.StatRef.slot(label="Jobs up")
-
-
-class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=7, min_width=105, gap=3)
+class View(nu.Shape):
+    tiles = ui.GridRef.slot(max_columns=7, min_cell_width=140, gap=3)
 
 
 def draw(t):
     def one(k):
-        tile, v = getattr(View.tiles, k), nu.Dict(t[k])
-        return tile.set_value(v["value"]) >> tile.set_delta(v["delta"]) >> tile.set_trend(v["trend"])
+        v = nu.Dict(t[k])
+        stat = View.tiles[k].to(ui.CardRef.slot(size="sm"))[0].to(ui.StatRef.slot(label=TILES[k]))
+        return stat.set(v["value"], delta=v["delta"], trend=v["trend"])
 
-    return nu.Sequential(*(one(k) for k in KEYS))
+    return nu.Sequential(*(one(k) for k in TILES))
 
 
 def out(plane):
@@ -116,20 +109,21 @@ LIVE = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 WINDOW = 600
 
 
-class Both(nustd.ui.Row):
-    traffic = nustd.ui.AreaChart.slot(("requests a second",), title="Requests a second, last 10 minutes", x_type="time", x_format="{HH}:{mm}", height=220)
-    errors = nustd.ui.LineChart.slot(("failing %",), title="Failing requests, %", x_type="time", x_format="{HH}:{mm}", y_min=0, height=220, colors=["#e5484d"])
+class View(nu.Shape):
+    both = ui.GridRef.slot(cols=2, stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    both = Both.slot(gap=4, wrap=True, min_width=380, align="start")
+traffic = View.both[0, 0].to(ui.CardRef.slot(title="Requests a second", subtitle="last 10 minutes"))[0].to(
+    ui.AreaChart.slot(("requests a second",), x_type="time", x_format="{HH}:{mm}", height=220))
+errors = View.both[0, 1].to(ui.CardRef.slot(title="Failing requests", subtitle="share of requests, %"))[0].to(
+    ui.LineChart.slot(("failing %",), x_type="time", x_format="{HH}:{mm}", y_min=0, height=220, colors=["var(--status-danger)"]))
 
 
 def out(plane):
@@ -139,7 +133,7 @@ def out(plane):
             rps=views.named("requests a second", OPS.rps.range(since, since + WINDOW + 5)),
             err=views.named("failing %", OPS.err.range(since, since + WINDOW + 5), 100.0),
         )
-        draw = lambda v: View.both.traffic.set(v["rps"]) >> View.both.errors.set(v["err"])
+        draw = lambda v: traffic.set(v["rps"]) >> errors.set(v["err"])
         return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
 
     return kit.on_ops(plane, build)
@@ -149,22 +143,28 @@ def out(plane):
 FEED = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-COLUMNS = [{"key": "when", "label": "When", "width": 100}, {"key": "kind", "label": "What", "width": 100}, {"key": "text", "label": "", "editable": False}]
+COLUMNS = [
+    {"key": "when", "label": "When", "width": 110, "cell": ui.RelativeTimeRef},
+    {"key": "kind", "label": "What", "width": 110, "cell": ui.BadgeRef.slot(size="sm")},
+    {"key": "text", "label": "Said"},
+]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    feed = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Feed")
+class View(nu.Shape):
+    feed = ui.CardRef.slot(title="What happened", subtitle="newest first")
+
+
+table = View.feed[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Feed"))
 
 
 def out(plane):
     def build(root):
-        read = views.feed_rows(OPS.events.fallback([]), root, 14)
-        return View.head.set("What happened, newest first") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.events.on_change()])), nu.let(nuspace.atomic(read), View.feed.set_rows))
+        read = views.feed_rows(OPS.events.fallback([]), 14)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.events.on_change()])), nu.let(nuspace.atomic(read), table.set_rows))
 
     return kit.on_ops(plane, build)
 """
@@ -180,34 +180,34 @@ BOARD = """\
 import nu
 import nuspace
 import nustd.time
-import nuspace.web as web
-import nustd.ui
-from nudemos.ops import kit, shape, views
-from nudemos.ops.state import OPS, job_view
+from nustd import ui
+from nudemos import pages
+from nudemos.ops import kit, views
+from nudemos.ops.state import OPS
 
 COLUMNS = [
-    {"key": "job", "label": "Job", "width": 110},
-    {"key": "what", "label": "What it is"},
+    {"key": "job", "label": "Job", "width": 130, "cell": ui.PageLinkRef.slot(variant="inline")},
+    {"key": "what", "label": "What it is", "wrap": "truncate", "hide_below": 900},
     {"key": "schedule", "label": "Schedule", "width": 120},
-    {"key": "status", "label": "Status", "width": 100},
-    {"key": "last", "label": "Last"},
+    {"key": "status", "label": "Status", "width": 110, "cell": ui.StatusPillRef},
+    {"key": "last", "label": "Last", "width": 100, "cell": ui.RelativeTimeRef},
+    {"key": "said", "label": "It said", "wrap": "truncate"},
     {"key": "next", "label": "Next", "width": 100},
-    {"key": "runs", "label": "Runs", "width": 150},
+    {"key": "runs", "label": "Runs", "width": 150, "hide_below": 1100},
 ]
 
 
-class View(nustd.ui.Column):
-    history = nustd.ui.HistoryRef.slot()
-    intro = nustd.ui.TextRef.slot()
-    jobs = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Jobs")
+class View(nu.Shape):
+    board = ui.CardRef.slot(title="Every job", subtitle="each a headless plane in its own process, kept up or scheduled by the supervisor")
+
+
+table = View.board[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Jobs"))
 
 
 def out(plane):
     def build(root):
-        rows = views.job_rows(nu.Dict(OPS.jobs.extract()).fallback({}), nustd.time.time())
-        opened = nu.ReactEvery(View.jobs.on_row_click(), lambda ev: View.history.push(web.href(nuspace.atomic(job_view(nu.Str(ev["key"]))))))
-        intro = View.intro.set("Every job runs as a headless plane in its own process, kept up or scheduled by the supervisor. Click one for its runs, its log and its controls.")
-        return intro >> nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.jobs.on_change()])), nu.let(nuspace.atomic(rows), View.jobs.set_rows), every=5.0), opened)
+        rows = views.job_rows(nu.Dict(OPS.jobs.extract()).fallback({}), nu.Dict(OPS.made.views.extract()).fallback({}), nustd.time.time())
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.jobs.on_change()])), nu.let(nuspace.atomic(pages.linked(rows, "job")), table.set_rows), every=5.0)
 
     return kit.on_ops(plane, build)
 """
@@ -216,15 +216,18 @@ def out(plane):
 RECENT = """\
 import nu
 import nuspace
-import nustd.ui
+from nustd import ui
 from nudemos.ops import kit
 from nudemos.ops.state import OPS
 
 SCHEDULED = ["backup", "offsite", "linkcheck", "digest"]
 
 
-class View(nustd.ui.Column):
-    took = nustd.ui.BarChart.slot(SCHEDULED, title="How long the scheduled runs took, seconds", height=240, legend=True)
+class View(nu.Shape):
+    took = ui.CardRef.slot(title="Scheduled runs", subtitle="how long the last 12 of each took, seconds")
+
+
+bars_of = View.took[0].to(ui.BarChart.slot(SCHEDULED, height=240, legend=True))
 
 
 @nu.host
@@ -239,7 +242,7 @@ def bars(runs):
 
 def out(plane):
     def build(root):
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs.on_change()])), nu.let(nuspace.atomic(bars(nu.Dict(OPS.runs.extract()).fallback({}))), View.took.set), every=10.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs.on_change()])), nu.let(nuspace.atomic(bars(nu.Dict(OPS.runs.extract()).fallback({}))), bars_of.set), every=10.0)
 
     return kit.on_ops(plane, build)
 """
@@ -252,35 +255,29 @@ JOB_HEAD = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 
-class Top(nustd.ui.Row):
-    status = nustd.ui.StatusPillRef.slot()
-    line = nustd.ui.TextRef.slot()
+class View(nu.Shape):
+    head = ui.PageSectionRef.slot()
 
 
-class Controls(nustd.ui.Row):
-    run = nustd.ui.ButtonRef.slot(label="Run now", icon="play")
-    pause = nustd.ui.ButtonRef.slot(label="Pause", variant="secondary", icon="pause")
-    restart = nustd.ui.ButtonRef.slot(label="Restart", variant="secondary", icon="refresh-cw")
-
-
-class View(nustd.ui.Column):
-    desc = nustd.ui.TextRef.slot()
-    top = Top.slot(gap=3)
-    controls = Controls.slot(gap=2)
+run = View.head.actions[0].to(ui.ButtonRef.slot(label="Run now", icon="play", size="sm"))
+pause = View.head.actions[1].to(ui.ButtonRef.slot(label="Pause", variant="secondary", icon="pause", size="sm"))
+restart = View.head.actions[2].to(ui.ButtonRef.slot(label="Restart", variant="secondary", icon="refresh-cw", size="sm"))
+top = View.head[0].to(ui.LineRef)
+status = top[0].to(ui.StatusPillRef)
+line = top[1].to(ui.TextRef.slot(tone="muted"))
 
 
 def draw(h):
-    c = View.controls
     paused = nu.Bool(h["paused"])
     return (
-        View.desc.set(h["desc"]) >> View.top.status.set(h["status"], tone=h["tone"]) >> View.top.line.set(h["line"])
-        >> c.pause.set(nu.Str(nu.If(paused, "Resume", "Pause")), icon=nu.Str(nu.If(paused, "play", "pause")))
-        >> c.run.set_disabled(nu.Bool(h["service"])) >> c.restart.set_disabled(nu.Bool(h["service"]).not_())
+        View.head.set_description(h["desc"]) >> status.set(h["status"], tone=h["tone"]) >> line.set(h["line"])
+        >> pause.set(nu.Str(nu.If(paused, "Resume", "Pause")), icon=nu.Str(nu.If(paused, "play", "pause")))
+        >> run.set_disabled(nu.Bool(h["service"])) >> restart.set_disabled(nu.Bool(h["service"]).not_())
     )
 
 
@@ -288,12 +285,11 @@ def out(plane):
     def build(root, name):
         head = views.job_head(OPS.jobs[name].fallback({}), name, nustd.time.time())
         flip = nu.IfDo(kit.paused(name), kit.resume(root, name), kit.pause(root, name))
-        first = View.desc.set("") >> View.top.status.set("starting", tone="info") >> View.top.line.set("") >> View.controls.run.set("Run now", icon="play") >> View.controls.pause.set("Pause", variant="secondary", icon="pause") >> View.controls.restart.set("Restart", variant="secondary", icon="refresh-cw")
-        return first >> nu.ParallelAsync(
+        return View.head.set_title(name) >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.jobs.on_change()])), nu.let(nuspace.atomic(head), draw), every=1.0),
-            nu.ReactEvery(View.controls.run.on_click(), kit.run_now(root, name)),
-            nu.ReactEvery(View.controls.pause.on_click(), flip),
-            nu.ReactEvery(View.controls.restart.on_click(), kit.restart(root, name)),
+            nu.ReactEvery(run.on_click(), kit.run_now(root, name)),
+            nu.ReactEvery(pause.on_click(), flip),
+            nu.ReactEvery(restart.on_click(), kit.restart(root, name)),
         )
 
     return kit.on_subject(plane, "job", build)
@@ -304,28 +300,30 @@ JOB_RUNS = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 COLUMNS = [
-    {"key": "started", "label": "Started", "width": 100},
-    {"key": "result", "label": "Result", "width": 90},
-    {"key": "took", "label": "Took", "width": 90},
-    {"key": "summary", "label": "Summary"},
-    {"key": "process", "label": "Process", "width": 100},
+    {"key": "started", "label": "Started", "width": 110, "cell": ui.RelativeTimeRef},
+    {"key": "result", "label": "Result", "width": 110, "cell": ui.StatusPillRef},
+    {"key": "took", "label": "Took", "width": 90, "align": "end"},
+    {"key": "summary", "label": "Summary", "wrap": "truncate"},
+    {"key": "process", "label": "Process", "width": 100, "align": "end", "hide_below": 900},
 ]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    runs = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Runs")
+class View(nu.Shape):
+    runs = ui.CardRef.slot(title="Runs", subtitle="newest first")
+
+
+table = View.runs[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Runs"))
 
 
 def out(plane):
     def build(root, name):
         rows = views.job_runs(OPS.runs[name].fallback([]), OPS.jobs[name].fallback({}), nustd.time.time())
-        return View.head.set("Runs, newest first") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs[name].on_change(), OPS.jobs[name].on_change()])), nu.let(nuspace.atomic(rows), View.runs.set_rows), every=5.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs[name].on_change(), OPS.jobs[name].on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=5.0)
 
     return kit.on_subject(plane, "job", build)
 """
@@ -334,24 +332,30 @@ def out(plane):
 JOB_LOG = """\
 import nu
 import nuspace
-import nustd.ui
-from nulog.messages.ops import tail
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-COLUMNS = [{"key": "time", "label": "Time", "width": 120}, {"key": "level", "label": "Level", "width": 90}, {"key": "message", "label": "Message"}, {"key": "detail", "label": "", "width": 260}]
+COLUMNS = [
+    {"key": "time", "label": "Time", "width": 120, "cell": ui.TextRef.slot(mono=True, size="sm")},
+    {"key": "level", "label": "Level", "width": 100, "cell": ui.BadgeRef.slot(size="sm")},
+    {"key": "message", "label": "Message"},
+    {"key": "detail", "label": "Detail", "width": 260, "wrap": "truncate", "hide_below": 900},
+]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    lines = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Log")
+class View(nu.Shape):
+    log = ui.CardRef.slot(title="Its log", subtitle="the newest 25 lines, live")
+
+
+table = View.log[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Log"))
 
 
 def out(plane):
     def build(root, name):
         # Its own stream, newest 25 lines: a read the size of what is shown, however long the stream.
         rows = views.log_rows(kit.tail(name, 25), "debug", "", 25)
-        return View.head.set("Its log, live") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(nuspace.atomic(rows), View.lines.set_rows), every=3.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=3.0)
 
     return kit.on_subject(plane, "job", build)
 """
@@ -366,20 +370,19 @@ JOB = (("head", JOB_HEAD), ("runs", JOB_RUNS), ("log", JOB_LOG))
 KNOB = """\
 import nu
 import nuspace
-import nustd.ui
+from nustd import ui
 from nudemos.ops import kit
 from nudemos.ops.state import OPS
 
-
-class Knob(nustd.ui.Row):
-    users = nustd.ui.SliderRef.slot(label="Shoppers on the site", min=0, max=60, step=1)
-    sent = nustd.ui.StatRef.slot(label="Requests sent")
-    failed = nustd.ui.StatRef.slot(label="Failed")
-    orders = nustd.ui.StatRef.slot(label="Orders placed")
+STATS = {"sent": "Requests sent", "failed": "Failed", "orders": "Orders placed"}
 
 
-class View(nustd.ui.Column):
-    knob = Knob.slot(gap=6, wrap=True, min_width=180)
+class View(nu.Shape):
+    knob = ui.CardRef.slot(title="Shoppers", subtitle="as many as you set hit the storefront, over real connections")
+
+
+grid = View.knob[0].to(ui.GridRef.slot(max_columns=4, min_cell_width=160, gap=4, align="center"))
+users = grid["users"].to(ui.SliderRef.slot(label="Shoppers on the site", min=0, max=60, step=1))
 
 
 @nu.host
@@ -388,14 +391,16 @@ def shown(load):
     return {"sent": f"{t.get('sent', 0):,}", "failed": f"{t.get('failed', 0) + t.get('refused', 0):,}", "orders": f"{t.get('orders', 0):,}"}
 
 
+def draw(v):
+    return nu.Sequential(*(grid[k].to(ui.StatRef.slot(label=label)).set(v[k]) for k, label in STATS.items()))
+
+
 def out(plane):
     def build(root):
-        k = View.knob
-        draw = lambda v: k.sent.set_value(v["sent"]) >> k.failed.set_value(v["failed"]) >> k.orders.set_value(v["orders"])
-        moved = OPS.load.set(kit.merged(OPS.load.fallback({}), nu.Dict.of(users=nu.ToInt(k.users))))
-        return k.users.set_value(nu.Float(OPS.load.fallback({})["users"])) >> nu.ParallelAsync(
+        moved = OPS.load.set(kit.merged(OPS.load.fallback({}), nu.Dict.of(users=nu.ToInt(users))))
+        return users.set_value(nu.Float(OPS.load.fallback({})["users"])) >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.load.on_change()])), nu.let(nuspace.atomic(shown(OPS.load.fallback({}))), draw), every=2.0),
-            nu.ReactEvery(k.users.on_change(), nuspace.atomic(moved)),
+            nu.ReactEvery(users.on_change(), nuspace.atomic(moved)),
         )
 
     return kit.on_ops(plane, build)
@@ -406,21 +411,25 @@ TRAFFIC_CHARTS = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 WINDOW = 300
+TIME = {"x_type": "time", "x_format": "{HH}:{mm}", "height": 230}
 
 
-class Charts(nustd.ui.Row):
-    rps = nustd.ui.AreaChart.slot(("requests a second", "orders a minute"), title="Load", x_type="time", x_format="{HH}:{mm}", height=230)
-    latency = nustd.ui.LineChart.slot(("p50", "p95"), title="Latency, ms", x_type="time", x_format="{HH}:{mm}", y_min=0, height=230)
-    memory = nustd.ui.AreaChart.slot(("gateway MB",), title="Gateway memory, MB", x_type="time", x_format="{HH}:{mm}", y_min=0, height=230, colors=["#8e4ec6"])
+class View(nu.Shape):
+    charts = ui.GridRef.slot(max_columns=3, min_cell_width=320, gap=4)
 
 
-class View(nustd.ui.Column):
-    charts = Charts.slot(gap=4, wrap=True, min_width=320, align="start")
+def chart(key, title, kind):
+    return View.charts[key].to(ui.CardRef.slot(title=title, subtitle="last 5 minutes"))[0].to(kind)
+
+
+load = chart("load", "Load", ui.AreaChart.slot(("requests a second", "orders a minute"), **TIME))
+latency = chart("latency", "Latency, ms", ui.LineChart.slot(("p50", "p95"), y_min=0, **TIME))
+memory = chart("memory", "Gateway memory, MB", ui.AreaChart.slot(("gateway MB",), y_min=0, colors=["var(--chart-3)"], **TIME))
 
 
 def out(plane):
@@ -432,8 +441,7 @@ def out(plane):
             latency=views.joined(views.named("p50", OPS.p50.range(since, end)), views.named("p95", OPS.p95.range(since, end))),
             rss=views.named("gateway MB", OPS.gw_rss.range(since, end)),
         )
-        c = View.charts
-        draw = lambda v: c.rps.set(v["load"]) >> c.latency.set(v["latency"]) >> c.memory.set(v["rss"])
+        draw = lambda v: load.set(v["load"]) >> latency.set(v["latency"]) >> memory.set(v["rss"])
         return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
 
     return kit.on_ops(plane, build)
@@ -443,33 +451,33 @@ def out(plane):
 ROUTES = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 COLUMNS = [
     {"key": "route", "label": "Route"},
-    {"key": "rpm", "label": "Last minute", "kind": "number", "width": 120},
-    {"key": "err", "label": "Failing", "width": 100},
-    {"key": "p50", "label": "p50 ms", "kind": "number", "width": 90},
-    {"key": "p95", "label": "p95 ms", "kind": "number", "width": 90},
+    {"key": "rpm", "label": "Last minute", "kind": "number", "width": 120, "align": "end"},
+    {"key": "err", "label": "Failing", "width": 100, "align": "end"},
+    {"key": "p50", "label": "p50 ms", "kind": "number", "width": 90, "align": "end"},
+    {"key": "p95", "label": "p95 ms", "kind": "number", "width": 90, "align": "end"},
 ]
 
 
-class Both(nustd.ui.Row):
-    routes = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Routes")
-    codes = nustd.ui.PieChart.slot(title="Status codes, last minute", height=240, donut=True)
+class View(nu.Shape):
+    both = ui.GridRef.slot(cols="2fr 1fr", stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    both = Both.slot(gap=6, wrap=True, min_width=360, align="start")
+routes = View.both[0, 0].to(ui.CardRef.slot(title="Routes", subtitle="last minute, busiest first"))[0].to(
+    ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Routes"))
+codes = View.both[0, 1].to(ui.CardRef.slot(title="Status codes", subtitle="last minute"))[0].to(ui.PieChart.slot(height=240, donut=True))
 
 
 def out(plane):
     def build(root):
         gw = OPS.gw.fallback({})
         read = nu.Dict.of(rows=views.route_rows(gw), codes=nu.Dict(gw).get_item("codes", {}))
-        draw = lambda v: View.both.routes.set_rows(v["rows"]) >> View.both.codes.set(v["codes"])
+        draw = lambda v: routes.set_rows(v["rows"]) >> codes.set(v["codes"])
         return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
 
     return kit.on_ops(plane, build)
@@ -479,22 +487,29 @@ def out(plane):
 ACCESS = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-COLUMNS = [{"key": "time", "label": "Time", "width": 120}, {"key": "level", "label": "Level", "width": 90}, {"key": "message", "label": "Request"}, {"key": "detail", "label": ""}]
+COLUMNS = [
+    {"key": "time", "label": "Time", "width": 120, "cell": ui.TextRef.slot(mono=True, size="sm")},
+    {"key": "level", "label": "Level", "width": 100, "cell": ui.BadgeRef.slot(size="sm")},
+    {"key": "message", "label": "Request"},
+    {"key": "detail", "label": "Detail", "wrap": "truncate", "hide_below": 900},
+]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    lines = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Access log")
+class View(nu.Shape):
+    access = ui.CardRef.slot(title="Access log", subtitle="the gateway's log, as it is written")
+
+
+table = View.access[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Access log"))
 
 
 def out(plane):
     def build(root):
         rows = views.log_rows(kit.tail("gateway", 12), "debug", "", 12)
-        return View.head.set("The gateway's log, as it is written") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(rows), View.lines.set_rows), every=2.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -510,26 +525,31 @@ EXPLORER = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.model import JOBS
 from nudemos.ops.state import OPS
 
-COLUMNS = [{"key": "time", "label": "Time", "width": 120}, {"key": "level", "label": "Level", "width": 90}, {"key": "message", "label": "Message"}, {"key": "detail", "label": ""}]
+COLUMNS = [
+    {"key": "time", "label": "Time", "width": 120, "cell": ui.TextRef.slot(mono=True, size="sm")},
+    {"key": "level", "label": "Level", "width": 100, "cell": ui.BadgeRef.slot(size="sm")},
+    {"key": "message", "label": "Message"},
+    {"key": "detail", "label": "Detail", "wrap": "truncate", "hide_below": 900},
+]
 LEVELS = ["debug", "info", "warning", "error"]
 
 
-class Pick(nustd.ui.Row):
-    stream = nustd.ui.SelectRef.slot(options=list(JOBS))
-    level = nustd.ui.SelectRef.slot(options=LEVELS)
-    find = nustd.ui.InputRef.slot(placeholder="Find in the newest 4,000 lines, eg ranking or 503")
-    live = nustd.ui.SwitchRef.slot(label="Follow", default=True)
+class View(nu.Shape):
+    explorer = ui.PageSectionRef.slot(title="Explorer", description="Every job's stream, newest first. Pick one, a level, or search it.")
 
 
-class View(nustd.ui.Column):
-    pick = Pick.slot(gap=3)
-    said = nustd.ui.TextRef.slot()
-    lines = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Log lines")
+pick = View.explorer[0].to(ui.RowRef.slot(gap=3, wrap=True, grow={"find": 1}))
+stream = pick["stream"].to(ui.SelectRef.slot(options=list(JOBS)))
+level = pick["level"].to(ui.SelectRef.slot(options=LEVELS))
+find = pick["find"].to(ui.InputRef.slot(placeholder="Find in the newest 4,000 lines, eg ranking or 503"))
+live = pick["live"].to(ui.SwitchRef.slot(label="Follow", default=True))
+said = View.explorer[1].to(ui.TextRef.slot(tone="muted", size="sm"))
+lines = View.explorer[2].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Log lines"))
 
 
 @nu.host
@@ -540,23 +560,21 @@ def told(name, counts, shown, took, needle):
 
 
 def out(plane):
-    p = View.pick
-
     def build(root):
-        stream, level, needle = nu.Str(p.stream), nu.Str(p.level), nu.Str(p.find).strip()
+        name, floor, needle = nu.Str(stream), nu.Str(level), nu.Str(find).strip()
         # A search scans the newest 4,000 lines, a plain look reads 80: either way the read stays the size of what is asked.
         n = nu.Int(nu.If(needle == "", 80, 4000))
 
         def show(t0):
             def drew(rows):
-                said = told(stream, OPS.counts.fallback({}), rows, nustd.time.time() - nu.Float(t0), needle)
-                return View.lines.set_rows(rows) >> View.said.set(said)
-            return nu.let(views.log_rows(kit.tail(stream, n), level, needle, 80), drew)
+                line = told(name, OPS.counts.fallback({}), rows, nustd.time.time() - nu.Float(t0), needle)
+                return lines.set_rows(rows) >> said.set(line)
+            return nu.let(views.log_rows(kit.tail(name, n), floor, needle, 80), drew)
 
         once = nu.let(nustd.time.time(), show)
-        follow = nu.Reconcile(nuspace.atomic(OPS.counts.on_change()), nu.IfDo(nu.Bool(p.live), once) >> nu.Delay(1.0), every=5.0)
-        picked = [nu.ReactEvery(ev, once) for ev in (p.stream.on_change(), p.level.on_change(), p.find.on_change())]
-        return p.stream.set("gateway") >> p.level.set("info") >> p.find.set("") >> p.live.set(True) >> View.said.set("Reading the stream") >> once >> nu.ParallelAsync(follow, *picked)
+        follow = nu.Reconcile(nuspace.atomic(OPS.counts.on_change()), nu.IfDo(nu.Bool(live), once) >> nu.Delay(1.0), every=5.0)
+        picked = [nu.ReactEvery(ev, once) for ev in (stream.on_change(), level.on_change(), find.on_change())]
+        return stream.set("gateway") >> level.set("info") >> find.set("") >> live.set(True) >> said.set("Reading the stream") >> once >> nu.ParallelAsync(follow, *picked)
 
     return kit.on_ops(plane, build)
 """
@@ -565,13 +583,16 @@ def out(plane):
 VOLUME = """\
 import nu
 import nuspace
-import nustd.ui
+from nustd import ui
 from nudemos.ops import kit
 from nudemos.ops.state import OPS
 
 
-class View(nustd.ui.Column):
-    volume = nustd.ui.BarChart.slot(title="Lines kept per stream", horizontal=True, height=260)
+class View(nu.Shape):
+    volume = ui.CardRef.slot(title="Lines kept per stream")
+
+
+bars_of = View.volume[0].to(ui.BarChart.slot(horizontal=True, height=260))
 
 
 @nu.host
@@ -580,7 +601,7 @@ def bars(counts):
 
 
 def out(plane):
-    return kit.on_ops(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(nuspace.atomic(bars(OPS.counts.fallback({}))), View.volume.set), every=5.0))
+    return kit.on_ops(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(nuspace.atomic(bars(OPS.counts.fallback({}))), bars_of.set), every=5.0))
 """
 
 
@@ -593,38 +614,34 @@ LOGS = (("explorer", EXPLORER), ("volume", VOLUME))
 GAUGES = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-KEYS = ("cores", "memory", "disk", "net", "uptime")
+GAUGES = {"cpu": "CPU", "mem": "Memory", "disk": "Disk"}
+TILES = {"cores": "Cores", "memory": "Memory in use", "disk": "Disk", "net": "Network", "uptime": "Up"}
 
 
-class Gauges(nustd.ui.Row):
-    cpu = nustd.ui.GaugeChart.slot(name="CPU", value_format="{value}%", height=170)
-    mem = nustd.ui.GaugeChart.slot(name="memory", value_format="{value}%", height=170)
-    disk = nustd.ui.GaugeChart.slot(name="disk", value_format="{value}%", height=170)
+class View(ui.Column):
+    note = ui.TextRef.slot(tone="muted")
+    gauges = ui.GridRef.slot(max_columns=3, min_cell_width=200, gap=4)
+    tiles = ui.GridRef.slot(max_columns=5, min_cell_width=160, gap=3)
 
 
-class Tiles(nustd.ui.Grid):
-    cores = nustd.ui.StatRef.slot(label="Cores")
-    memory = nustd.ui.StatRef.slot(label="Memory in use")
-    disk = nustd.ui.StatRef.slot(label="Disk")
-    net = nustd.ui.StatRef.slot(label="Network")
-    uptime = nustd.ui.StatRef.slot(label="Up")
+def gauge(k):
+    card = View.gauges[k].to(ui.CardRef.slot(title=GAUGES[k], size="sm"))
+    return card[0].to(ui.GaugeChart.slot(name=GAUGES[k], value_format="{value}%", height=170))
 
 
-class View(nustd.ui.Column):
-    note = nustd.ui.TextRef.slot()
-    gauges = Gauges.slot(gap=4, wrap=True, min_width=200)
-    tiles = Tiles.slot(columns=5, min_width=150, gap=3)
+def tile(k):
+    return View.tiles[k].to(ui.CardRef.slot(size="sm"))[0].to(ui.StatRef.slot(label=TILES[k]))
 
 
 def draw(v):
-    m, t, g = v["m"], v["t"], View.gauges
+    m, t = v["m"], v["t"]
     return (
-        g.cpu.set(m["cpu"]) >> g.mem.set(m["mem"]) >> g.disk.set(m["disk"])
-        >> nu.Sequential(*(getattr(View.tiles, k).set_value(nu.Dict(t[k])["value"]) >> getattr(View.tiles, k).set_delta(nu.Dict(t[k])["delta"]) for k in KEYS))
+        nu.Sequential(*(gauge(k).set(m[k]) for k in GAUGES))
+        >> nu.Sequential(*(tile(k).set(nu.Dict(t[k])["value"], delta=nu.Dict(t[k])["delta"]) for k in TILES))
     )
 
 
@@ -645,20 +662,22 @@ MACHINE_CHARTS = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 WINDOW = 900
+TIME = {"x_type": "time", "x_format": "{HH}:{mm}", "y_min": 0, "height": 230}
 
 
-class Charts(nustd.ui.Row):
-    use = nustd.ui.LineChart.slot(("CPU %", "memory %"), title="CPU and memory, last 15 minutes", x_type="time", x_format="{HH}:{mm}", y_min=0, y_max=100, height=230)
-    load = nustd.ui.AreaChart.slot(("load",), title="Load, 1 minute", x_type="time", x_format="{HH}:{mm}", y_min=0, height=230, colors=["#12a594"])
+class View(nu.Shape):
+    both = ui.GridRef.slot(cols=2, stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    charts = Charts.slot(gap=4, wrap=True, min_width=380, align="start")
+use = View.both[0, 0].to(ui.CardRef.slot(title="CPU and memory, %", subtitle="last 15 minutes"))[0].to(
+    ui.LineChart.slot(("CPU %", "memory %"), y_max=100, **TIME))
+load = View.both[0, 1].to(ui.CardRef.slot(title="Load", subtitle="1 minute average, last 15 minutes"))[0].to(
+    ui.AreaChart.slot(("load",), colors=["var(--chart-6)"], **TIME))
 
 
 def out(plane):
@@ -669,7 +688,7 @@ def out(plane):
             use=views.joined(views.named("CPU %", OPS.cpu.range(since, end)), views.named("memory %", OPS.mem.range(since, end))),
             load=views.named("load", OPS.load1.range(since, end)),
         )
-        draw = lambda v: View.charts.use.set(v["use"]) >> View.charts.load.set(v["load"])
+        draw = lambda v: use.set(v["use"]) >> load.set(v["load"])
         return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), nu.let(nuspace.atomic(read), draw), every=4.0)
 
     return kit.on_ops(plane, build)
@@ -679,29 +698,31 @@ def out(plane):
 PROCS = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 COLUMNS = [
     {"key": "job", "label": "Job", "width": 120},
-    {"key": "process", "label": "Process", "width": 110},
+    {"key": "process", "label": "Process", "width": 110, "align": "end"},
     {"key": "state", "label": "State", "width": 140},
-    {"key": "cpu", "label": "CPU", "width": 100},
-    {"key": "memory", "label": "Memory", "width": 110},
-    {"key": "up", "label": "Up for"},
+    {"key": "cpu", "label": "CPU", "width": 100, "align": "end"},
+    {"key": "memory", "label": "Memory", "width": 110, "align": "end"},
+    {"key": "up", "label": "Up for", "align": "end"},
 ]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    procs = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Processes")
+class View(nu.Shape):
+    procs = ui.CardRef.slot(title="Every job's process", subtitle="read from the kernel with the rest")
+
+
+table = View.procs[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Processes"))
 
 
 def out(plane):
     def build(root):
         rows = views.proc_rows(OPS.machine.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({}))
-        return View.head.set("Every job's process") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), nu.let(nuspace.atomic(rows), View.procs.set_rows), every=4.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=4.0)
 
     return kit.on_ops(plane, build)
 """
@@ -716,52 +737,44 @@ MACHINE = (("gauges", GAUGES), ("charts", MACHINE_CHARTS), ("procs", PROCS))
 SHIP = """\
 import nu
 import nuspace
-import nustd.ui
+from nustd import ui
 from nudemos.ops import kit
 from nudemos.ops.gateway import RELEASES
 from nudemos.ops.model import STABLE
 from nudemos.ops.state import OPS
 
 
-class Ship(nustd.ui.Row):
-    version = nustd.ui.SelectRef.slot(options=list(RELEASES))
-    deploy = nustd.ui.ButtonRef.slot(label="Deploy", icon="upload")
-    rollback = nustd.ui.ButtonRef.slot(label="Roll back to 1.8.3", variant="secondary", icon="undo-2")
+class View(nu.Shape):
+    ship = ui.CardRef.slot(title="Release", subtitle="deploy one and the gateway restarts on it")
 
 
-class Live(nustd.ui.Row):
-    live = nustd.ui.StatusPillRef.slot()
-    line = nustd.ui.TextRef.slot()
-
-
-class View(nustd.ui.Column):
-    live = Live.slot(gap=3)
-    ship = Ship.slot(gap=2)
+version = View.ship.actions[0].to(ui.SelectRef.slot(options=list(RELEASES)))
+deploy = View.ship.actions[1].to(ui.ButtonRef.slot(label="Deploy", icon="upload", size="sm"))
+rollback = View.ship.actions[2].to(ui.ButtonRef.slot(label=f"Roll back to {STABLE[-1]}", variant="secondary", icon="undo-2", size="sm"))
+now = View.ship[0].to(ui.LineRef)
+live = now[0].to(ui.StatusPillRef)
+line = now[1].to(ui.TextRef.slot(tone="muted"))
 
 
 @nu.host
-def live(release, gw, jobs):
+def serving(release, gw, jobs):
     status = (jobs or {}).get("gateway", {}).get("status", "")
-    serving = (gw or {}).get("release")
-    if status == "running" and serving == release.get("version"):
-        return {"label": f"{serving} serving", "tone": "ok", "line": f"Deployed by {release.get('by', '')}. The gateway restarts on the new release when you deploy."}
+    version = (gw or {}).get("release")
+    if status == "running" and version == release.get("version"):
+        return {"label": f"{version} serving", "tone": "ok", "line": f"Deployed by {release.get('by', '')}. The gateway restarts on the new release when you deploy."}
     return {"label": f"{release.get('version', '')} {status or 'starting'}", "tone": "warn" if status in ("restarting", "starting") else "danger",
             "line": "The gateway is coming up on the release." if status in ("restarting", "starting", "running") else "The gateway is down. The supervisor keeps bringing it back."}
 
 
 def out(plane):
-    s = View.ship
-
     def build(root):
-        picked = nu.Str(s.version)
-        shipping = kit.deploy(root, picked, "you", "")
+        shipping = kit.deploy(root, nu.Str(version), "you", "")
         back = kit.deploy(root, STABLE[-1], "you", "rollback")
-        draw = lambda v: View.live.live.set(v["label"], tone=v["tone"]) >> View.live.line.set(v["line"])
-        buttons = s.deploy.set("Deploy", icon="upload") >> s.rollback.set(f"Roll back to {STABLE[-1]}", variant="secondary", icon="undo-2")
-        return s.version.set("1.9.0") >> buttons >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.gw.on_change(), OPS.jobs.on_change()])), nu.let(nuspace.atomic(live(OPS.release.fallback({}), OPS.gw.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({}))), draw), every=2.0),
-            nu.ReactEvery(s.deploy.on_click(), shipping),
-            nu.ReactEvery(s.rollback.on_click(), back),
+        draw = lambda v: live.set(v["label"], tone=v["tone"]) >> line.set(v["line"])
+        return version.set("1.9.0") >> deploy.init() >> rollback.init() >> nu.ParallelAsync(
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.gw.on_change(), OPS.jobs.on_change()])), nu.let(nuspace.atomic(serving(OPS.release.fallback({}), OPS.gw.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({}))), draw), every=2.0),
+            nu.ReactEvery(deploy.on_click(), shipping),
+            nu.ReactEvery(rollback.on_click(), back),
         )
 
     return kit.on_ops(plane, build)
@@ -771,27 +784,32 @@ def out(plane):
 HISTORY = """\
 import nu
 import nuspace
-import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-COLUMNS = [{"key": "when", "label": "When", "width": 110}, {"key": "version", "label": "Release", "width": 100}, {"key": "from", "label": "From", "width": 100}, {"key": "by", "label": "By", "width": 160}, {"key": "why", "label": "Note"}]
+COLUMNS = [
+    {"key": "when", "label": "When", "width": 110, "cell": ui.RelativeTimeRef},
+    {"key": "version", "label": "Release", "width": 100, "cell": ui.BadgeRef.slot(size="sm")},
+    {"key": "from", "label": "From", "width": 90, "hide_below": 900},
+    {"key": "by", "label": "By", "width": 140},
+    {"key": "why", "label": "Note", "wrap": "truncate"},
+]
 
 
-class Both(nustd.ui.Row):
-    history = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Deploys")
-    notes = nustd.ui.MarkdownRef.slot()
+class View(nu.Shape):
+    both = ui.GridRef.slot(cols="2fr 1fr", stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    both = Both.slot(gap=6, wrap=True, min_width=360, align="start")
+history = View.both[0, 0].to(ui.CardRef.slot(title="Deploys", subtitle="newest first, the live one marked"))[0].to(
+    ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Deploys"))
+notes = View.both[0, 1].to(ui.CardRef.slot(title="Releases"))[0].to(ui.MarkdownRef)
 
 
 def out(plane):
     def build(root):
-        read = nu.Dict.of(rows=views.deploy_rows(OPS.deploys.fallback([]), nustd.time.time()), notes=views.release_notes(nu.Str(OPS.release.fallback({})["version"])))
-        draw = lambda v: View.both.history.set_rows(v["rows"]) >> View.both.notes.set(nu.Str("### Releases\\n\\n") + nu.Str(v["notes"]))
+        read = nu.Dict.of(rows=views.deploy_rows(OPS.deploys.fallback([])), notes=views.release_notes(nu.Str(OPS.release.fallback({})["version"])))
+        draw = lambda v: history.set_rows(v["rows"]) >> notes.set(v["notes"])
         return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.deploys.on_change()])), nu.let(nuspace.atomic(read), draw), every=30.0)
 
     return kit.on_ops(plane, build)
@@ -808,39 +826,39 @@ INCIDENT_BOARD = """\
 import nu
 import nuspace
 import nustd.time
-import nuspace.web as web
-import nustd.ui
-from nudemos.ops import kit, shape, views
-from nudemos.ops.state import OPS, incident_view
+from nustd import ui
+from nudemos import pages
+from nudemos.ops import kit, views
+from nudemos.ops.state import OPS
 
 COLUMNS = [
-    {"key": "id", "label": "Incident", "width": 110},
-    {"key": "sev", "label": "Sev", "width": 70},
-    {"key": "title", "label": "What"},
-    {"key": "status", "label": "Status", "width": 110},
-    {"key": "opened", "label": "Opened", "width": 100},
-    {"key": "lasted", "label": "Lasted", "width": 100},
-    {"key": "release", "label": "Release", "width": 90},
+    {"key": "incident", "label": "Incident", "width": 120, "cell": ui.PageLinkRef.slot(variant="inline")},
+    {"key": "sev", "label": "Sev", "width": 80, "cell": ui.BadgeRef.slot(size="sm")},
+    {"key": "title", "label": "What", "wrap": "truncate"},
+    {"key": "status", "label": "Status", "width": 120, "cell": ui.StatusPillRef},
+    {"key": "opened", "label": "Opened", "width": 110, "cell": ui.RelativeTimeRef},
+    {"key": "lasted", "label": "Lasted", "width": 100, "align": "end"},
+    {"key": "release", "label": "Release", "width": 90, "hide_below": 900},
 ]
 
 
-class View(nustd.ui.Column):
-    history = nustd.ui.HistoryRef.slot()
-    empty = nustd.ui.TextRef.slot()
-    incidents = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Incidents")
+class View(nu.Shape):
+    board = ui.CardRef.slot(title="Incidents", subtitle="open first, newest first")
+
+
+table = View.board[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Incidents"))
 
 
 @nu.host
 def said(rows):
-    return "No incidents yet. The alert rules open them on their own when the numbers turn." if not rows else f"{sum(1 for r in rows if r['status'] != 'resolved')} open of {len(rows)}. Click one for its timeline."
+    return "No incidents yet. The alert rules open them on their own when the numbers turn." if not rows else f"{sum(1 for r in rows if r['status']['label'] != 'resolved')} open of {len(rows)}. Open one for its timeline."
 
 
 def out(plane):
     def build(root):
-        rows = views.incident_rows(nu.Dict(OPS.incidents.extract()).fallback({}), nustd.time.time())
-        draw = lambda r: View.incidents.set_rows(r) >> View.empty.set(said(r))
-        opened = nu.ReactEvery(View.incidents.on_row_click(), lambda ev: View.history.push(web.href(nuspace.atomic(incident_view(nu.Str(ev["key"]))))))
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents.on_change()])), nu.let(nuspace.atomic(rows), draw), every=10.0), opened)
+        rows = views.incident_rows(nu.Dict(OPS.incidents.extract()).fallback({}), nu.Dict(OPS.made.incidents.extract()).fallback({}), nustd.time.time())
+        draw = lambda r: table.set_rows(pages.linked(r, "incident")) >> View.board.set_caption(said(r))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents.on_change()])), nu.let(nuspace.atomic(rows), draw), every=10.0)
 
     return kit.on_ops(plane, build)
 """
@@ -849,32 +867,31 @@ def out(plane):
 PAGER = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-COLUMNS = [{"key": "when", "label": "Sent", "width": 100}, {"key": "to", "label": "To", "width": 170}, {"key": "text", "label": "Page"}]
+PAGES = [
+    {"key": "when", "label": "Sent", "width": 110, "cell": ui.RelativeTimeRef},
+    {"key": "to", "label": "To", "width": 170},
+    {"key": "text", "label": "Page", "wrap": "truncate"},
+]
 ROTA = [{"key": "name", "label": "On call"}, {"key": "role", "label": "As", "width": 150}, {"key": "team", "label": "Team", "width": 110}]
 
 
-class Both(nustd.ui.Row):
-    pages = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Pages")
-    rota = nustd.ui.TableRef.slot(columns=ROTA, row_key="name", dense=True, label="Rota")
+class View(nu.Shape):
+    both = ui.GridRef.slot(cols=2, stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    both = Both.slot(gap=6, wrap=True, min_width=320, align="start")
-
-
-@nu.host
-def rows(pager):
-    return [{"key": f"{p['at']}-{i}", "when": shape.clock(p["at"]), "to": f"{p['to']} ({p['role']})", "text": p["text"]} for i, p in enumerate(pager or [])][:20]
+sent = View.both[0, 0].to(ui.CardRef.slot(title="Who was paged", subtitle="newest first"))[0].to(
+    ui.DataTableRef.slot(columns=PAGES, row_key="key", density="compact", label="Pages"))
+rota = View.both[0, 1].to(ui.CardRef.slot(title="On call"))[0].to(
+    ui.DataTableRef.slot(columns=ROTA, row_key="name", density="compact", label="Rota"))
 
 
 def out(plane):
     def build(root):
-        return View.head.set("Who was paged") >> View.both.rota.set_rows(OPS.oncall.fallback([])) >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.pager.on_change()])), nu.let(nuspace.atomic(rows(OPS.pager.fallback([]))), View.both.pages.set_rows))
+        return rota.set_rows(OPS.oncall.fallback([])) >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.pager.on_change()])), nu.let(nuspace.atomic(views.page_rows(OPS.pager.fallback([]))), sent.set_rows))
 
     return kit.on_ops(plane, build)
 """
@@ -888,57 +905,52 @@ import nu
 import nuspace
 import nuspace.web as web
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS, folder_of
 
-
-class Top(nustd.ui.Row):
-    status = nustd.ui.StatusPillRef.slot()
-    line = nustd.ui.TextRef.slot()
-
-
-class Act(nustd.ui.Row):
-    ack = nustd.ui.ButtonRef.slot(label="Acknowledge", variant="secondary", icon="check")
-    resolve = nustd.ui.ButtonRef.slot(label="Resolve", icon="check")
-    runbook = nustd.ui.LinkRef.slot()
+TIMELINE = [
+    {"key": "time", "label": "Time", "width": 100, "cell": ui.TextRef.slot(mono=True, size="sm")},
+    {"key": "what", "label": "What"},
+    {"key": "who", "label": "Who", "width": 120, "hide_below": 640},
+]
 
 
-class Say(nustd.ui.Row):
-    text = nustd.ui.InputRef.slot(placeholder="Add a note to the timeline")
-    add = nustd.ui.ButtonRef.slot(label="Add note", variant="secondary", icon="send")
+class View(nu.Shape):
+    head = ui.PageSectionRef.slot()
 
 
-class View(nustd.ui.Column):
-    title = nustd.ui.HeadingRef.slot(level=2)
-    top = Top.slot(gap=3)
-    act = Act.slot(gap=2)
-    timeline = nustd.ui.MarkdownRef.slot()
-    say = Say.slot(gap=2)
+ack = View.head.actions[0].to(ui.ButtonRef.slot(label="Acknowledge", variant="secondary", icon="check", size="sm"))
+resolve = View.head.actions[1].to(ui.ButtonRef.slot(label="Resolve", icon="check", size="sm"))
+runbook = View.head.actions[2].to(ui.LinkRef.slot(icon="book-open"))
+top = View.head[0].to(ui.LineRef)
+status = top[0].to(ui.StatusPillRef)
+line = top[1].to(ui.TextRef.slot(tone="muted"))
+card = View.head[1].to(ui.CardRef.slot(title="Timeline", subtitle="oldest first"))
+timeline = card[0].to(ui.DataTableRef.slot(columns=TIMELINE, row_key="key", density="compact", label="Timeline"))
+say = card[1].to(ui.RowRef.slot(gap=2, grow={"text": 1}))
+text = say["text"].to(ui.InputRef.slot(placeholder="Add a note to the timeline"))
+add = say["add"].to(ui.ButtonRef.slot(label="Add note", variant="secondary", icon="send"))
 
 
 def draw(v):
     h = v["head"]
-    return View.title.set(h["title"]) >> View.top.status.set(h["status"], tone=h["tone"]) >> View.top.line.set(h["line"]) >> View.timeline.set(v["timeline"])
+    return View.head.set_title(h["title"]) >> status.set(h["status"], tone=h["tone"]) >> line.set(h["line"]) >> timeline.set_rows(v["timeline"])
 
 
 def out(plane):
     def build(root, iid):
         inc = OPS.incidents[iid].fallback({})
         read = nu.Dict.of(head=views.incident_head(inc, nustd.time.time()), timeline=views.timeline(inc))
-        typed = nu.Str(View.say.text).strip()
-        note = nu.IfDo(typed != "", kit.remark(root, iid, typed) >> View.say.text.set(""))
-        labels = (
-            View.title.set("") >> View.top.status.set("open", tone="danger") >> View.top.line.set("")
-            >> View.act.ack.set("Acknowledge", variant="secondary", icon="check") >> View.act.resolve.set("Resolve", icon="check")
-            >> View.say.text.set("") >> View.say.add.set("Add note", variant="secondary", icon="send")
-        )
-        runbook = web.href(nuspace.atomic(folder_of("runbooks")))
-        return labels >> View.act.runbook.set(href=runbook, label="Open the runbook") >> nu.ParallelAsync(
+        typed = nu.Str(text).strip()
+        note = nu.IfDo(typed != "", kit.remark(root, iid, typed) >> text.set(""))
+        first = ack.init() >> resolve.init() >> text.set("") >> add.init()
+        linked = nuspace.atomic(web.link(runbook, folder_of("runbooks"), label="Open the runbook"))
+        return first >> linked >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents[iid].on_change()])), nu.let(nuspace.atomic(read), draw), every=5.0),
-            nu.ReactEvery(View.act.ack.on_click(), kit.settle_incident(root, iid, "acked")),
-            nu.ReactEvery(View.act.resolve.on_click(), kit.settle_incident(root, iid, "resolved")),
-            nu.ReactEvery(View.say.add.on_click(), note),
+            nu.ReactEvery(ack.on_click(), kit.settle_incident(root, iid, "acked")),
+            nu.ReactEvery(resolve.on_click(), kit.settle_incident(root, iid, "resolved")),
+            nu.ReactEvery(add.on_click(), note),
         )
 
     return kit.on_subject(plane, "incident", build)
@@ -949,18 +961,21 @@ INC_AROUND = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-
-class Charts(nustd.ui.Row):
-    err = nustd.ui.LineChart.slot(("failing %",), title="Failing requests around it, %", x_type="time", x_format="{HH}:{mm}", y_min=0, height=220, colors=["#e5484d"])
-    rss = nustd.ui.AreaChart.slot(("gateway MB",), title="Gateway memory around it, MB", x_type="time", x_format="{HH}:{mm}", y_min=0, height=220, colors=["#8e4ec6"])
+TIME = {"x_type": "time", "x_format": "{HH}:{mm}", "y_min": 0, "height": 220}
 
 
-class View(nustd.ui.Column):
-    charts = Charts.slot(gap=4, wrap=True, min_width=360, align="start")
+class View(nu.Shape):
+    both = ui.GridRef.slot(cols=2, stack_below=800, gap=4)
+
+
+err = View.both[0, 0].to(ui.CardRef.slot(title="Failing requests, %", subtitle="around the incident"))[0].to(
+    ui.LineChart.slot(("failing %",), colors=["var(--status-danger)"], **TIME))
+rss = View.both[0, 1].to(ui.CardRef.slot(title="Gateway memory, MB", subtitle="around the incident"))[0].to(
+    ui.AreaChart.slot(("gateway MB",), colors=["var(--chart-3)"], **TIME))
 
 
 @nu.host
@@ -974,7 +989,7 @@ def out(plane):
     def build(root, iid):
         w = nu.List(window(OPS.incidents[iid].fallback({}), nustd.time.time()))
         read = nu.Dict.of(err=views.named("failing %", OPS.err.sample(400, nu.Int(w[0]), nu.Int(w[1])), 100.0), rss=views.named("gateway MB", OPS.gw_rss.sample(400, nu.Int(w[0]), nu.Int(w[1]))))
-        draw = lambda v: View.charts.err.set(v["err"]) >> View.charts.rss.set(v["rss"])
+        draw = lambda v: err.set(v["err"]) >> rss.set(v["rss"])
         return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=3.0)
 
     return kit.on_subject(plane, "incident", build)
@@ -992,8 +1007,8 @@ import nu
 import nuspace
 import nustd.http
 import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit
 from nudemos.ops.model import STABLE
 from nudemos.ops.state import OPS
 
@@ -1004,22 +1019,28 @@ When the error rate jumps right after a release, roll back first and investigate
 Each button runs its step for real, and what it found lands in the log below.
 """
 
+#: The steps in order: label, variant, icon.
+STEPS = {
+    "health": ("1. Check health", "secondary", "search"),
+    "errors": ("2. Read the errors", "secondary", "file-text"),
+    "rollback": (f"3. Roll back to {STABLE[-1]}", "primary", "undo-2"),
+    "verify": ("4. Verify", "secondary", "check"),
+    "resolve": ("5. Resolve the incident", "secondary", "check"),
+}
+
 
 class Health(nu.Service):
     get = nustd.http.GETRef.method("{url}")
 
 
-class Steps(nustd.ui.Grid):
-    health = nustd.ui.ButtonRef.slot(label="1. Check health", variant="secondary", icon="search")
-    errors = nustd.ui.ButtonRef.slot(label="2. Read the errors", variant="secondary", icon="file-text")
-    rollback = nustd.ui.ButtonRef.slot(label="3. Roll back", icon="undo-2")
-    verify = nustd.ui.ButtonRef.slot(label="4. Verify", variant="secondary", icon="check")
-    resolve = nustd.ui.ButtonRef.slot(label="5. Resolve the incident", variant="secondary", icon="check")
+class View(ui.Column):
+    text = ui.MarkdownRef.slot()
+    steps = ui.GridRef.slot(max_columns=5, min_cell_width=180, gap=2)
 
 
-class View(nustd.ui.Column):
-    text = nustd.ui.MarkdownRef.slot()
-    steps = Steps.slot(columns=5, min_width=170, gap=2)
+def button(key):
+    label, variant, icon = STEPS[key]
+    return View.steps[key].to(ui.ButtonRef.slot(label=label, variant=variant, icon=icon))
 
 
 @nu.host
@@ -1047,8 +1068,6 @@ def healthy(reply):
 
 
 def out(plane):
-    s = View.steps
-
     def build(root):
         def step(name, said):
             return nuspace.atomic(kit.ran(name, said))
@@ -1056,25 +1075,15 @@ def out(plane):
         url = nu.Str("http://127.0.0.1:") + nu.str(OPS.settings.fallback({})["port"]) + "/health"
         probe = nu.TryCatch(nu.let(Health.get(url=url), lambda r: step("Check health", healthy(r))),
                             catch=lambda e: step("Check health", nu.List.of(False, "The gateway does not answer: connection refused.")))
-        health = nu.With(nustd.http.bind(Health, timeout=2.0), body=probe)
-        errs = nu.let(kit.tail("gateway", 600), lambda rows: step("Read the errors", errors_said(rows)))
-        back = kit.deploy(root, STABLE[-1], "you", "rollback from the runbook") >> step("Roll back", nu.List.of(True, f"Deployed {STABLE[-1]}, the gateway is restarting on it."))
-        verify = step("Verify", verified(OPS.gw.fallback({})))
-        resolve = kit.resolve_open(root, "gateway") >> step("Resolve the incident", nu.List.of(True, "Resolved the open storefront incident."))
-        labels = (
-            s.health.set("1. Check health", variant="secondary", icon="search")
-            >> s.errors.set("2. Read the errors", variant="secondary", icon="file-text")
-            >> s.rollback.set(f"3. Roll back to {STABLE[-1]}", icon="undo-2")
-            >> s.verify.set("4. Verify", variant="secondary", icon="check")
-            >> s.resolve.set("5. Resolve the incident", variant="secondary", icon="check")
-        )
-        return View.text.set(TEXT) >> labels >> nu.ParallelAsync(
-            nu.ReactEvery(s.health.on_click(), health),
-            nu.ReactEvery(s.errors.on_click(), errs),
-            nu.ReactEvery(s.rollback.on_click(), back),
-            nu.ReactEvery(s.verify.on_click(), verify),
-            nu.ReactEvery(s.resolve.on_click(), resolve),
-        )
+        moves = {
+            "health": nu.With(nustd.http.bind(Health, timeout=2.0), body=probe),
+            "errors": nu.let(kit.tail("gateway", 600), lambda rows: step("Read the errors", errors_said(rows))),
+            "rollback": kit.deploy(root, STABLE[-1], "you", "rollback from the runbook") >> step("Roll back", nu.List.of(True, f"Deployed {STABLE[-1]}, the gateway is restarting on it.")),
+            "verify": step("Verify", verified(OPS.gw.fallback({}))),
+            "resolve": kit.resolve_open(root, "gateway") >> step("Resolve the incident", nu.List.of(True, "Resolved the open storefront incident.")),
+        }
+        shown = View.text.set(TEXT) >> nu.Sequential(*(button(key).init() for key in STEPS))
+        return shown >> nu.ParallelAsync(*(nu.ReactEvery(button(key).on_click(), move) for key, move in moves.items()))
 
     return kit.on_ops(plane, build)
 '''
@@ -1083,7 +1092,7 @@ def out(plane):
 CHORES = '''\
 import nu
 import nuspace
-import nustd.ui
+from nustd import ui
 from nudemos.ops import kit
 
 TEXT = """\\
@@ -1092,38 +1101,33 @@ TEXT = """\\
 Run a scheduled job now, beside its schedule. Each runs in its own process, like on schedule.
 """
 
+#: Each chore by its job: button label, icon, what the steps log calls it.
+CHORES = {
+    "backup": ("Back up orders now", "save", "Back up orders"),
+    "offsite": ("Send offsite now", "upload", "Send offsite"),
+    "linkcheck": ("Check help links now", "link", "Check help links"),
+    "digest": ("Write the digest now", "file-text", "Write the digest"),
+}
 
-class Chores(nustd.ui.Row):
-    backup = nustd.ui.ButtonRef.slot(label="Back up orders now", variant="secondary", icon="save")
-    offsite = nustd.ui.ButtonRef.slot(label="Send offsite now", variant="secondary", icon="upload")
-    links = nustd.ui.ButtonRef.slot(label="Check help links now", variant="secondary", icon="link")
-    digest = nustd.ui.ButtonRef.slot(label="Write the digest now", variant="secondary", icon="file-text")
+
+class View(ui.Column):
+    text = ui.MarkdownRef.slot()
+    chores = ui.GridRef.slot(max_columns=4, min_cell_width=180, gap=2)
 
 
-class View(nustd.ui.Column):
-    text = nustd.ui.MarkdownRef.slot()
-    chores = Chores.slot(gap=2, wrap=True, min_width=160)
+def button(name):
+    label, icon, _ = CHORES[name]
+    return View.chores[name].to(ui.ButtonRef.slot(label=label, variant="secondary", icon=icon))
 
 
 def out(plane):
-    c = View.chores
-
     def build(root):
-        def run(name, what):
+        def run(name):
+            what = CHORES[name][2]
             return kit.run_now(root, name) >> nuspace.atomic(kit.ran(what, nu.List.of(True, f"Started {name} in a fresh process.")))
 
-        labels = (
-            c.backup.set("Back up orders now", variant="secondary", icon="save")
-            >> c.offsite.set("Send offsite now", variant="secondary", icon="upload")
-            >> c.links.set("Check help links now", variant="secondary", icon="link")
-            >> c.digest.set("Write the digest now", variant="secondary", icon="file-text")
-        )
-        return View.text.set(TEXT) >> labels >> nu.ParallelAsync(
-            nu.ReactEvery(c.backup.on_click(), run("backup", "Back up orders")),
-            nu.ReactEvery(c.offsite.on_click(), run("offsite", "Send offsite")),
-            nu.ReactEvery(c.links.on_click(), run("linkcheck", "Check help links")),
-            nu.ReactEvery(c.digest.on_click(), run("digest", "Write the digest")),
-        )
+        shown = View.text.set(TEXT) >> nu.Sequential(*(button(name).init() for name in CHORES))
+        return shown >> nu.ParallelAsync(*(nu.ReactEvery(button(name).on_click(), run(name)) for name in CHORES))
 
     return kit.on_ops(plane, build)
 '''
@@ -1132,25 +1136,27 @@ def out(plane):
 STEPS = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
-COLUMNS = [{"key": "when", "label": "When", "width": 100}, {"key": "step", "label": "Step", "width": 200}, {"key": "result", "label": "", "width": 80}, {"key": "said", "label": "What it found"}]
+COLUMNS = [
+    {"key": "when", "label": "When", "width": 110, "cell": ui.RelativeTimeRef},
+    {"key": "step", "label": "Step", "width": 200},
+    {"key": "result", "label": "Result", "width": 90, "cell": ui.BadgeRef.slot(size="sm")},
+    {"key": "said", "label": "What it found", "wrap": "truncate"},
+]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    steps = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Steps run")
+class View(nu.Shape):
+    steps = ui.CardRef.slot(title="Steps run", subtitle="newest first")
 
 
-@nu.host
-def rows(steps):
-    return [{"key": f"{s['at']}-{i}", "when": shape.clock(s["at"]), "step": s["step"], "result": "ok" if s["ok"] else "not ok", "said": s["said"]} for i, s in enumerate(steps or [])][:16]
+table = View.steps[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Steps run"))
 
 
 def out(plane):
-    return kit.on_ops(plane, lambda root: View.head.set("Steps run, newest first") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.steps.on_change()])), nu.let(nuspace.atomic(rows(OPS.steps.fallback([]))), View.steps.set_rows)))
+    return kit.on_ops(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.steps.on_change()])), nu.let(nuspace.atomic(views.step_rows(OPS.steps.fallback([]))), table.set_rows)))
 """
 
 
@@ -1163,32 +1169,27 @@ RUNBOOKS = (("gateway", RUNBOOK), ("chores", CHORES), ("steps", STEPS))
 RULE_BOARD = """\
 import nu
 import nuspace
-import nustd.time
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
 COLUMNS = [
-    {"key": "rule", "label": "Rule", "width": 150},
-    {"key": "when", "label": "When"},
-    {"key": "then", "label": "Then"},
-    {"key": "state", "label": "Now", "width": 90},
-    {"key": "fired", "label": "Fired", "width": 130},
+    {"key": "rule", "label": "Rule", "width": 150, "editable": False},
+    {"key": "when", "label": "When", "editable": False},
+    {"key": "then", "label": "Then", "editable": False, "hide_below": 900},
+    {"key": "state", "label": "Now", "width": 100, "editable": False, "cell": ui.StatusPillRef},
+    {"key": "fired", "label": "Fired", "width": 80, "kind": "number", "align": "end", "editable": False},
+    {"key": "last", "label": "Last", "width": 100, "editable": False, "cell": ui.RelativeTimeRef},
     {"key": "on", "label": "On", "kind": "bool", "width": 70},
 ]
-
-
-class View(nustd.ui.Column):
-    intro = nustd.ui.MarkdownRef.slot()
-    rules = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", editable=True, dense=True, label="Rules")
-
-
-@nu.host
-def rows(rules, now):
-    return [{**r, "on": (rules or {}).get(r["key"], {}).get("on", True)} for r in shape.rule_rows(rules, now)]
-
-
 INTRO = "Each rule is a cell on the watchdog job, checked every 2 seconds against the live numbers. Turn one off here; read its code below."
+
+
+class View(nu.Shape):
+    rules = ui.CardRef.slot(title="Alert rules", subtitle=INTRO)
+
+
+table = View.rules[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", editable=True, density="compact", label="Rules"))
 
 
 def out(plane):
@@ -1197,8 +1198,8 @@ def out(plane):
             rule = OPS.rules[nu.Str(ev["key"])]
             return nuspace.atomic(rule.set(kit.merged(rule.fallback({}), nu.Dict.of(on=nu.ToBool(ev["value"])))))
 
-        read = rows(nu.Dict(OPS.rules.extract()).fallback({}), nustd.time.time())
-        return View.intro.set(INTRO) >> nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.rules.on_change()])), nu.let(nuspace.atomic(read), View.rules.set_rows), every=5.0), nu.ReactEvery(View.rules.on_edit(), flip))
+        read = views.rule_rows(nu.Dict(OPS.rules.extract()).fallback({}))
+        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.rules.on_change()])), nu.let(nuspace.atomic(read), table.set_rows), every=5.0), nu.ReactEvery(table.on_edit(), flip))
 
     return kit.on_ops(plane, build)
 """
@@ -1207,20 +1208,22 @@ def out(plane):
 RULE_CODE = """\
 import nu
 import nuspace
-import nustd.ui
+from nustd import ui
+from nudemos import headless
 from nudemos.ops import kit
 from nudemos.ops.jobs import RULES
 from nudemos.ops.model import RULES as SAID
-from nudemos import headless
 from nudemos.ops.state import worker_of
 
+#: A section per rule, in the watchdog's order, titled by what it watches.
+SECTIONS = [{"id": name, "label": SAID[name]["title"] + ": " + SAID[name]["says"].lower()} for name in RULES]
 
-# A heading and the code of each rule, in order.
-SLOTS = {}
-for name in RULES:
-    SLOTS["h_" + name] = nustd.ui.HeadingRef.slot(level=4)
-    SLOTS["c_" + name] = nustd.ui.CodeRef.slot(language="python", wrap=True)
-View = type("View", (nustd.ui.Column,), SLOTS)
+
+class View(nu.Shape):
+    code = ui.CardRef.slot(title="How each rule reads", subtitle="the watchdog's cells, as they run now")
+
+
+rules = View.code[0].to(ui.AccordionRef.slot(sections=SECTIONS))
 
 
 def out(plane):
@@ -1228,8 +1231,7 @@ def out(plane):
         # The rules as they run now: read off the watchdog's cells, by name, so an edit there shows here.
         def one(name):
             cell = headless.cell_of(worker_of("watchdog"), name)
-            code = getattr(View, "c_" + name).set(nu.str(nuspace.atomic(nuspace.Space.cells[cell].prog)))
-            return getattr(View, "h_" + name).set(SAID[name]["title"] + ": " + SAID[name]["says"].lower()) >> code
+            return rules[name].to(ui.CodeRef.slot(language="python", wrap=True)).set(nu.str(nuspace.atomic(nuspace.Space.cells[cell].prog)))
         return nu.Sequential(*(one(name) for name in RULES)) >> nu.ForeverDo(nu.Delay(3600.0))
 
     return kit.on_root(plane, build)
@@ -1245,37 +1247,38 @@ RULES = (("rules", RULE_BOARD), ("code", RULE_CODE))
 STATUS_NOW = """\
 import nu
 import nuspace
-import nustd.ui
-from nudemos.ops import kit, shape, views
+from nustd import ui
+from nudemos.ops import kit, views
 from nudemos.ops.state import OPS
 
+COLUMNS = [
+    {"key": "name", "label": "Component"},
+    {"key": "status", "label": "Status", "width": 150, "cell": ui.StatusPillRef},
+    {"key": "note", "label": "Note", "wrap": "truncate", "hide_below": 640},
+]
 
-class Component(nustd.ui.Row):
-    name = nustd.ui.TextRef.slot()
-    pill = nustd.ui.StatusPillRef.slot()
-    note = nustd.ui.TextRef.slot()
+
+class View(ui.Column):
+    banner = ui.AlertRef.slot()
+    parts = ui.CardRef.slot(title="Components")
 
 
-class View(nustd.ui.Column):
-    banner = nustd.ui.AlertRef.slot()
-    parts = nustd.ui.GridRef.slot(Component, columns=1, gap=2)
+table = View.parts[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", label="Components"))
 
 
 @nu.host
 def banner(parts):
-    bad = [p for p in parts if p["tone"] != "ok"]
+    bad = [p for p in parts if p["status"]["tone"] != "ok"]
     if not bad:
         return {"title": "All systems operational", "body": "Halcyon's storefront, search, checkout and help center are working normally.", "variant": "ok"}
-    worst = "danger" if any(p["tone"] == "danger" for p in bad) else "warn"
+    worst = "danger" if any(p["status"]["tone"] == "danger" for p in bad) else "warn"
     return {"title": "We are investigating an issue" if worst == "danger" else "Some systems are degraded",
-            "body": ", ".join(p["name"] for p in bad) + ": " + bad[0]["label"].lower() + ". Updates follow here as we learn more.", "variant": worst}
+            "body": ", ".join(p["name"] for p in bad) + ": " + bad[0]["status"]["label"].lower() + ". Updates follow here as we learn more.", "variant": worst}
 
 
 def draw(parts):
-    b = banner(parts)
-    one = lambda i: View.parts[nu.str(i)].name.set(nu.List(parts)[i]["name"]) >> View.parts[nu.str(i)].pill.set(nu.List(parts)[i]["label"], tone=nu.List(parts)[i]["tone"]) >> View.parts[nu.str(i)].note.set(nu.List(parts)[i]["note"])
-    shown = nu.let(b, lambda v: View.banner.set(v["title"], body=v["body"], variant=v["variant"]))
-    return shown >> nu.ForRangeDo(0, nu.List(parts).len(), one)
+    shown = nu.let(banner(parts), lambda v: View.banner.set(v["title"], body=v["body"], variant=v["variant"]))
+    return shown >> table.set_rows(parts)
 
 
 def out(plane):
@@ -1291,16 +1294,23 @@ UPTIME = """\
 import nu
 import nuspace
 import nustd.time
-import nustd.ui
+from nustd import ui
 from nudemos.ops import kit
 from nudemos.ops.state import OPS
 
+#: A bar a minute, coloured by how many requests it served: under 95% danger, under 99.5% warn.
+BANDS = {"visualMap": {"show": False, "dimension": 1, "pieces": [
+    {"lt": 95, "color": "var(--status-danger)"},
+    {"gte": 95, "lt": 99.5, "color": "var(--status-warn)"},
+    {"gte": 99.5, "color": "var(--status-ok)"},
+]}}
 
-class View(nustd.ui.Column):
-    uptime = nustd.ui.BarChart.slot(
-        title="Requests served, minute by minute", y_min=50, y_max=100, height=200, value_format="{value}%", colors=["#30a46c"],
-        option={"visualMap": {"show": False, "dimension": 1, "pieces": [{"lt": 95, "color": "#e5484d"}, {"gte": 95, "lt": 99.5, "color": "#f5a524"}, {"gte": 99.5, "color": "#30a46c"}]}},
-    )
+
+class View(nu.Shape):
+    uptime = ui.CardRef.slot(title="Requests served", subtitle="minute by minute, the last hour")
+
+
+bars_of = View.uptime[0].to(ui.BarChart.slot(y_min=50, y_max=100, height=200, value_format="{value}%", colors=["var(--status-ok)"], option=BANDS))
 
 
 @nu.host
@@ -1332,7 +1342,7 @@ def out(plane):
     def build(root):
         now = nustd.time.time()
         since = nu.Int(nu.ToInt(now)) - 3600
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(minutes(OPS.err.sample(2400, since, since + 3605), now)), View.uptime.set), every=10.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(minutes(OPS.err.sample(2400, since, since + 3605), now)), bars_of.set), every=10.0)
 
     return kit.on_ops(plane, build)
 """

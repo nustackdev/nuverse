@@ -130,13 +130,30 @@ def test_header_and_cards_read_a_view():
     assert idle["doing"] == "waiting for you to say something"
     assert views.head_of({**v, "status": "stopped"})["button"] == "Resume"
     (card,) = views.cards_of([["p1", "j1", v]])
-    assert card["key"] == "j1" and card["href"] == "/p1"
+    assert card["key"] == "j1" and card["page"] == "p1"
     assert card["doing"] == "Bash ls"
     assert card["stats"] == "2 prompts · 3 tool calls · 12.3k tokens · $0.12"
     assert (
         views.cards_of([["p1", "j1", {**v, "status": "idle"}]])[0]["doing"]
         == "Done: wrote index.html"
     )
+
+
+def test_a_run_lists_its_agents_as_lines_by_position():
+    run = {
+        "job": "j9",
+        "name": "Fan-out 1",
+        "phase": "building",
+        "status": "running",
+        "outcome": "",
+        "agents": [["builder-1", "p1", "working", "Bash ls"], ["judge", "", "idle", ""]],
+    }
+    (card,) = orchestrate.shown_of([run])
+    assert (card["key"], card["tone"]) == ("j9", "info")
+    assert card["agents"] == [
+        {"i": 0, "role": "builder-1", "page": "p1", "tone": "ok", "said": "working, Bash ls"},
+        {"i": 1, "role": "judge", "page": "", "tone": "neutral", "said": "idle"},
+    ]
 
 
 def test_a_sketch_is_read_from_its_file(tmp_path):

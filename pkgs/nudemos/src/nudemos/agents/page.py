@@ -33,34 +33,27 @@ def _cell(body: str) -> str:
 
 
 STATUS = _cell("""\
+TILES = {"prompts": "Prompts", "calls": "Tool calls", "tokens": "Tokens", "cost": "Cost", "seconds": "Working time"}
+
+
 class Head(nustd.ui.Row):
     pill = nustd.ui.StatusPillRef.slot()
     doing = nustd.ui.TextRef.slot()
 
 
-class Tiles(nustd.ui.Grid):
-    prompts = nustd.ui.StatRef.slot(label="Prompts")
-    calls = nustd.ui.StatRef.slot(label="Tool calls")
-    tokens = nustd.ui.StatRef.slot(label="Tokens")
-    cost = nustd.ui.StatRef.slot(label="Cost")
-    seconds = nustd.ui.StatRef.slot(label="Working time")
-
-
 class View(nustd.ui.Column):
     head = Head.slot(gap=3, align="center")
-    facts = nustd.ui.TextRef.slot()
-    tiles = Tiles.slot(columns=5, min_width=120, gap=3)
+    facts = nustd.ui.TextRef.slot(tone="muted", size="sm")
+    tiles = nustd.ui.GridRef.slot(nustd.ui.CardRef.slot(size="sm"), max_columns=5, min_cell_width=120, gap=3)
     error = nustd.ui.AlertRef.slot(variant="danger")
 
 
 def draw(h):
-    t = View.tiles
     failed = nu.IfDo(nu.Str(h["error"]) != "", View.error.set("The last turn failed", body=h["error"]), View.error.erase())
     return (
         View.head.pill.set(h["status"], tone=h["tone"]) >> View.head.doing.set(h["doing"])
         >> View.facts.set(h["facts"])
-        >> t.prompts.set_value(h["prompts"]) >> t.calls.set_value(h["calls"]) >> t.tokens.set_value(h["tokens"])
-        >> t.cost.set_value(h["cost"]) >> t.seconds.set_value(h["seconds"]) >> failed
+        >> nu.Sequential(*(View.tiles[k][0].to(nustd.ui.StatRef).set(h[k], label=label) for k, label in TILES.items())) >> failed
     )
 
 
@@ -81,8 +74,8 @@ class Say(nustd.ui.Row):
     stop = nustd.ui.ButtonRef.slot(label="Stop", variant="secondary", icon="square")
 
 
-class View(nustd.ui.Column):
-    say = Say.slot(gap=2, align="end")
+class View(nu.Shape):
+    say = Say.slot(gap=2, align="end", grow={"text": 1})
 
 
 S = View.say
@@ -131,17 +124,20 @@ class Entry(nustd.ui.Column):
     who = nustd.ui.BadgeRef.slot(variant="info")
     text = nustd.ui.MarkdownRef.slot()
     tool = Tool.slot()
-    note = nustd.ui.TextRef.slot()
+    note = nustd.ui.TextRef.slot(tone="muted", size="sm")
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    log = nustd.ui.ColumnRef.slot(Entry, gap=3)
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Transcript", subtitle="Everything it said and did, tool calls folded")
+
+
+# Entries keyed by their event: a tool's result lands in its call's entry.
+log = View.card[0].to(nustd.ui.ColumnRef.slot(Entry, gap=3, max_height=720, scroll="y"))
 
 
 def entry(e):
     # One transcript entry: what was said, a tool call folded, or the turn's tally.
-    at_ = View.log[e["key"]]
+    at_ = log[e["key"]]
     return nu.SwitchDo(nu.Str(e["kind"]), {
         "user": at_.who.set("you", variant="info") >> at_.text.set(e["text"]),
         "text": at_.text.set(e["text"]),
@@ -161,7 +157,7 @@ def follow(job):
         step = nu.IfDo(behind, nu.let(views.entries(new, seen), each))
         return nu.Reconcile(nuspace.atomic(agent(job).n.on_change()), step, every=3.0)
 
-    return View.head.set("Transcript") >> nu.let({"i": 0, "titles": {}}, drawn)
+    return nu.let({"i": 0, "titles": {}}, drawn)
 
 
 def out(plane):
@@ -171,7 +167,7 @@ def out(plane):
 
 SKETCH = _cell("""\
 class View(nustd.ui.Column):
-    hint = nustd.ui.TextRef.slot()
+    hint = nustd.ui.TextRef.slot(tone="muted")
     board = nustd.ui.SketchRef.slot(width=560, height=340, readonly=True, label="What it drew")
 
 

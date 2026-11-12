@@ -24,6 +24,7 @@ from . import baked, data, evals, job
 
 __all__ = [
     "LABELS",
+    "RUN_TONES",
     "STATUSES",
     "accuracy",
     "activity",
@@ -32,7 +33,6 @@ __all__ = [
     "history",
     "latest",
     "leaderboard",
-    "linked",
     "model_evidence",
     "notebook",
     "opening",
@@ -62,6 +62,9 @@ LABELS = {
     "reversal": "The reversal curse",
     "contamination": "Benchmarks are contaminated",
 }
+
+#: A run's status as its pill wears it.
+RUN_TONES = {"done": "ok", "running": "info", "queued": "neutral"}
 
 #: A score's status, from the top: (lowest score, label, tone).
 STATUSES = (
@@ -435,8 +438,12 @@ def history(
     return out
 
 
-def leaderboard(runs: dict) -> list[dict[str, Any]]:
-    """Every run, best first: arm, overall and per tier accuracy, pace and cost."""
+def leaderboard(runs: dict, pages: dict) -> list[dict[str, Any]]:
+    """Every run, best first: arm, overall and per tier accuracy, pace and cost.
+
+    ``pages`` maps a run's key to its page's id: the arm is ``{"page", "label"}``,
+    the status ``{"label", "tone"}``, ``when`` epoch ms.
+    """
     rows = []
     for r in runs.values():
         right, n = accuracy(r)
@@ -446,15 +453,18 @@ def leaderboard(runs: dict) -> list[dict[str, Any]]:
         rows.append(
             {
                 "key": r["key"],
-                "arm": title_of_run(r),
+                "arm": {"page": pages.get(r["key"], ""), "label": title_of_run(r)},
                 "acc": round(100 * right / n, 1) if n else None,
                 "word": pct(*accuracy(r, "word")),
                 "hard": pct(hr, hn),
                 "done": f"{n}/{len(evals.BY_ID)}",
                 "median": f"{statistics.median(secs):.1f} s" if secs else "-",
                 "cost": f"${cost:.3f}",
-                "status": r.get("status", ""),
-                "when": ago(r.get("done_at") or r.get("at") or 0),
+                "status": {
+                    "label": r.get("status", ""),
+                    "tone": RUN_TONES.get(r.get("status", ""), "neutral"),
+                },
+                "when": (r.get("done_at") or r.get("at") or 0) * 1000,
                 "_sort": (r.get("status") == "done", -(right / n if n else 0), -(r.get("at") or 0)),
             }
         )
@@ -463,19 +473,6 @@ def leaderboard(runs: dict) -> list[dict[str, Any]]:
 
 
 # --- the week, and the notebook --------------------------------------------------------------
-
-
-def linked(desk: dict, label: str, kind: str, key: str) -> str:
-    """``label`` as a markdown link to the plane the desk made for ``key``, plain while it has none.
-
-    Args:
-        desk: The whole desk as read, its plane ids under ``planes``.
-        label: What the link reads.
-        kind: ``sections`` (by name), ``sources``, ``claims`` or ``runs`` (by key).
-        key: The section's name, or the item's key.
-    """
-    pid = (((desk or {}).get("planes") or {}).get(kind) or {}).get(key)
-    return f"[{label}](/{pid})" if pid else label
 
 
 def digest(desk: dict, now: float | None = None) -> str:
@@ -525,9 +522,8 @@ def digest(desk: dict, now: float | None = None) -> str:
             continue
         s = now_scores[key]
         way = "up" if d > 0 else "down"
-        name = linked(desk, claims[key]["label"], "claims", key)
         lines.append(
-            f"- {name} moved **{way} {abs(d):.2f}** to {s['score']:+.2f}, {s['status'].lower()}"
+            f"- **{claims[key]['label']}** moved **{way} {abs(d):.2f}** to {s['score']:+.2f}, {s['status'].lower()}"
         )
     probes = desk.get("probes") or []
     recent = [p for p in probes if (p.get("at") or 0) >= now - DAY]
@@ -539,71 +535,114 @@ def digest(desk: dict, now: float | None = None) -> str:
     return "\n".join(lines) or "A quiet week: nothing new on the desk."
 
 
-def activity(desk: dict, n: int = 10) -> str:
-    """The desk's latest doings, newest first, as markdown: who added, linked, ran, wrote; what the probe missed."""
+def activity(desk: dict, n: int = 10) -> list[dict[str, Any]]:
+    """The desk's latest doings, newest first, as rows: who added, linked, ran, wrote; what the probe missed.
+
+    A row is ``{key, at, who, did, what, on}``: ``at`` epoch ms, ``what`` and
+    ``on`` ``{"page", "label"}`` (``page`` the plane the desk made, "" before
+    it has one), ``on`` "" when the doing is about one thing.
+    """
+    made = desk.get("planes") or {}
     sources, claims, runs = desk["sources"], desk["claims"], desk["runs"]
-    ev: list[tuple[float, str]] = []
-    for s in sources.values():
-        ev.append(
-            (
-                s.get("at") or 0,
-                f"{s.get('by', 'Someone')} added {linked(desk, _short_title(s), 'sources', s['key'])}",
-            )
+
+    def page(kind: str, key: str, label: str) -> dict[str, str]:
+        return {"page": (made.get(kind) or {}).get(key) or "", "label": label}
+
+    def row(
+        key: str, t: float, who: str, did: str, what: dict, on: dict | str = ""
+    ) -> dict[str, Any]:
+        return {"key": key, "at": (t or 0) * 1000, "who": who, "did": did, "what": what, "on": on}
+
+    rows = [
+        row(
+            f"source:{s['key']}",
+            s.get("at") or 0,
+            s.get("by", "Someone"),
+            "added",
+            page("sources", s["key"], _short_title(s)),
         )
-    for e in desk["evidence"].values():
+        for s in sources.values()
+    ]
+    for k, e in desk["evidence"].items():
         s, c = sources.get(e["source"]), claims.get(e["claim"])
         if s and c:
-            ev.append(
-                (
+            rows.append(
+                row(
+                    f"evidence:{k}",
                     e.get("at") or 0,
-                    f"{e.get('by') or s.get('by', 'Someone')} weighed {linked(desk, _short_title(s), 'sources', s['key'])} "
-                    f"{'for' if e['stance'] == 'for' else 'against'} {linked(desk, c['label'], 'claims', c['key'])}",
+                    e.get("by") or s.get("by", "Someone"),
+                    f"weighed {'for' if e['stance'] == 'for' else 'against'}",
+                    page("sources", s["key"], _short_title(s)),
+                    page("claims", c["key"], c["label"]),
                 )
             )
     for r in runs.values():
         right, asked = accuracy(r)
+        what = page("runs", r["key"], title_of_run(r))
         if r.get("status") == "done":
-            ev.append(
-                (
+            rows.append(
+                row(
+                    f"run:{r['key']}",
                     r.get("done_at") or 0,
-                    f"{linked(desk, title_of_run(r), 'runs', r['key'])} finished, {right}/{asked}, run by {r.get('by', 'the desk')}",
+                    r.get("by", "the desk"),
+                    f"finished a run, {right}/{asked}",
+                    what,
                 )
             )
         else:
-            ev.append(
-                (
+            rows.append(
+                row(
+                    f"run:{r['key']}",
                     r.get("at") or 0,
-                    f"{linked(desk, title_of_run(r), 'runs', r['key'])} is running, {asked}/{len(evals.BY_ID)} answered",
+                    r.get("by", "the desk"),
+                    f"is running, {asked}/{len(evals.BY_ID)} answered",
+                    what,
                 )
             )
+    watch = page("sections", "watch", "Watch")
     for p in desk.get("probes") or []:
         if not p.get("correct"):
             q = evals.BY_ID.get(p["q"], {}).get("label", p["q"])
-            ev.append(
-                (
+            context = "distracted" if p.get("context") == "noisy" else "clean"
+            got = p.get("got")
+            did = (
+                f"missed, {context}: said {got:g}"
+                if isinstance(got, (int, float))
+                else f"got no answer, {context}"
+            )
+            rows.append(
+                row(
+                    f"probe:{p.get('at')}:{p['q']}",
                     p.get("at") or 0,
-                    f"{linked(desk, 'The probe', 'sections', 'watch')} missed *{q}*, {'distracted' if p.get('context') == 'noisy' else 'clean'}: said {p.get('got'):g}"
-                    if isinstance(p.get("got"), (int, float))
-                    else f"{linked(desk, 'The probe', 'sections', 'watch')} got no answer to *{q}*",
+                    "The probe",
+                    did,
+                    {"page": "", "label": q},
+                    watch,
                 )
             )
-    for note in desk.get("notebook") or []:
+    for i, note in enumerate(desk.get("notebook") or []):
         if not note.get("live"):
-            ev.append(
-                (
+            rows.append(
+                row(
+                    f"note:{i}",
                     note.get("at") or 0,
-                    f"{note.get('by', 'Someone')} wrote {linked(desk, note['title'], 'sections', 'notebook')} in the notebook",
+                    note.get("by", "Someone"),
+                    "wrote in the notebook",
+                    page("sections", "notebook", note["title"]),
                 )
             )
-    for c in claims.values():
-        ev.append(
-            (
-                c.get("at") or 0,
-                f"{c.get('by', 'Someone')} put {linked(desk, c['label'], 'claims', c['key'])} on the board",
-            )
+    rows += [
+        row(
+            f"claim:{c['key']}",
+            c.get("at") or 0,
+            c.get("by", "Someone"),
+            "put on the board",
+            page("claims", c["key"], c["label"]),
         )
-    ev.sort(key=lambda x: -x[0])
-    return "\n".join(f"- {line}  ·  *{ago(t)}*" for t, line in ev[:n])
+        for c in claims.values()
+    ]
+    rows.sort(key=lambda x: -x["at"])
+    return rows[:n]
 
 
 def _short_title(s: dict) -> str:

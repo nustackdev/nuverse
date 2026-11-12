@@ -588,8 +588,8 @@ def test_a_token_page_reads_its_record_trades_and_candles():
     v = views.token_view_of(b.tokens[mint], b.trades[mint], b.candles[mint], {}, clock())
     assert v["found"] and v["title"] == "dog wif cap" and v["symbol"] == "cap"
     assert v["unit"] == "SOL" and v["mc"].endswith(" SOL")
-    assert f"https://solscan.io/token/{mint}" in v["links"]
-    assert [r["side"] for r in v["rows"]] == ["▲ BUY"]
+    assert f"https://solscan.io/token/{mint}" in [link["href"] for link in v["links"]]
+    assert [r["side"] for r in v["rows"]] == [{"label": "buy", "variant": "ok"}]
     (candle,) = v["candles"]
     assert len(candle) == 5 and candle[3] <= candle[1] <= candle[4]
     assert v["split"]["sells"] == 0 and v["split"]["buys"] > 0

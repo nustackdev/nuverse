@@ -7,7 +7,7 @@
   starts it, and opens the page. Sweep does the same for three learning rates
   around the one picked.
   Without torch it shows how to install it instead.
-- ``runs``: every run so far, newest first, with its status and best score. A click opens it.
+- ``runs``: every run so far, newest first, with its status and best score, each name a link to its page.
 """
 
 from __future__ import annotations
@@ -38,47 +38,44 @@ BATCHES = ["32", "64", "128", "256"]
 CHANNELS = ["8", "16", "32"]
 
 
-def pick(options):
-    return type("Pick", (nustd.ui.Field,), {"choice": nustd.ui.SelectRef.slot(options=options)})
-
-
-class Knobs(nustd.ui.Grid):
-    optimizer = pick(OPTIMIZERS).slot(label="Optimizer")
-    lr = pick(RATES).slot(label="Learning rate")
-    batch = pick(BATCHES).slot(label="Batch size")
-    channels = pick(CHANNELS).slot(label="Conv channels")
-    epochs = nustd.ui.NumberInputRef.slot(label="Epochs", min=1, max=20, step=1)
-    dropout = nustd.ui.SliderRef.slot(label="Dropout", min=0.0, max=0.6, step=0.05)
-
-
-class Go(nustd.ui.Row):
-    name = nustd.ui.InputRef.slot(placeholder="Name it, or leave it to us")
-    launch = nustd.ui.ButtonRef.slot(label="Launch run", icon="play")
-    sweep = nustd.ui.ButtonRef.slot(label="Sweep 3 learning rates", variant="secondary", icon="sliders-horizontal")
-
-
 #: Whether torch is here to train with. It comes with the ``mnist`` extra.
 READY = importlib.util.find_spec("torch") is not None
 
 MISSING = '**Training needs torch.** Install it with `pip install "nudemos[mnist]"`, then restart the space.'
 
 
-class View(nustd.ui.Column):
-    notice = nustd.ui.MarkdownRef.slot()
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    knobs = Knobs.slot(columns=3, min_width=200, gap=3)
-    go = Go.slot(gap=2, align="end")
+    run = nustd.ui.CardRef.slot(title="New run", subtitle="pick the knobs, then launch one run or a sweep")
 
 
-K = View.knobs
+knobs = View.run["knobs"].to(nustd.ui.GridRef.slot(cols=3, stack_below=640, gap=4))
+notice = View.run.footer["notice"].to(nustd.ui.MarkdownRef)
+
+
+def pick(r, c, label, options):
+    # A labelled select at a place of the knobs grid.
+    return knobs[r, c].to(nustd.ui.Field.slot(label=label)).control.to(nustd.ui.SelectRef.slot(options=options))
+
+
+optimizer = pick(0, 0, "Optimizer", OPTIMIZERS)
+lr = pick(0, 1, "Learning rate", RATES)
+batch = pick(0, 2, "Batch size", BATCHES)
+channels = pick(1, 0, "Conv channels", CHANNELS)
+epochs = knobs[1, 1].to(nustd.ui.NumberInputRef.slot(label="Epochs", min=1, max=20, step=1))
+dropout = knobs[1, 2].to(nustd.ui.SliderRef.slot(label="Dropout", min=0.0, max=0.6, step=0.05))
+name = View.run["name"].to(nustd.ui.InputRef.slot(placeholder="Name it, or leave it to us"))
+go = View.run.actions["launch"].to(nustd.ui.ButtonRef.slot(label="Launch run", icon="play"))
+sweep = View.run.actions["sweep"].to(
+    nustd.ui.ButtonRef.slot(label="Sweep 3 learning rates", variant="secondary", icon="sliders-horizontal")
+)
 
 
 def asked():
     # What the form says now, read from the browser once per click.
     return nu.Dict.of(
-        optimizer=nu.Str(K.optimizer.choice), lr=nu.ToFloat(K.lr.choice),
-        batch_size=nu.ToInt(K.batch.choice), channels=nu.ToInt(K.channels.choice),
-        epochs=nu.int(K.epochs), dropout=nu.float(K.dropout),
+        optimizer=nu.Str(optimizer), lr=nu.ToFloat(lr), batch_size=nu.ToInt(batch), channels=nu.ToInt(channels),
+        epochs=nu.int(epochs), dropout=nu.float(dropout),
     )
 
 
@@ -110,59 +107,63 @@ def runs(root, how):
         each = nu.ForEachDo(nu.List(plan), lambda p: launch(root, nu.List(p)[0], nu.List(p)[1]))
         newest = nuspace.atomic(nu.List(runs_of(root))[-1][0])
         opened = View.history.push(nuspace.web.href(newest))
-        return each >> View.go.name.set("") >> nu.IfDo(nu.Str(how) == "one", opened)
+        return each >> name.set("") >> nu.IfDo(nu.Str(how) == "one", opened)
 
-    typed = nu.Str(View.go.name).strip()
+    typed = nu.Str(name).strip()
     plan = views.plan(asked(), nuspace.atomic(runs_of(root).len()), typed, how)
     return nu.let(plan, start)
 
 
 def defaults():
     return (
-        K.optimizer.choice.set("adam") >> K.lr.choice.set("0.001") >> K.batch.choice.set("64")
-        >> K.channels.choice.set("16") >> K.epochs.set_value(3.0) >> K.dropout.set(0.25)
-        >> View.go.name.set("") >> View.go.launch.set("Launch run", icon="play")
-        >> View.go.sweep.set("Sweep 3 learning rates", variant="secondary", icon="sliders-horizontal")
+        optimizer.set("adam") >> lr.set("0.001") >> batch.set("64") >> channels.set("16")
+        >> epochs.set_value(3.0) >> dropout.set(0.25) >> name.set("")
     )
 
 
 def out(plane):
     def clicks(root):
-        return nu.ParallelAsync(
-            nu.ReactEvery(View.go.launch.on_click(), runs(nu.Str(root), "one")),
-            nu.ReactEvery(View.go.sweep.on_click(), runs(nu.Str(root), "sweep")),
+        return go.init() >> sweep.init() >> nu.ParallelAsync(
+            nu.ReactEvery(go.on_click(), runs(nu.Str(root), "one")),
+            nu.ReactEvery(sweep.on_click(), runs(nu.Str(root), "sweep")),
         )
 
     if not READY:
-        return View.notice.set(MISSING) >> nu.ForeverDo(nu.Delay(3600.0))
+        return defaults() >> notice.set(MISSING) >> nu.ForeverDo(nu.Delay(3600.0))
     return defaults() >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), clicks)
 """
 
 
 RUNS = """\
 import nu
-import nuspace.web
 import nuspace
 import nustd.ui
+from nudemos import pages
 from nudemos.mnist import views
 from nudemos.mnist.state import runs_change
 
-COLUMNS = [{"key": "run", "label": "Run"}, "status", "lr", "progress", {"key": "best", "label": "Best test"}]
+COLUMNS = [
+    {"key": "run", "label": "Run", "cell": nustd.ui.PageLinkRef.slot(variant="inline")},
+    {"key": "status", "label": "Status", "cell": nustd.ui.StatusPillRef, "width": 130},
+    {"key": "lr", "label": "LR", "align": "end", "width": 80},
+    {"key": "progress", "label": "Progress", "cell": nustd.ui.ProgressRef, "width": 140, "hide_below": 640},
+    {"key": "best", "label": "Best test", "align": "end", "width": 100},
+]
 
 
-class View(nustd.ui.Column):
-    history = nustd.ui.HistoryRef.slot()
-    head = nustd.ui.HeadingRef.slot(level=4)
-    runs = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="page", clickable_rows=True, dense=True)
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Runs", subtitle="newest first")
+
+
+runs = View.card["runs"].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="page", density="compact", label="Runs"))
 
 
 def out(plane):
     def follow(root):
-        runs = runs_change(nu.Str(root))
-        opened = nu.ReactEvery(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.web.href(ev["key"])))
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.rows(views.board(nu.Str(root)))), View.runs.set_rows), every=2.0), opened)
+        read = pages.linked(views.rows(views.board(nu.Str(root))), "run")
+        return nu.Reconcile(nuspace.atomic(runs_change(nu.Str(root))), nu.let(nuspace.atomic(read), runs.set_rows), every=2.0)
 
-    return View.head.set("Runs, newest first") >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
+    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
 """
 
 

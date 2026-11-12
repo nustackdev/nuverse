@@ -279,3 +279,45 @@ async def test_a_doc_page_links_the_pages_the_base_made(store) -> None:
     md = str(browser.drawn[-1])
     assert f"](/{pages['doc']['arlo']})" in md
     assert f"](/{pages['view']['facts']})" in md
+
+
+# --- what the cells draw ------------------------------------------------------------------------
+
+
+def _call(host, *args):
+    """A view, run on plain values."""
+    import nu
+
+    got, _ = nu.run(host(*args))
+    return got
+
+
+def test_rows_name_pages_by_id_never_by_url(base: tuple[dict, dict]) -> None:
+    from nudemos.knowledge import views
+
+    docs, facts = base
+    pages = _pages(docs)
+    links = _call(views.doc_links, docs, facts, "pricing", pages)
+    assert links["back"] and all(r["link"]["page"].startswith("p-") for r in links["back"])
+    assert [r["i"] for r in links["out"]] == list(range(len(links["out"])))
+    hits = _call(views.search, docs, facts, "battery", pages)
+    assert hits["hits"] and hits["note"] == ""
+    assert {"page", "label"} == set(hits["hits"][0]["link"])
+    assert _call(views.search, docs, facts, "zzzz", pages)["note"] == "Nothing matches zzzz."
+    rows = _call(views.pages_rows, docs, {}, "wiki", pages)
+    assert rows[0]["title"] == {"page": f"p-{rows[0]['key']}", "label": rows[0]["title"]["label"]}
+    assert rows[0]["edited"] == docs[rows[0]["key"]]["updated"] * 1000
+    health = _call(views.health_view, text.health(docs, facts, NOW), True, docs, pages)
+    assert all("/" not in str(r["page"]) for r in health["rows"])
+
+
+def test_page_links_turn_into_hrefs_in_the_cell(base: tuple[dict, dict]) -> None:
+    from nudemos import pages as links
+    from nudemos.knowledge import views
+    from nuspace.web import url
+
+    docs, _ = base
+    rows = _call(views.task_rows, docs, _pages(docs), NOW, "", 7, False)
+    linked = _call(links.linked, rows, "page")
+    first = rows[0]["page"]
+    assert linked[0]["page"] == {"href": url(first["page"]), "title": first["label"]}

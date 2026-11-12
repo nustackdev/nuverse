@@ -56,31 +56,33 @@ def _cell(body: str) -> str:
 
 
 HEAD = _cell("""\
-class Who(nustd.ui.Column):
-    title = nustd.ui.HeadingRef.slot(level=2)
-    facts = nustd.ui.MarkdownRef.slot()
-    links = nustd.ui.MarkdownRef.slot()
+class View(nu.Shape):
+    head = nustd.ui.RowRef.slot(gap=5, align="start", grow={"who": 1})
 
 
-class Head(nustd.ui.Row):
-    face = nustd.ui.ImageRef.slot(width=96, height=96, rounded=True, fit="contain")
-    who = Who.slot(gap=1)
-    state = nustd.ui.StatusPillRef.slot()
+face = View.head["face"].to(nustd.ui.ImageRef.slot(width=96, height=96, radius="md", fit="contain"))
+who = View.head["who"].to(nustd.ui.ColumnRef.slot(gap=2))
+title = who["title"].to(nustd.ui.HeadingRef.slot(level=2))
+facts = who["facts"].to(nustd.ui.MarkdownRef)
+links = who["links"].to(nustd.ui.RowRef.slot(gap=3, wrap=True))
+state = View.head["state"].to(nustd.ui.StatusPillRef)
 
 
-class View(nustd.ui.Column):
-    head = Head.slot(gap=5, align="start")
+def link(l):
+    out = links[nu.Str(l["key"])].to(nustd.ui.LinkRef.slot(target="_blank", external=True))
+    return out.set(href=l["href"], label=l["label"])
 
 
 def draw(v):
     # Its own picture with "Show images" on and once the sync has read it, a painted one otherwise.
-    h = View.head
+    keys = nu.List(v["link_keys"])
     found = (
-        h.face.set(v["src"], alt=v["symbol"], width=96, height=96, fit="contain", rounded=True)
-        >> h.who.title.set(v["title"]) >> h.who.facts.set(v["facts"]) >> h.who.links.set(v["links"])
-        >> h.state.set(v["state"], tone=v["tone"])
+        face.set(v["src"], alt=v["symbol"])
+        >> title.set(v["title"]) >> facts.set(v["facts"])
+        >> nu.ForEachDo(nu.List(v["links"]), link) >> links.keep(keys) >> links.set_order(keys)
+        >> state.set(v["state"], tone=v["tone"])
     )
-    gone = h.who.title.set("Not followed any more") >> h.who.facts.set("The sync let this token go: it went quiet, or the sync never saw it.")
+    gone = title.set("Not followed any more") >> facts.set("The sync let this token go: it went quiet, or the sync never saw it.")
     return nu.IfDo(nu.Bool(v["found"]), found, gone)
 
 
@@ -96,34 +98,40 @@ def out(plane):
 
 
 NUMBERS = _cell("""\
-class Tiles(nustd.ui.Grid):
-    mc = nustd.ui.StatRef.slot(label="Market cap")
-    price = nustd.ui.StatRef.slot(label="Price")
-    vol = nustd.ui.StatRef.slot(label="Volume")
-    trades = nustd.ui.StatRef.slot(label="Trades")
-    bs = nustd.ui.StatRef.slot(label="Buys / sells")
-    traders = nustd.ui.StatRef.slot(label="Traders seen")
+KEYS = {
+    "mc": "Market cap",
+    "price": "Price",
+    "vol": "Volume",
+    "trades": "Trades",
+    "bs": "Buys / sells",
+    "traders": "Traders seen",
+}
 
 
-class Both(nustd.ui.Row):
-    tiles = Tiles.slot(columns=3, min_width=150, gap=3)
-    curve = nustd.ui.GaugeChart.slot(name="to graduation", value_format="{value}%", height=200)
+class View(nu.Shape):
+    page = nustd.ui.ColumnRef.slot(gap=4)
 
 
-class View(nustd.ui.Column):
-    both = Both.slot(gap=5, align="center", wrap=True, min_width=320)
-    progress = nustd.ui.ProgressRef.slot()
+both = View.page["both"].to(nustd.ui.GridRef.slot(cols="2fr 1fr", stack_below=800, gap=4))
+progress = View.page["progress"].to(nustd.ui.ProgressRef)
+tiles = both[0, 0].to(nustd.ui.GridRef.slot(max_columns=3, min_cell_width=150, gap=3))
+curve = both[0, 1].to(nustd.ui.CardRef.slot(title="To graduation", size="sm"))["curve"].to(
+    nustd.ui.GaugeChart.slot(name="to graduation", value_format="{value}%", height=200)
+)
+
+
+def tile(k):
+    return tiles[k].to(nustd.ui.CardRef.slot(size="sm"))[0].to(nustd.ui.StatRef.slot(label=KEYS[k]))
 
 
 def draw(v):
-    t = View.both.tiles
-    tiles = (
-        t.mc.set(v["mc"], delta=v["move"] + " since launch", trend=v["trend"]) >> t.price.set(v["price"])
-        >> t.vol.set(v["vol"]) >> t.trades.set(v["trades"], delta=v["last"]) >> t.bs.set(v["bs"])
-        >> t.traders.set(v["traders"])
+    shown = (
+        tile("mc").set(v["mc"], delta=v["move"] + " since launch", trend=v["trend"]) >> tile("price").set(v["price"])
+        >> tile("vol").set(v["vol"]) >> tile("trades").set(v["trades"], delta=v["last"]) >> tile("bs").set(v["bs"])
+        >> tile("traders").set(v["traders"])
+        >> curve.set(v["progress"]) >> progress.set(v["progress"] / 100.0, caption=v["progress_caption"])
     )
-    curve = View.both.curve.set(v["progress"]) >> View.progress.set(v["progress"] / 100.0, caption=v["progress_caption"])
-    return nu.IfDo(nu.Bool(v["found"]), tiles >> curve)
+    return nu.IfDo(nu.Bool(v["found"]), shown)
 
 
 def out(plane):
@@ -136,26 +144,19 @@ CHART = _cell("""\
 EVERY = 2.0
 
 
-class Charts(nustd.ui.Column):
-    candles = nustd.ui.CandlestickChart.slot(
-        title="Market cap, a candle a minute", height=300, option={"animation": False},
-    )
-    volume = nustd.ui.BarChart.slot(title="Volume, a bar a minute", height=140, option={"animation": False})
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Market cap", subtitle="volume under it")
 
 
-class View(nustd.ui.Column):
-    charts = Charts.slot(gap=2)
+candles = View.card["candles"].to(nustd.ui.CandlestickChart.slot(height=300, option={"animation": False}))
+volume = View.card["volume"].to(nustd.ui.BarChart.slot(height=140, option={"animation": False}))
 
 
 def paint(root, mint):
     def draw(v):
-        c = View.charts
-        def titled(text):
-            return nu.Dict.of(title=nu.List.of(nu.Dict.of(id="title", text=text)))
-
         drawn = (
-            c.candles.set(v["candles"]) >> c.candles.merge(titled(v["chart_title"]))
-            >> c.volume.set(v["volume"]) >> c.volume.merge(titled(v["volume_title"]))
+            View.card.set_title(v["chart_title"]) >> View.card.set_subtitle(v["volume_title"])
+            >> candles.set(v["candles"]) >> volume.set(v["volume"])
         )
         return nu.IfDo(nu.Bool(v["found"]), drawn)
 
@@ -174,30 +175,28 @@ def out(plane):
 TRADES = _cell("""\
 COLUMNS = [
     {"key": "time", "label": "Time", "width": 96, "sortable": False},
-    {"key": "side", "label": "Side", "width": 84, "sortable": False},
-    {"key": "amount", "label": "Amount", "kind": "number", "sortable": False},
-    {"key": "tokens", "label": "Tokens", "kind": "number", "sortable": False},
-    {"key": "mc", "label": "Market cap", "kind": "number", "sortable": False},
-    {"key": "trader", "label": "Trader", "width": 116, "sortable": False},
+    {"key": "side", "label": "Side", "width": 84, "sortable": False, "cell": nustd.ui.BadgeRef.slot(size="sm")},
+    {"key": "amount", "label": "Amount", "kind": "number", "align": "end", "sortable": False},
+    {"key": "tokens", "label": "Tokens", "kind": "number", "align": "end", "sortable": False, "hide_below": 640},
+    {"key": "mc", "label": "Market cap", "kind": "number", "align": "end", "sortable": False},
+    {"key": "trader", "label": "Trader", "width": 116, "sortable": False, "hide_below": 800},
 ]
 
 
-class Both(nustd.ui.Row):
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Trades")
-    split = nustd.ui.PieChart.slot(
-        title="Buys and sells, by volume", donut=True, height=240,
-        colors=["var(--status-ok)", "var(--status-danger)"],
-    )
+class View(nu.Shape):
+    both = nustd.ui.GridRef.slot(cols="2fr 1fr", stack_below=800, gap=4)
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    both = Both.slot(gap=5, align="start", wrap=True, min_width=320)
+trades = View.both[0, 0].to(nustd.ui.CardRef.slot(title="Trades", subtitle="newest first"))
+table = trades["table"].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Trades"))
+split = View.both[0, 1].to(nustd.ui.CardRef.slot(title="Buys and sells", subtitle="by volume"))["split"].to(
+    nustd.ui.PieChart.slot(donut=True, height=240, colors=["var(--status-ok)", "var(--status-danger)"])
+)
 
 
 def draw(v):
-    rows = View.both.table.set_rows(v["rows"]) >> View.both.split.set(v["split"])
-    return View.head.set(nu.Str("Trades in ") + nu.Str(nu.Dict(v).get_item("unit", ""))) >> nu.IfDo(nu.Bool(v["found"]), rows)
+    rows = table.set_rows(v["rows"]) >> split.set(v["split"])
+    return trades.set_title(nu.Str("Trades in ") + nu.Str(nu.Dict(v).get_item("unit", ""))) >> nu.IfDo(nu.Bool(v["found"]), rows)
 
 
 def out(plane):

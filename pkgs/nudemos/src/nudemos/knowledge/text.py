@@ -1,4 +1,4 @@
-"""What a Larkspur page says, read and written in plain Python: no Nu here.
+"""What a Larkspur page says, read and written in plain Python: no Nu terms here.
 
 A page's body is markdown plus a few marks, all of them read live:
 
@@ -20,6 +20,8 @@ import datetime as dt
 import re
 from typing import Any
 
+from nuspace import web
+
 
 __all__ = [
     "DAY",
@@ -35,6 +37,7 @@ __all__ = [
     "inline",
     "links_of",
     "meeting_body",
+    "page_of",
     "query",
     "render",
     "search",
@@ -42,6 +45,7 @@ __all__ = [
     "short_date",
     "slugify",
     "tasks_of",
+    "view_of",
 ]
 
 
@@ -125,16 +129,26 @@ def ago(t: float, now: float) -> str:
     return f"{round(days / 30)} months ago"
 
 
+def page_of(pages: dict, slug: str) -> str:
+    """A doc page's plane id, from the page ids the base keeps (``{doc, view}``); ``""`` while it has none."""
+    return ((pages or {}).get("doc") or {}).get(slug) or ""
+
+
+def view_of(pages: dict, name: str) -> str:
+    """A folder or tool page's plane id, as :func:`page_of`: ``facts``, ``tasks``."""
+    return ((pages or {}).get("view") or {}).get(name) or ""
+
+
 def _href(pages: dict, slug: str) -> str:
-    """A doc page's link, from the page ids the base keeps (``{doc, view}``); ``""`` while it has none."""
-    pid = ((pages or {}).get("doc") or {}).get(slug)
-    return f"/{pid}" if pid else ""
+    """A doc page's url for prose links; ``""`` while it has no page."""
+    pid = page_of(pages, slug)
+    return web.url(pid) if pid else ""
 
 
 def _view(pages: dict, name: str) -> str:
-    """A folder or tool page's link, as :func:`_href`: ``facts``, ``tasks``."""
-    pid = ((pages or {}).get("view") or {}).get(name)
-    return f"/{pid}" if pid else ""
+    """A folder or tool page's url for prose links, as :func:`_href`."""
+    pid = view_of(pages, name)
+    return web.url(pid) if pid else ""
 
 
 def _name(docs: dict, slug: str) -> str:
@@ -500,7 +514,7 @@ def search(docs: dict, facts: dict, q: str, pages: dict, limit: int = 8) -> list
                 score,
                 {
                     "title": d["title"],
-                    "href": _href(pages, k),
+                    "page": page_of(pages, k),
                     "kind": KINDS.get(d.get("kind", ""), {}).get("one", ""),
                     "excerpt": " ".join(excerpt.split())[:140],
                 },
@@ -513,7 +527,7 @@ def search(docs: dict, facts: dict, q: str, pages: dict, limit: int = 8) -> list
                     (0, 0),
                     {
                         "title": f["label"],
-                        "href": _view(pages, "facts"),
+                        "page": view_of(pages, "facts"),
                         "kind": "Fact",
                         "excerpt": f["value"],
                     },

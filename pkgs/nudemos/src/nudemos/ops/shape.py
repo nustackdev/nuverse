@@ -1,8 +1,11 @@
 """What the pages show, shaped from the store: plain Python, wrapped as terms in :mod:`.views`.
 
 Each function takes records as the store holds them and gives back what a
-widget takes: table rows, chart series, tiles, markdown. Times are shown as
-clock times and ages; nothing here names a host, a user or a path.
+widget takes: table rows, chart series, tiles, markdown. A table row carries
+what its column's cell draws: a time as epoch ms (a log line keeps its exact
+clock text), a status as ``{label, tone}``, a kind as ``{label, variant}``, a
+page as ``{page, label}`` with the plane id the root minted. Nothing here
+names a host, a user or a path.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from .model import JOBS, STABLE, ago, duration
 
 
 __all__ = [
+    "LEVELS",
     "TONES",
     "components",
     "deploy_rows",
@@ -28,6 +32,7 @@ __all__ = [
     "log_rows",
     "machine_tiles",
     "named",
+    "page_rows",
     "proc_rows",
     "pulse",
     "release_notes",
@@ -35,6 +40,7 @@ __all__ = [
     "rule_rows",
     "run_rows",
     "series",
+    "step_rows",
     "timeline",
 ]
 
@@ -53,12 +59,42 @@ TONES = {
     "acked": "warn",
     "monitoring": "info",
     "resolved": "ok",
+    "ended": "neutral",
+}
+
+#: A log line's level, as a badge's variant.
+LEVELS = {
+    "debug": "neutral",
+    "info": "info",
+    "warning": "warn",
+    "error": "danger",
+    "critical": "danger",
+}
+
+#: A feed entry's kind, as a badge's variant.
+KINDS = {
+    "deploy": "brand",
+    "incident": "danger",
+    "page": "warn",
+    "job": "info",
+    "rule": "warn",
+    "runbook": "secondary",
 }
 
 
 def clock(at: float) -> str:
     """``at`` as ``20:41:07``, the space's own clock."""
     return time.strftime("%H:%M:%S", time.localtime(at)) if at else ""
+
+
+def ms(at: float | None) -> int | None:
+    """``at``, unix seconds, as epoch ms for a relative time cell; None when it never happened."""
+    return int(at * 1000) if at else None
+
+
+def pill(label: str) -> dict[str, str]:
+    """A status as a pill cell takes it: ``{label, tone}``."""
+    return {"label": label, "tone": TONES.get(label, "neutral")}
 
 
 def series(pairs: list | None, scale: float = 1.0) -> list[list[float]]:
@@ -136,13 +172,16 @@ def pulse(
     }
 
 
-def feed_rows(events: list | None, base: str, n: int = 14) -> list[dict[str, Any]]:
+def feed_rows(events: list | None, n: int = 14) -> list[dict[str, Any]]:
     """The feed, newest first: ``{key, when, kind, text}``."""
     return [
         {
             "key": f"{e.get('at')}-{i}",
-            "when": clock(e.get("at", 0)),
-            "kind": e.get("kind", ""),
+            "when": ms(e.get("at")),
+            "kind": {
+                "label": e.get("kind", ""),
+                "variant": KINDS.get(e.get("kind", ""), "neutral"),
+            },
             "text": e.get("text", ""),
         }
         for i, e in enumerate((events or [])[:n])
@@ -156,24 +195,23 @@ def _schedule(j: dict) -> str:
     return f"every {every // 60} min" if every % 60 == 0 else f"every {every}s"
 
 
-def job_rows(jobs: dict | None, now: float) -> list[dict[str, Any]]:
-    """The Jobs table: one row per job, in :data:`JOBS` order."""
+def job_rows(jobs: dict | None, pages: dict | None, now: float) -> list[dict[str, Any]]:
+    """The Jobs table: one row per job, in :data:`JOBS` order, its name linked to its page in ``pages``.
+
+    ``last`` is when it last did something (a run ended, a service came up),
+    ``said`` what it said then.
+    """
     rows = []
     for name in JOBS:
         j = (jobs or {}).get(name, {})
         last = j.get("last") or {}
         if j.get("kind") == "service":
-            seen = (
-                f"up {duration(now - j['started'])}"
-                if j.get("status") == "running" and j.get("started")
-                else j.get("reason", "")[:60]
-            )
+            running = j.get("status") == "running" and j.get("started")
+            at = j.get("started") if running else None
+            said = "serving" if running else j.get("reason", "")[:60]
         else:
-            seen = (
-                f"{ago(last.get('ended', 0), now)}, {last.get('summary', '')}"
-                if last
-                else "not run yet"
-            )
+            at = last.get("ended") if last else None
+            said = last.get("summary", "") if last else "not run yet"
         nxt = ""
         if j.get("paused"):
             nxt = "paused"
@@ -182,11 +220,12 @@ def job_rows(jobs: dict | None, now: float) -> list[dict[str, Any]]:
         rows.append(
             {
                 "key": name,
-                "job": name,
+                "job": {"page": (pages or {}).get(name, ""), "label": name},
                 "what": JOBS[name]["title"],
                 "schedule": _schedule({**JOBS[name], **j}),
-                "status": j.get("status", "starting"),
-                "last": seen,
+                "status": pill(j.get("status", "starting")),
+                "last": ms(at),
+                "said": said,
                 "next": nxt,
                 "runs": f"{j.get('runs_ok', 0)} ok, {j.get('runs_failed', 0)} failed"
                 if j.get("kind") == "scheduled"
@@ -227,13 +266,13 @@ def job_head(j: dict | None, name: str, now: float) -> dict[str, Any]:
     }
 
 
-def run_rows(runs: list | None, now: float) -> list[dict[str, Any]]:
+def run_rows(runs: list | None) -> list[dict[str, Any]]:
     """A job's runs, newest first."""
     return [
         {
             "key": str(r.get("at")),
-            "started": clock(r.get("at", 0)),
-            "result": "ok" if r.get("ok") else "failed",
+            "started": ms(r.get("at")),
+            "result": pill("ok" if r.get("ok") else "failed"),
             "took": duration((r.get("ms") or 0) / 1000),
             "summary": r.get("summary", ""),
             "process": str(r.get("pid", "")),
@@ -246,7 +285,7 @@ def job_runs(runs: list | None, rec: dict | None, now: float) -> list[dict[str, 
     """A job page's runs: a scheduled job's runs, or a service's processes, newest first."""
     rec = rec or {}
     if rec.get("kind") != "service":
-        return run_rows(runs, now)
+        return run_rows(runs)
     rows = []
     for life in reversed(rec.get("lives", [])):
         live = not life.get("end")
@@ -254,8 +293,10 @@ def job_runs(runs: list | None, rec: dict | None, now: float) -> list[dict[str, 
         rows.append(
             {
                 "key": str(life.get("at")),
-                "started": clock(life.get("at", 0)),
-                "result": status or ("crashed" if "memory" in life.get("why", "") else "ended"),
+                "started": ms(life.get("at")),
+                "result": pill(
+                    status or ("crashed" if "memory" in life.get("why", "") else "ended")
+                ),
                 "took": duration((life.get("end") or now) - life.get("at", now)),
                 "summary": ("serving now" if status == "running" else rec.get("reason", status))
                 if live
@@ -299,7 +340,10 @@ def log_rows(rows: list | None, level: str, text: str, n: int = 80) -> list[dict
                 "key": f"{r.get('ts_us')}-{len(out)}",
                 "time": time.strftime("%H:%M:%S", time.localtime(r.get("ts_us", 0) / 1e6))
                 + f".{r.get('ts_us', 0) // 1000 % 1000:03d}",
-                "level": r.get("level", ""),
+                "level": {
+                    "label": r.get("level", ""),
+                    "variant": LEVELS.get(r.get("level", ""), "neutral"),
+                },
                 "message": msg,
                 "detail": extra,
             }
@@ -359,13 +403,13 @@ def proc_rows(m: dict | None, jobs: dict | None) -> list[dict[str, Any]]:
     return rows
 
 
-def deploy_rows(deploys: list | None, now: float) -> list[dict[str, Any]]:
-    """Every deploy, newest first."""
+def deploy_rows(deploys: list | None) -> list[dict[str, Any]]:
+    """Every deploy, newest first, the newest one's release marked live."""
     return [
         {
             "key": f"{d.get('at')}",
-            "when": ago(d.get("at", 0), now),
-            "version": d.get("version", ""),
+            "when": ms(d.get("at")),
+            "version": {"label": d.get("version", ""), "variant": "ok" if i == 0 else "neutral"},
             "from": d.get("from", ""),
             "by": d.get("by", ""),
             "why": d.get("why", "")
@@ -375,7 +419,7 @@ def deploy_rows(deploys: list | None, now: float) -> list[dict[str, Any]]:
                 else ""
             ),
         }
-        for d in (deploys or [])
+        for i, d in enumerate(deploys or [])
     ]
 
 
@@ -388,8 +432,12 @@ def release_notes(live: str) -> str:
     return "\n\n".join(out)
 
 
-def incident_rows(incidents: dict | None, now: float) -> list[dict[str, Any]]:
-    """Every incident, open first, newest first."""
+#: An incident's severity, as a badge's variant.
+SEVS = {1: "danger", 2: "warn"}
+
+
+def incident_rows(incidents: dict | None, pages: dict | None, now: float) -> list[dict[str, Any]]:
+    """Every incident, open first, newest first, its id linked to its page in ``pages``."""
     items = sorted(
         (incidents or {}).values(),
         key=lambda i: (i.get("status") == "resolved", -i.get("opened", 0)),
@@ -397,11 +445,11 @@ def incident_rows(incidents: dict | None, now: float) -> list[dict[str, Any]]:
     return [
         {
             "key": i["id"],
-            "id": i["id"],
-            "sev": f"sev {i.get('sev')}",
+            "incident": {"page": (pages or {}).get(i["id"], ""), "label": i["id"]},
+            "sev": {"label": f"sev {i.get('sev')}", "variant": SEVS.get(i.get("sev"), "neutral")},
             "title": i.get("title", ""),
-            "status": i.get("status", ""),
-            "opened": ago(i.get("opened", 0), now),
+            "status": pill(i.get("status", "")),
+            "opened": ms(i.get("opened")),
             "release": i.get("release", ""),
             "lasted": duration((i.get("resolved") or now) - i.get("opened", now)),
         }
@@ -425,82 +473,117 @@ def incident_head(inc: dict | None, now: float) -> dict[str, Any]:
     }
 
 
-def timeline(inc: dict | None) -> str:
-    """An incident's timeline as markdown, oldest first."""
-    lines = [
-        f"- **{clock(t.get('at', 0))}**  {t.get('text', '')}"
-        + (f"  · _{t['who']}_" if t.get("who") not in ("", "rule", None) else "")
-        for t in (inc or {}).get("timeline", [])
+def timeline(inc: dict | None) -> list[dict[str, Any]]:
+    """An incident's timeline, oldest first: ``{key, time, what, who}``, the time as exact clock text."""
+    return [
+        {
+            "key": f"{t.get('at')}-{i}",
+            "time": clock(t.get("at", 0)),
+            "what": t.get("text", ""),
+            "who": "" if t.get("who") in ("rule", None) else t["who"],
+        }
+        for i, t in enumerate((inc or {}).get("timeline", []))
     ]
-    return "\n".join(lines) or "Nothing yet."
 
 
-def rule_rows(rules: dict | None, now: float) -> list[dict[str, Any]]:
-    """Every alert rule: what it watches, what it does, how often it fired."""
+def _rule_state(r: dict) -> dict[str, str]:
+    if not r.get("on", True):
+        return {"label": "off", "tone": "neutral"}
+    return (
+        {"label": "firing", "tone": "danger"}
+        if r.get("firing")
+        else {"label": "quiet", "tone": "ok"}
+    )
+
+
+def rule_rows(rules: dict | None) -> list[dict[str, Any]]:
+    """Every alert rule: what it watches, what it does, whether it is on, how often and when it last fired."""
     return [
         {
             "key": name,
             "rule": r.get("title", name),
             "when": r.get("says", ""),
             "then": r.get("does", ""),
-            "state": "off" if not r.get("on", True) else ("firing" if r.get("firing") else "quiet"),
-            "fired": f"{r.get('fired', 0)}x"
-            + (f", last {ago(r['last'], now)}" if r.get("last") else ""),
+            "state": _rule_state(r),
+            "fired": r.get("fired", 0),
+            "last": ms(r.get("last")),
+            "on": r.get("on", True),
         }
         for name, r in (rules or {}).items()
     ]
 
 
-def components(gw: dict | None, jobs: dict | None, release: dict | None) -> list[dict[str, str]]:
-    """The status page's components: ``{name, tone, label, note}`` each."""
+def components(gw: dict | None, jobs: dict | None, release: dict | None) -> list[dict[str, Any]]:
+    """The status page's components: ``{key, name, status: {label, tone}, note}`` each."""
     gw, jobs = gw or {}, jobs or {}
     routes = {r["route"]: r for r in gw.get("routes", [])}
     up = jobs.get("gateway", {}).get("status") == "running" and gw.get("rps", 0) > 0
 
-    def route(names: list[str], label: str, note: str) -> dict[str, str]:
+    def part(key: str, name: str, label: str, tone: str, note: str) -> dict[str, Any]:
+        return {"key": key, "name": name, "status": {"label": label, "tone": tone}, "note": note}
+
+    def route(key: str, names: list[str], name: str, note: str) -> dict[str, Any]:
         rs = [routes[n] for n in names if n in routes]
         err = max((r["err"] for r in rs), default=0.0)
         if not up:
-            return {
-                "name": label,
-                "tone": "danger",
-                "label": "Major outage",
-                "note": "not answering",
-            }
+            return part(key, name, "Major outage", "danger", "not answering")
         if err > 20:
-            return {
-                "name": label,
-                "tone": "danger",
-                "label": "Partial outage",
-                "note": f"{err:.0f}% of requests failing",
-            }
+            return part(key, name, "Partial outage", "danger", f"{err:.0f}% of requests failing")
         if err > 2:
-            return {
-                "name": label,
-                "tone": "warn",
-                "label": "Degraded",
-                "note": f"{err:.1f}% of requests failing",
-            }
+            return part(key, name, "Degraded", "warn", f"{err:.1f}% of requests failing")
         p95 = max((r["p95"] for r in rs), default=0)
-        return {"name": label, "tone": "ok", "label": "Operational", "note": note.format(p95=p95)}
+        return part(key, name, "Operational", "ok", note.format(p95=p95))
 
-    links = jobs.get("linkcheck", {})
-    help_ok = (links.get("last") or {}).get("ok", True)
-    backup = jobs.get("backup", {})
+    links = (jobs.get("linkcheck", {}).get("last")) or {}
+    backup = (jobs.get("backup", {}).get("last")) or {}
+    help_ok, backup_ok = links.get("ok", True), backup.get("ok", True)
     return [
-        route(["/api/catalog", "/api/cart"], "Storefront", "p95 {p95} ms"),
-        route(["/api/search"], "Search", "p95 {p95} ms"),
-        route(["/api/orders", "/api/orders/:id"], "Checkout and orders", "p95 {p95} ms"),
+        route("storefront", ["/api/catalog", "/api/cart"], "Storefront", "p95 {p95} ms"),
+        route("search", ["/api/search"], "Search", "p95 {p95} ms"),
+        route(
+            "checkout", ["/api/orders", "/api/orders/:id"], "Checkout and orders", "p95 {p95} ms"
+        ),
+        part(
+            "help",
+            "Help center",
+            "Operational" if help_ok else "Broken links",
+            "ok" if help_ok else "warn",
+            links.get("summary", ""),
+        ),
+        part(
+            "backups",
+            "Order backups",
+            "Operational" if backup_ok else "Failing",
+            "ok" if backup_ok else "danger",
+            f"last {ago(backup.get('ended', 0))}",
+        ),
+    ]
+
+
+def page_rows(pager: list | None, n: int = 20) -> list[dict[str, Any]]:
+    """The pages sent to people, newest first: ``{key, when, to, text}``."""
+    return [
         {
-            "name": "Help center",
-            "tone": "ok" if help_ok else "warn",
-            "label": "Operational" if help_ok else "Broken links",
-            "note": (links.get("last") or {}).get("summary", ""),
-        },
+            "key": f"{p.get('at')}-{i}",
+            "when": ms(p.get("at")),
+            "to": f"{p.get('to', '')} ({p.get('role', '')})",
+            "text": p.get("text", ""),
+        }
+        for i, p in enumerate((pager or [])[:n])
+    ]
+
+
+def step_rows(steps: list | None, n: int = 16) -> list[dict[str, Any]]:
+    """The runbook steps run, newest first: ``{key, when, step, result, said}``."""
+    return [
         {
-            "name": "Order backups",
-            "tone": "ok" if (backup.get("last") or {}).get("ok", True) else "danger",
-            "label": "Operational" if (backup.get("last") or {}).get("ok", True) else "Failing",
-            "note": f"last {ago((backup.get('last') or {}).get('ended', 0))}",
-        },
+            "key": f"{s.get('at')}-{i}",
+            "when": ms(s.get("at")),
+            "step": s.get("step", ""),
+            "result": {"label": "ok", "variant": "ok"}
+            if s.get("ok")
+            else {"label": "not ok", "variant": "danger"},
+            "said": s.get("said", ""),
+        }
+        for i, s in enumerate((steps or [])[:n])
     ]

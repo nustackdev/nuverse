@@ -30,6 +30,7 @@ from urllib.parse import quote
 import nu
 import nuspace
 import nuspace.specs
+import nuspace.web
 import nustd.kv
 import nustd.ui
 from nuspace import Space
@@ -53,10 +54,11 @@ __all__ = [
     "ensure_people",
     "films_count",
     "has_page",
+    "href_of",
     "on_catalog",
     "on_page",
+    "page_of",
     "people_of",
-    "plane_href",
     "poster",
     "poster_url",
     "seed",
@@ -156,25 +158,34 @@ class Caption(nustd.ui.Line):
 class Tile(nustd.ui.Column):
     """One poster on a wall: the picture, and its caption."""
 
-    poster = nustd.ui.ImageRef.slot(rounded=True, fit="cover")
+    poster = nustd.ui.ImageRef.slot(radius="md", fit="cover")
     caption = Caption.slot()
 
 
-def wall(grid: nu.Nu, tiles: nu.Nu) -> nu.Nu:
-    """Draw ``tiles`` (``{i, src, label, href, note}`` each) into ``grid``'s cells, in order.
+def href_of(page: nu.StrArg) -> nu.Str:
+    """A link to the plane ``page``, ``""`` while the catalog has made none."""
+    pid = nu.Str(page)
+    return nu.Str(nu.If(pid == "", "", nuspace.web.href(pid)))
 
-    Cells are keyed by position, so a wall sorted anew redraws in its new order.
+
+def wall(grid: nu.Nu, tiles: nu.Nu) -> nu.Nu:
+    """Draw ``tiles`` (``{key, src, label, page, note}`` each) into ``grid``, keyed by film.
+
+    A film keeps its tile across redraws; a wall sorted anew moves the tiles
+    into the new order, and a film gone takes its tile with it.
     """
+    shown = nu.List(tiles)
+    keys = shown.iter().map(lambda t: nu.Dict(t)["key"]).to_list()
 
     def draw(t: nu.Attr) -> nu.Nu:
-        tile = grid[nu.str(t["i"])]
+        tile = grid[nu.Str(t["key"])]
         return (
             tile.poster.set(t["src"], alt=t["label"])
-            >> tile.caption.link.set(href=t["href"], label=t["label"])
+            >> tile.caption.link.set(href=href_of(t["page"]), label=t["label"])
             >> tile.caption.note.set("  " + nu.Str(t["note"]))
         )
 
-    return nu.ForEachDo(tiles, draw)
+    return nu.ForEachDo(shown, draw) >> grid.keep(keys) >> grid.set_order(keys)
 
 
 slug_of = nu.host(slug, name="Slug")
@@ -183,16 +194,15 @@ slug_of = nu.host(slug, name="Slug")
 # --- reading the catalog --------------------------------------------------------------------
 
 
-def plane_href(planes: dict, kind: str, key: str) -> str:
-    """A link to a plane the catalog made, ``""`` while it has none.
+def page_of(planes: dict, kind: str, key: str) -> str:
+    """The id of a plane the catalog made, ``""`` while it has none.
 
     Args:
         planes: :class:`Planes` as read, ``{film, person, folder}``.
         kind: ``film`` (by key), ``person`` (by slug) or ``folder`` (by name).
         key: The film's key, the person's slug or the browsing page's name.
     """
-    pid = ((planes or {}).get(kind) or {}).get(key)
-    return f"/{pid}" if pid else ""
+    return ((planes or {}).get(kind) or {}).get(key) or ""
 
 
 def people_of(films: dict[str, dict]) -> dict[str, dict[str, list[str]]]:

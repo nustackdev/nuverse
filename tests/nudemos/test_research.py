@@ -203,28 +203,90 @@ def test_every_evidence_names_a_source_and_a_claim() -> None:
         assert e["claim"] in claims
 
 
-def test_cell_sources_compile() -> None:
+GROUPS = (
+    cells.ROOT,
+    cells.READING,
+    cells.SOURCE,
+    cells.CLAIMS,
+    cells.CLAIM,
+    cells.MODELS,
+    cells.EVALS,
+    cells.RUN,
+    cells.WATCH,
+    cells.NOTEBOOK,
+)
+
+
+def test_job_sources_compile() -> None:
     assert PLANE.name == "research"
-    for group in (
-        cells.ROOT,
-        cells.READING,
-        cells.SOURCE,
-        cells.CLAIMS,
-        cells.CLAIM,
-        cells.MODELS,
-        cells.EVALS,
-        cells.RUN,
-        cells.WATCH,
-        cells.NOTEBOOK,
-    ):
-        for name, source in group:
-            compile(source, name, "exec")
     compile(
         job.job_source({"key": "k", "model": "haiku", "style": "direct", "context": "clean"}),
         "run",
         "exec",
     )
     compile(job.probe_source(), "probe", "exec")
+
+
+@pytest.mark.parametrize(
+    "source",
+    list(dict.fromkeys(s for group in GROUPS for _, s in group)),
+    ids=lambda s: s.split("def out(", 1)[0].rsplit("class View", 1)[-1][:24].strip(),
+)
+async def test_every_research_cell_loads(store, source):
+    # Load and compile only: a research cell run seeds the desk, starts the probe, or asks Claude.
+    import nu
+    import nuspace
+    from nuspace import Space
+
+    await store.do(nuspace.plane.add("p", backend="async"))
+    await store.do(nuspace.cell.add("p", source, id="c"))
+    assert await store.read(Space.cells["c"].fabrics) == ["ui"]
+    load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"})
+    nu.validate(nu.compile(await store.run(nuspace.atomic(load))))
+
+
+def test_activity_rows_name_their_pages() -> None:
+    d = desk()
+    first = data.SOURCES[0]["key"]
+    d["planes"] = {"sources": {first: "pid1"}}
+    rows = views.activity(d, 100)
+    assert [r["at"] for r in rows] == sorted((r["at"] for r in rows), reverse=True)
+    assert len({r["key"] for r in rows}) == len(rows)
+    added = next(r for r in rows if r["key"] == f"source:{first}")
+    assert added["what"]["page"] == "pid1"
+    assert added["on"] == ""
+    assert all(
+        r["what"]["page"] == ""
+        for r in rows
+        if r["key"] != f"source:{first}" and r["key"].startswith("claim:")
+    )
+
+
+def test_leaderboard_rows_link_and_time_their_runs() -> None:
+    r = run("haiku", "direct", "clean", 15, key="rk", at=10.0)
+    (row,) = views.leaderboard({"rk": r}, {"rk": "pid"})
+    assert row["arm"] == {"page": "pid", "label": views.title_of_run(r)}
+    assert row["status"] == {"label": "done", "tone": "ok"}
+    assert row["when"] == 10_000.0
+
+
+def test_linked_turns_page_ids_into_hrefs() -> None:
+    import nu
+    from nudemos import pages
+
+    rows = [
+        {"k": 1, "what": {"page": "a b", "label": "A"}},
+        {"k": 2, "what": {"page": "", "label": "B"}},
+        {"k": 3, "what": ""},
+    ]
+    got, _ = nu.run(pages.linked(rows, "what"))
+    assert got == [
+        {"k": 1, "what": {"href": "/a%20b", "title": "A"}},
+        {"k": 2, "what": {"title": "B"}},
+        {"k": 3, "what": ""},
+    ]
+    got, _ = nu.run(pages.linked(rows[:1], "what", prop="label"))
+    assert got == [{"k": 1, "what": {"href": "/a%20b", "label": "A"}}]
 
 
 # --- the first open, on a store ----------------------------------------------------------------
@@ -256,9 +318,9 @@ async def test_the_first_open_fills_the_desk_and_makes_its_pages_once(store):
     assert await store.read(Space.planes[probe].parent) == made["sections"]["watch"]
     assert await store.read(Space.planes[probe].spec) == kit.PROBE_JOB
     assert await store.read(supervisor.supervised()[probe].policy) == supervisor.ON_FAILURE
-    # Links go to the planes the desk made.
+    # Activity rows name the planes the desk made.
     desk = await store.read(kit.whole())
-    assert f"](/{page})" in views.activity(desk, 100)
+    assert page in {r["what"]["page"] for r in views.activity(desk, 100)}
     # A status set wears its icon on the page.
     await store.run(kit.set_status(nu.Str("d"), nu.Str(first), nu.Str("reading")))
     assert await store.read(Space.planes[page].icon) == "lucide:book-open"

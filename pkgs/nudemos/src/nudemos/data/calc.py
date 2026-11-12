@@ -221,7 +221,7 @@ def totals(t: Tables, keep: np.ndarray) -> dict[str, float]:
 
 
 def feed(lines: np.ndarray, name: Callable[[int], str], limit: int = 24) -> list[dict[str, Any]]:
-    """The newest ``limit`` orders among ``lines``, newest first, as the overview's feed rows."""
+    """The newest ``limit`` orders among ``lines``, newest first, as the overview's feed rows. ``time`` in epoch ms."""
     money_ = lines["qty"] * lines["price"] * (1 - lines["disc"])
     out = []
     for o in np.unique(lines["order"])[::-1][:limit]:
@@ -233,7 +233,7 @@ def feed(lines: np.ndarray, name: Callable[[int], str], limit: int = 24) -> list
         out.append(
             {
                 "order": f"#{int(o)}",
-                "time": datetime.fromtimestamp(int(lines["ts"][k].max())).strftime("%H:%M:%S"),
+                "time": 1000 * int(lines["ts"][k].max()),
                 "customer": name(int(lines["customer"][k][0])),
                 "items": items,
                 "channel": CHANNELS[int(lines["channel"][k][0])],

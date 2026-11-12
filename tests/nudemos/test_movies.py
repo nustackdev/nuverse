@@ -44,6 +44,12 @@ class _Browser(WsSession):
         """Every payload sent to the ref ``name``, in order."""
         return [f.payload for f in self.frames if f.ref and f.ref[-1] == name]
 
+    def tile(self, name: str) -> list:
+        """Every payload sent to the stat in tile ``name`` (the card's body, ``<name>/0``)."""
+        return [
+            f.payload for f in self.frames if f.ref and tuple(map(str, f.ref[-2:])) == (name, "0")
+        ]
+
     def touch(self, name: str, value: object, payload: object = None) -> None:
         """The person changes the input ``name`` to ``value``: it reads so, and it notifies."""
         (path,) = {f.ref for f in self.frames if f.ref and f.ref[-1] == name}
@@ -250,10 +256,10 @@ async def test_a_rating_on_a_film_page_moves_the_shelf(seeded):
         await _run(store, "m", root["stats"], shelf),
     ]
     try:
-        await _until(lambda: page.drawn("rating") and shelf.drawn("table") and shelf.drawn("best"))
+        await _until(lambda: page.drawn("rating") and shelf.drawn("table") and shelf.tile("best"))
         assert page.drawn("rank")[-1]["value"] == "unrated"
         page.touch("rating", 10.0)
-        await _until(lambda: shelf.drawn("best")[-1].get("value") == "Parasite")
+        await _until(lambda: shelf.tile("best")[-1].get("value") == "Parasite")
 
         def parasite() -> dict:
             rows = shelf.drawn("table")[-1]["rows"]

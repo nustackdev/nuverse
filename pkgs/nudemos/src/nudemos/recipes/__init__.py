@@ -23,8 +23,8 @@ so their ids have to be known when a page draws, as plain strings: a recipe
 takes its links before it builds a single Ref. A child declared on a
 ``PlaneSpec`` mints its id when it is created, so the pages are made the
 way the research desk makes its own: the group's index cell makes each one
-once, under itself, at ``<index id>.<recipe>``, and a page's cell works its
-siblings' ids out of its own (``out(plane)`` gets it as a string). The
+once, under itself, at ``<index id>-<recipe>`` (plane ids are key chars,
+no dots), and a page's cell works its siblings' ids out of its own (``out(plane)`` gets it as a string). The
 index draws a tile per page, titled and marked off the store with
 ``nuspace.web.link``.
 """
@@ -85,7 +85,7 @@ _WEB = WebOptions(editable=True, full_width=True)
 
 def page_id(base: str, recipe: str) -> str:
     """The plane id of ``recipe``'s page under the index ``base``."""
-    return f"{base}.{recipe}"
+    return f"{base}-{recipe}"
 
 
 def _source(recipe: str) -> str:
@@ -95,18 +95,18 @@ def _source(recipe: str) -> str:
         + f"""
 
 # --- in a space ------------------------------------------------------------------------------
-# The pages are siblings under one index, at ``<index id>.<recipe>``, each
+# The pages are siblings under one index, at ``<index id>-<recipe>``, each
 # opened at its pane URL, ``/<plane id>``: this page's own id says where the
 # others are. A recipe takes its links as plain strings, before it builds a
 # Ref, so they are spelled here rather than by ``web.href``; a plane id
-# of letters and dots reads the same either way.
+# of key chars reads the same either way.
 
 RECIPES = {RECIPES!r}
 
 
 def out(plane):
-    base = plane.rsplit(".", 1)[0]
-    links = {{name: f"/{{base}}.{{name}}" for name in RECIPES}}
+    base = plane.rsplit("-", 1)[0]
+    links = {{name: f"/{{base}}-{{name}}" for name in RECIPES}}
     return page(links=links) >> nu.ForeverDo(nu.Delay(3600.0))
 """
     )
@@ -142,7 +142,7 @@ def make_pages(base: nu.StrArg) -> nu.Nu:
     """
     made = []
     for recipe, spec in PAGES.items():
-        pid = nu.Str(base) + "." + recipe
+        pid = nu.Str(base) + "-" + recipe
         made.append(headless.once(pid, nuspace.specs.add_plane(spec, pid, parent=base)))
     return nu.Sequential(*made)
 
@@ -162,17 +162,18 @@ network of small observatories. Each page's cell is the recipe's own source: ope
 and Cmd+Enter draws the new page. The pages link to each other.
 """
 
-intro = nustd.ui.TextRef("intro", props={{"tone": "secondary"}})
-tiles = nustd.ui.GridRef("pages", props={{"columns": 3, "min_width": 220, "gap": 3}})
+class View(nustd.ui.Column):
+    intro = nustd.ui.TextRef.slot(tone="secondary")
+    pages = nustd.ui.GridRef.slot(max_columns=3, min_cell_width=220, gap=3)
 
 
 def out(plane):
     def tile(name):
-        ref = nustd.ui.PageLinkRef(name, parent_ref=tiles, props={{"variant": "tile"}})
+        ref = View.pages[name].to(nustd.ui.PageLinkRef.slot(variant="tile"))
         about = recipes.PAGES[name].description
         return nuspace.atomic(web.link(ref, recipes.page_id(plane, name), description=about))
 
-    drawn = intro.set(TEXT) >> nu.Sequential(*(tile(name) for name in RECIPES))
+    drawn = View.intro.set(TEXT) >> nu.Sequential(*(tile(name) for name in RECIPES))
     return recipes.make_pages(plane) >> drawn >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 

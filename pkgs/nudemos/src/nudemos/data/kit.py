@@ -147,11 +147,11 @@ def page_of(root: nu.StrArg, name: str) -> nu.Str:
 
 @nu.host
 def _page_map(kids: list[list[str]]) -> dict[str, str]:
-    return {made.rsplit(".", 1)[-1].removeprefix("data_"): "/" + pid for made, pid in kids}
+    return {made.rsplit(".", 1)[-1].removeprefix("data_"): pid for made, pid in kids}
 
 
 def pages(root: nu.StrArg) -> nu.Dict:
-    """``{revenue: "/<id>", funnel: ..., ...}``: a link to every page under the root. Bare read."""
+    """``{revenue: "<id>", funnel: ..., ...}``: the plane id of every page under the root. Bare read."""
     return nu.Dict(_page_map(_children(root)))
 
 
@@ -457,12 +457,6 @@ def metric(value: Callable[[calc.Tables, np.ndarray], float], fmt: str = "money"
 
     index, got = loaded(("lines", "people"))
     return nu.host(run, name=f"Metric_{value.__name__}")(index, got, SHOP.filters.fallback({}))
-
-
-def customer_page(root: nu.StrArg, cid: nu.StrArg) -> nu.Str:
-    """A customer's page id, NULL before it is first opened. Bare read."""
-    del root
-    return nu.Str(SHOP.customers[cid])
 
 
 def open_customer(

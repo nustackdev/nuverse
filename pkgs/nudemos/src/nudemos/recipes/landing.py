@@ -4,7 +4,10 @@ A top bar of nav links with the sign in and the call to action at its end,
 then the hero: a display heading with an eyebrow, a line under it, two
 calls to action as buttons that are links, and a wide picture. A
 strip of numbers, a grid of features each marked by a framed icon, a
-closing call in a tinted box, and a quiet footer.
+closing call on an accent card, and a quiet footer.
+
+Every child is reached from its container and named with ``.to(Kind)``
+where it is placed; repeated ones (numbers, features) by position.
 """
 
 from __future__ import annotations
@@ -24,51 +27,45 @@ __all__ = ["page"]
 
 
 NUMBERS = (
-    ("sites", "Sites", "14"),
-    ("hours", "Hours observed this year", "38,400"),
-    ("frames", "Frames in the archive", "2.1 M"),
-    ("uptime", "Clear night uptime", "99.2%"),
+    ("Sites", "14"),
+    ("Hours observed this year", "38,400"),
+    ("Frames in the archive", "2.1 M"),
+    ("Clear night uptime", "99.2%"),
 )
 
-#: Features: (key, icon, tone, title, line).
+#: Features: (icon, tone, title, line).
 FEATURES = (
     (
-        "queue",
         "calendar",
         "accent",
         "One queue, every site",
         "Ask for time once. The queue finds the site with the clearest sky and the right instrument.",
     ),
     (
-        "live",
         "activity",
         "info",
         "Watch it live",
         "Frames land as they are taken, with seeing, focus and guiding beside them.",
     ),
     (
-        "archive",
         "database",
         "accent",
         "Keep every frame",
         "Raw and calibrated, searchable by target, night and filter. Nothing expires while you need it.",
     ),
     (
-        "pipelines",
         "workflow",
         "info",
         "Pipelines you own",
         "Calibrate, stack and measure in Python, on the same data the scopes write.",
     ),
     (
-        "teams",
         "users",
         "accent",
         "Built for small teams",
         "Share instruments, split hours fairly, see who booked what and why.",
     ),
     (
-        "open",
         "shield-check",
         "info",
         "Open by default",
@@ -80,127 +77,130 @@ FEATURES = (
 def page(links: Mapping[str, str] | None = None) -> nu.Nu:
     """The landing page, drawn."""
     to = meridian.links(links)
-    shown: list[nu.Nu] = []
-
-    def put(ref_cls: type[ui.Ref], segment: str, parent: ui.Ref | None, **props: object) -> ui.Ref:
-        ref = ref_cls(segment, parent_ref=parent, props=props)
-        shown.append(ref.init())
-        return ref
-
-    root = put(ui.ContainerRef, "landing", None, size="main", gap=16)
+    root = ui.ContainerRef("landing", props={"gap": 16})
 
     # --- top bar -------------------------------------------------------------------------------
-    bar = put(ui.RowRef, "bar", root, gap=3)
     # Mark and name straight in the bar: a Row nested in a Row fills and gives
     # way first, and a squeezed one lets the name run under the links.
-    put(ui.IconRef, "mark", bar, name="compass", size="lg", tone="accent")
-    put(ui.TextRef, "name", bar, value="Meridian", weight="semibold", size="lg")
-    nav = put(ui.NavListRef, "nav", bar, variant="horizontal", label="Main")
-    put(ui.NavItemRef, "instruments", nav, label="Instruments", href=to["catalog"], active=False)
-    put(ui.NavItemRef, "network", nav, label="Network", href=to["dashboard"], active=False)
-    put(ui.NavItemRef, "pricing", nav, label="Pricing", href=to["landing"], active=False)
-    put(ui.SpacerRef, "push", bar)
-    put(
-        ui.ButtonRef,
-        "signin",
-        bar,
-        label="Sign in",
-        href=to["settings"],
-        variant="ghost",
-        size="sm",
-    )
-    put(ui.ButtonRef, "start", bar, label="Start observing", href=to["dashboard"], size="sm")
+    bar = root["bar"].to(ui.RowRef.slot(gap=3, grow={"nav": 1}))
+    nav = bar["nav"].to(ui.NavListRef.slot(variant="horizontal", label="Main"))
+    shown = [
+        root.init(),
+        bar["mark"].to(ui.IconRef.slot(name="compass", size="lg", tone="accent")).init(),
+        bar["name"].to(ui.TextRef.slot(value="Meridian", weight="semibold", size="lg")).init(),
+        nav[0].to(ui.NavItemRef.slot(label="Instruments", href=to["catalog"], active=False)).init(),
+        nav[1].to(ui.NavItemRef.slot(label="Network", href=to["dashboard"], active=False)).init(),
+        nav[2].to(ui.NavItemRef.slot(label="Pricing", href=to["landing"], active=False)).init(),
+        bar["signin"]
+        .to(ui.ButtonRef.slot(label="Sign in", href=to["settings"], variant="ghost", size="sm"))
+        .init(),
+        bar["start"]
+        .to(ui.ButtonRef.slot(label="Start observing", href=to["dashboard"], size="sm"))
+        .init(),
+    ]
 
     # --- hero ----------------------------------------------------------------------------------
-    hero = put(ui.ColumnRef, "hero", root, gap=8)
-    words = put(ui.ColumnRef, "words", hero, gap=6, max_width="panel", center=False, align="start")
-    put(
-        ui.BadgeRef,
-        "news",
-        words,
-        label="New: Harrier spectrograph in Namibia",
-        variant="secondary",
-    )
-    put(
-        ui.HeadingRef,
-        "title",
-        words,
-        label="A shared sky for small observatories",
-        level=1,
-        size="display",
-        subtitle="Book time on fourteen remote telescopes from one queue. Keep every frame.",
-    )
-    ctas = put(ui.RowRef, "ctas", words, gap=3, wrap=True)
-    put(ui.ButtonRef, "start", ctas, label="Start observing", href=to["dashboard"], size="lg")
-    put(
-        ui.ButtonRef,
-        "browse",
-        ctas,
-        label="Browse instruments",
-        href=to["catalog"],
-        variant="outline",
-        size="lg",
-    )
-    put(
-        ui.ImageRef,
-        "picture",
-        hero,
-        src=meridian.sky(3, "violet", 1600, 640),
-        alt="The southern sky over the Atacama site",
-        fit="cover",
-        aspect="5/2",
-        radius="lg",
-    )
+    hero = root["hero"].to(ui.ColumnRef.slot(gap=8))
+    words = hero["words"].to(ui.ColumnRef.slot(gap=6, max_width="panel", align="start"))
+    ctas = words["ctas"].to(ui.RowRef.slot(gap=3, wrap=True))
+    shown += [
+        words["news"]
+        .to(ui.BadgeRef.slot(label="New: Harrier spectrograph in Namibia", variant="secondary"))
+        .init(),
+        words["title"]
+        .to(
+            ui.HeadingRef.slot(
+                label="A shared sky for small observatories",
+                level=1,
+                size="display",
+                subtitle="Book time on fourteen remote telescopes from one queue. Keep every frame.",
+            )
+        )
+        .init(),
+        ctas[0]
+        .to(ui.ButtonRef.slot(label="Start observing", href=to["dashboard"], size="lg"))
+        .init(),
+        ctas[1]
+        .to(
+            ui.ButtonRef.slot(
+                label="Browse instruments", href=to["catalog"], variant="outline", size="lg"
+            )
+        )
+        .init(),
+        hero["picture"]
+        .to(
+            ui.ImageRef.slot(
+                src=meridian.sky(3, "violet", 1600, 640),
+                alt="The southern sky over the Atacama site",
+                fit="cover",
+                aspect="5/2",
+                radius="lg",
+            )
+        )
+        .init(),
+    ]
 
     # --- numbers -------------------------------------------------------------------------------
-    numbers = put(ui.GridRef, "numbers", root, columns=4, min_width=120, gap=6)
-    for key, label, value in NUMBERS:
-        put(ui.StatRef, key, numbers, label=label, value=value)
+    numbers = root["numbers"].to(ui.GridRef.slot(max_columns=4, min_cell_width=160, gap=6))
+    shown += [
+        numbers[i].to(ui.StatRef.slot(label=label, value=value)).init()
+        for i, (label, value) in enumerate(NUMBERS)
+    ]
 
     # --- features ------------------------------------------------------------------------------
-    features = put(
-        ui.PageSectionRef,
-        "features",
-        root,
-        title="Everything a night needs",
-        description="From the request to the published light curve, in one place.",
-        size="lg",
-        gap=8,
+    features = root["features"].to(
+        ui.PageSectionRef.slot(
+            title="Everything a night needs",
+            description="From the request to the published light curve, in one place.",
+            size="lg",
+            gap=8,
+        )
     )
-    grid = put(ui.GridRef, "grid", features, columns=3, min_width=240, gap=10)
-    for key, icon, tone, title, line in FEATURES:
-        cell = put(ui.ColumnRef, key, grid, gap=3)
-        put(ui.IconRef, "icon", cell, name=icon, tone=tone, framed=True, size="lg")
-        # The line rides the heading as its subtitle, so the pair keeps the
-        # heading's own tight spacing rather than the column's gap.
-        put(ui.HeadingRef, "title", cell, label=title, level=3, size="xl", subtitle=line)
+    grid = features[0].to(ui.GridRef.slot(max_columns=3, min_cell_width=240, gap=10))
+    for i, (icon, tone, title, line) in enumerate(FEATURES):
+        cell = grid[i].to(ui.ColumnRef.slot(gap=3))
+        shown += [
+            cell[0].to(ui.IconRef.slot(name=icon, tone=tone, framed=True, size="lg")).init(),
+            # The line rides the heading as its subtitle, so the pair keeps the
+            # heading's own tight spacing rather than the column's gap.
+            cell[1].to(ui.HeadingRef.slot(label=title, level=3, size="xl", subtitle=line)).init(),
+        ]
 
     # --- closing call --------------------------------------------------------------------------
-    close = put(ui.BoxRef, "close", root, background="accent", padding="lg", border="none")
-    inner = put(ui.ColumnRef, "inner", close, gap=5, align="center", padding=8)
-    put(
-        ui.HeadingRef,
-        "title",
-        inner,
-        label="Your first night is on us",
-        level=2,
-        size="2xl",
-        align="center",
-        subtitle="Ten hours on any open instrument, no card needed.",
-    )
-    row = put(ui.RowRef, "row", inner, gap=3, justify="center", wrap=True)
-    put(ui.ButtonRef, "start", row, label="Request time", href=to["catalog"], icon="calendar")
-    put(ui.LinkRef, "tour", row, label="See a live night", href=to["detail"], arrow=True)
+    close = root["close"].to(ui.CardRef.slot(variant="accent", padding=8, gap=5, align="center"))
+    row = close["row"].to(ui.RowRef.slot(gap=3, justify="center", wrap=True))
+    shown += [
+        close["title"]
+        .to(
+            ui.HeadingRef.slot(
+                label="Your first night is on us",
+                level=2,
+                size="2xl",
+                align="center",
+                subtitle="Ten hours on any open instrument, no card needed.",
+            )
+        )
+        .init(),
+        row[0]
+        .to(ui.ButtonRef.slot(label="Request time", href=to["catalog"], icon="calendar"))
+        .init(),
+        row[1].to(ui.LinkRef.slot(label="See a live night", href=to["detail"], arrow=True)).init(),
+    ]
 
     # --- footer --------------------------------------------------------------------------------
-    foot = put(ui.ColumnRef, "foot", root, gap=4)
-    put(ui.DividerRef, "rule", foot)
-    line = put(ui.RowRef, "line", foot, gap=4, wrap=True)
-    put(
-        ui.TextRef, "made", line, value="Meridian, 2026. Run by observers.", tone="muted", size="sm"
-    )
-    put(ui.SpacerRef, "push", line)
-    put(ui.LinkRef, "status", line, label="Status", href=to["dashboard"], variant="muted")
-    put(ui.LinkRef, "settings", line, label="Settings", href=to["settings"], variant="muted")
+    foot = root["foot"].to(ui.ColumnRef.slot(gap=4))
+    line = foot["line"].to(ui.RowRef.slot(gap=4, wrap=True, grow={"made": 1}))
+    shown += [
+        foot["rule"].to(ui.DividerRef).init(),
+        line["made"]
+        .to(ui.TextRef.slot(value="Meridian, 2026. Run by observers.", tone="muted", size="sm"))
+        .init(),
+        line["status"]
+        .to(ui.LinkRef.slot(label="Status", href=to["dashboard"], variant="muted"))
+        .init(),
+        line["settings"]
+        .to(ui.LinkRef.slot(label="Settings", href=to["settings"], variant="muted"))
+        .init(),
+    ]
 
     return nu.Sequential(*shown)

@@ -19,19 +19,20 @@ __all__ = ["CHARTS", "ERRORS", "HEALTH", "PLANE"]
 
 
 HEALTH = cell("""\
-class Tiles(nustd.ui.Grid):
-    blocks = nustd.ui.StatRef.slot(label="Blocks a second")
-    trades = nustd.ui.StatRef.slot(label="Trades a second")
-    txs = nustd.ui.StatRef.slot(label="Transactions read")
-    lag = nustd.ui.StatRef.slot(label="Behind the tip")
-    latency = nustd.ui.StatRef.slot(label="RPC latency")
-    errors = nustd.ui.StatRef.slot(label="Errors")
-    calls = nustd.ui.StatRef.slot(label="RPC calls")
-    uptime = nustd.ui.StatRef.slot(label="Up")
+KEYS = {
+    "blocks": "Blocks a second",
+    "trades": "Trades a second",
+    "txs": "Transactions read",
+    "lag": "Behind the tip",
+    "latency": "RPC latency",
+    "errors": "Errors",
+    "calls": "RPC calls",
+    "uptime": "Up",
+}
 
 
-class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=8, min_width=120, gap=3)
+class View(nu.Shape):
+    tiles = nustd.ui.GridRef.slot(max_columns=4, min_cell_width=160, gap=3)
 
 
 @nu.host
@@ -50,16 +51,18 @@ def shaped(stats, now):
     }
 
 
+def tile(k, label):
+    return View.tiles[k].to(nustd.ui.CardRef.slot(size="sm"))[0].to(nustd.ui.StatRef.slot(label=label))
+
+
 def draw(v):
-    t = View.tiles
-    keys = ("blocks", "trades", "txs", "lag", "latency", "errors", "calls", "uptime")
-    return nu.Sequential(*(getattr(t, k).set(v[k][0], delta=v[k][1]) for k in keys))
+    return nu.Sequential(*(tile(k, label).set(v[k][0], delta=v[k][1]) for k, label in KEYS.items()))
 
 
 def out(plane):
     def follow(root):
         read = shaped(memes_at(root).stats.fallback({}), nustd.time.time())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), draw), every=2.0)
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -81,23 +84,23 @@ TWO = {
     "series": [{}, {"yAxisIndex": 1}],
 }
 
-
-class Charts(nustd.ui.Grid):
-    throughput = nustd.ui.LineChart.slot(["blocks/s", "trades/s"], title="Throughput", x_type="time", height=220, option=TWO)
-    flow = nustd.ui.LineChart.slot(["launches/min", "SOL/min"], title="Launches and volume", x_type="time", height=220, option=TWO)
-    lag = nustd.ui.AreaChart.slot(title="Slots behind the tip", x_type="time", height=220, option=TIME)
-    latency = nustd.ui.LineChart.slot(title="RPC latency, ms", x_type="time", height=220, option=TIME)
-    errors = nustd.ui.BarChart.slot(title="Errors", x_type="time", height=220, option=TIME)
-
-
-class Head(nustd.ui.Row):
-    title = nustd.ui.HeadingRef.slot(level=4)
-    window = nustd.ui.SelectRef.slot(options=WINDOWS, selected="1800")
+#: Each chart: its card's title, then the chart.
+CHARTS = {
+    "throughput": ("Throughput", nustd.ui.LineChart.slot(["blocks/s", "trades/s"], x_type="time", height=220, option=TWO)),
+    "flow": ("Launches and volume", nustd.ui.LineChart.slot(["launches/min", "SOL/min"], x_type="time", height=220, option=TWO)),
+    "lag": ("Slots behind the tip", nustd.ui.AreaChart.slot(x_type="time", height=220, option=TIME)),
+    "latency": ("RPC latency, ms", nustd.ui.LineChart.slot(x_type="time", height=220, option=TIME)),
+    "errors": ("Errors", nustd.ui.BarChart.slot(x_type="time", height=220, option=TIME)),
+}
 
 
-class View(nustd.ui.Column):
-    head = Head.slot(gap=3, align="center", justify="between")
-    charts = Charts.slot(columns=3, min_width=300, gap=3)
+class View(nu.Shape):
+    over = nustd.ui.PageSectionRef.slot(title="Over time", description="each a series sampled at a fixed cost, however long the sync has run")
+
+
+window = View.over.actions["window"].to(nustd.ui.SelectRef.slot(options=WINDOWS, selected="1800"))
+grid = View.over["charts"].to(nustd.ui.GridRef.slot(max_columns=3, min_cell_width=320, gap=4))
+charts = {k: grid[k].to(nustd.ui.CardRef.slot(title=title, size="sm"))[k].to(chart) for k, (title, chart) in CHARTS.items()}
 
 
 class Pick(nu.Shape):
@@ -113,15 +116,9 @@ def paint(root):
 
     m = memes_at(root)
     read = views.health(*(sample(s) for s in (m.blocks_s, m.trades_s, m.launches_m, m.volume_m, m.lag, m.latency, m.errors_n)))
-    c = View.charts
-
-    def draw(d):
-        return (
-            c.throughput.set(d["throughput"]) >> c.flow.set(d["flow"]) >> c.lag.set(d["lag"])
-            >> c.latency.set(d["latency"]) >> c.errors.set(d["errors"])
-        )
-
-    return nu.let(nuspace.atomic(read), draw)
+    drawn = nu.let(nuspace.atomic(read), lambda d: nu.Sequential(*(c.set(d[k]) for k, c in charts.items())))
+    # The series exist once the sync has written: till then there is nothing to sample.
+    return nu.IfDo(nu.Bool(nuspace.atomic(m.beat.exists())), drawn)
 
 
 def out(plane):
@@ -129,9 +126,8 @@ def out(plane):
         # One pass at a time, at most every few seconds: a point lands every five.
         beat = nuspace.atomic(memes_at(root).beat.on_change())
         painted = nu.Reconcile(beat, paint(root) >> nu.Delay(EVERY), every=10.0)
-        picked = nu.ReactEvery(View.head.window.on_change(), Pick.window.set(nu.ToInt(View.head.window)) >> paint(root))
-        head = View.head.title.set("Over time") >> View.head.window.set_options(WINDOWS) >> View.head.window.set("1800")
-        return head >> nu.Frame(Pick, nu.ParallelAsync(painted, picked), window=1800)
+        picked = nu.ReactEvery(window.on_change(), Pick.window.set(nu.ToInt(window)) >> paint(root))
+        return window.set("1800") >> nu.Frame(Pick, nu.ParallelAsync(painted, picked), window=1800)
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
@@ -139,26 +135,29 @@ def out(plane):
 
 ERRORS = cell("""\
 COLUMNS = [
-    {"key": "when", "label": "When", "width": 170, "sortable": False},
+    {"key": "when", "label": "When", "width": 120, "sortable": False, "cell": nustd.ui.RelativeTimeRef},
     {"key": "call", "label": "Call", "width": 80, "sortable": False},
-    {"key": "slot", "label": "Slot", "kind": "number", "width": 120, "sortable": False},
-    {"key": "message", "label": "What happened", "sortable": False},
+    {"key": "slot", "label": "Slot", "kind": "number", "align": "end", "width": 120, "sortable": False, "hide_below": 640},
+    {"key": "message", "label": "What happened", "sortable": False, "wrap": "truncate"},
 ]
 
+NOTE = "Every failed call backs the sync off: 1s, doubling to 30s, back to none on the next block read. Rate limits, timeouts and refused connections all land here."
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    note = nustd.ui.TextRef.slot()
-    errors = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", dense=True, label="Errors")
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Errors", subtitle="newest first")
+
+
+errors = View.card["errors"].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Errors"))
+note = View.card.footer["note"].to(nustd.ui.TextRef.slot(tone="muted", size="sm"))
 
 
 def out(plane):
     def follow(root):
-        read = views.error_rows(memes_at(root).errors.fallback([]), nustd.time.time())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[memes_at(root).beat.on_change()])), nu.let(nuspace.atomic(read), View.errors.set_rows), every=5.0)
+        read = views.error_rows(memes_at(root).errors.fallback([]))
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), errors.set_rows), every=5.0)
 
-    note = "Every failed call backs the sync off: 1s, doubling to 30s, back to none on the next block read. Rate limits, timeouts and refused connections all land here."
-    return View.head.set("Errors, newest first") >> View.note.set(note) >> nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return note.set(NOTE) >> nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 """)
 
 

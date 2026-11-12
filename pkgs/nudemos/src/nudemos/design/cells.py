@@ -66,27 +66,9 @@ def out(plane):
 """)
 
 
-def _sliders(rows: tuple[tuple[str, str, float, float, float], ...], columns: int = 4) -> str:
-    """A row of sliders over spec keys: each seeded from the spec, each move one edit.
-
-    ``rows`` are ``(key, label, min, max, step)``. A ``knob.*`` key rewrites
-    every token it governs (:func:`~.spec.apply_knob`).
-    """
-    slots = "\n".join(f"    s{i} = nustd.ui.SliderRef.slot()" for i in range(len(rows)))
-    return _cell(f"""\
-ROWS = {list(rows)!r}
-
-
-class Knobs(nustd.ui.Grid):
-{slots}
-
-
-class View(nustd.ui.Column):
-    knobs = Knobs.slot(columns={columns}, min_width=130, gap=5)
-
-
-def slider(i):
-    return getattr(View.knobs, f"s{{i}}")
+_KNOBS_BODY = """\
+class View(nu.Shape):
+    knobs = nustd.ui.GridRef.slot(nustd.ui.SliderRef, max_columns=COLUMNS, min_cell_width=130, gap=5)
 
 
 @nu.host
@@ -98,24 +80,36 @@ def values(spec):
 def changes(spec, key, value):
     if key.startswith("knob."):
         return specs.apply_knob(spec, key, float(value))
-    return {{key: f"{{float(value):g}}"}}
+    return {key: f"{float(value):g}"}
 
 
 def out(plane):
+    knobs = View.knobs
+
     def build(base, S):
         shape = nu.Sequential(*(
-            slider(i).set(specs.num(specs.DEFAULTS, key), min=lo, max=hi, step=step, label=label, show_value=True)
+            knobs[i].set(specs.num(specs.DEFAULTS, key), min=lo, max=hi, step=step, label=label, show_value=True)
             for i, (key, label, lo, hi, step) in enumerate(ROWS)
         ))
-        draw = lambda v: nu.Sequential(*(slider(i).set_value(nu.List(v)[i]) for i in range(len(ROWS))))
+        draw = lambda v: nu.Sequential(*(knobs[i].set_value(nu.List(v)[i]) for i in range(len(ROWS))))
         moves = [
-            nu.ReactEvery(slider(i).on_change(), kit.edit(S, changes(kit.spec(S), key, nu.float(slider(i))), "you", label))
+            nu.ReactEvery(knobs[i].on_change(), kit.edit(S, changes(kit.spec(S), key, nu.float(knobs[i])), "you", label))
             for i, (key, label, *_) in enumerate(ROWS)
         ]
         return shape >> nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(values(kit.spec(S))), draw)), *moves)
 
     return kit.on_system(plane, build)
-""")
+"""
+
+
+def _sliders(rows: tuple[tuple[str, str, float, float, float], ...], columns: int = 4) -> str:
+    """A grid of sliders over spec keys: each seeded from the spec, each move one edit.
+
+    ``rows`` are ``(key, label, min, max, step)``, one slider each by
+    position. A ``knob.*`` key rewrites every token it governs
+    (:func:`~.spec.apply_knob`). The body is one; only the rows differ.
+    """
+    return _cell(f"ROWS = {list(rows)!r}\nCOLUMNS = {columns}\n\n\n" + _KNOBS_BODY)
 
 
 # --- Design ----------------------------------------------------------------------------------------
@@ -132,18 +126,37 @@ The nustack design system as one live spec: every color, size, radius, duration 
 Every swatch, control, mock and check here is drawn from it, so change a token anywhere and every page follows.
 """
 
-ORDER = ["Tokens", "Mark", "Components", "Mocks", "Checks", "Review", "Export", "Principles"]
+ORDER = {
+    "Tokens": "Four knobs that turn the palette, every token, the history.",
+    "Mark": "The Nu mark built from the spec, its ladder and variants.",
+    "Components": "The kit's controls drawn in the current tokens.",
+    "Mocks": "The site hero, a nuspace screen, the social card.",
+    "Checks": "Contrast for every pair that must read, both themes.",
+    "Review": "The team's proposals, each checked before anyone accepts.",
+    "Export": "Releases: tokens, SVGs, PNGs and a favicon.",
+    "Principles": "The foundations, in the language's words.",
+}
 
 
 @nu.host
-def pages(ids, names):
+def ordered(ids, names):
     by = dict(zip(names, ids))
-    return "  ·  ".join(f"[{n}](/{by[n]})" for n in ORDER if n in by)
+    return [{"page": by[n], "about": about} for n, about in ORDER.items() if n in by]
 
 
 class View(nustd.ui.Column):
     about = nustd.ui.MarkdownRef.slot()
-    pages = nustd.ui.MarkdownRef.slot()
+    pages = nustd.ui.GridRef.slot(nustd.ui.PageLinkRef.slot(variant="tile"), max_columns=4, min_cell_width=180, gap=3)
+
+
+def tile(r):
+    page = nu.Str(nu.Dict(r)["page"])
+    return nuspace.atomic(nuspace.web.link(View.pages[page], page, description=nu.Str(nu.Dict(r)["about"])))
+
+
+def tiles(rows):
+    # A tile per page, keyed by its plane id, in the order above.
+    return nu.ForEachDo(nu.List(rows), tile)
 
 
 def studio_job(base, S):
@@ -175,38 +188,32 @@ def out(plane):
     def build(base, S):
         kids = nu.List(nuspace.Space.planes[base].children.keys(limit=len(ORDER) + 4))
         names = kids.iter().map(lambda p: nuspace.plane.title(nu.Str(p))).to_list()
-        return View.about.set(TEXT) >> View.pages.set(nuspace.atomic(pages(kids, names))) >> seed(base, S) >> nu.Park()
+        return View.about.set(TEXT) >> nu.let(nuspace.atomic(ordered(kids, names)), tiles) >> seed(base, S) >> nu.Park()
 
     return kit.on_system(plane, build)
 ''')
 
 
 STATS = _cell("""\
-class Tiles(nustd.ui.Grid):
-    tokens = nustd.ui.StatRef.slot(label="Tokens")
-    changed = nustd.ui.StatRef.slot(label="Changed")
-    checks = nustd.ui.StatRef.slot(label="Checks passing")
-    failing = nustd.ui.StatRef.slot(label="Failing")
-    inbox = nustd.ui.StatRef.slot(label="Proposals")
-    release = nustd.ui.StatRef.slot(label="Last release")
+TILES = {"tokens": "Tokens", "changed": "Changed", "checks": "Checks passing", "failing": "Failing", "inbox": "Proposals", "release": "Last release"}
 
 
-class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=6, min_width=120, gap=3)
+class View(nu.Shape):
+    tiles = nustd.ui.GridRef.slot(nustd.ui.CardRef.slot(size="sm"), max_columns=6, min_cell_width=120, gap=3)
 
 
 def draw(t):
-    T = View.tiles
-    return (
-        T.tokens.set_value(t["tokens"]) >> T.changed.set_value(t["changed"]) >> T.checks.set_value(t["checks"])
-        >> T.failing.set(t["failing"], trend=nu.If(nu.Str(t["failing"]) == "0", "flat", "down"))
-        >> T.inbox.set_value(t["inbox"]) >> T.release.set_value(t["release"])
-    )
+    trend = nu.If(nu.Str(t["failing"]) == "0", "flat", "down")
+    return nu.Sequential(*(
+        View.tiles[k][0].to(nustd.ui.StatRef).set(t[k], label=label, trend=trend) if k == "failing" else View.tiles[k][0].to(nustd.ui.StatRef).set(t[k], label=label)
+        for k, label in TILES.items()
+    ))
 
 
 def out(plane):
     read = lambda S: kit.tally(S.spec.fallback({}), S.inbox.fallback([]), S.releases.fallback([]))
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(S.rev.on_change(), S.mail.on_change())), nu.let(nuspace.atomic(read(S)), draw)))
+    moves = lambda S: nu.OnAny(S.rev.on_change(), S.mail.on_change(), S.releases.on_change())
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(nuspace.atomic(read(S)), draw)))
 """)
 
 
@@ -220,17 +227,17 @@ MODES = [{"value": "auto", "label": "Drawings follow the system theme"}, {"value
 
 class Bar(nustd.ui.Row):
     mode = nustd.ui.SelectRef.slot(options=MODES)
-    note = nustd.ui.TextRef.slot()
+    note = nustd.ui.TextRef.slot(tone="muted")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     bar = Bar.slot(gap=4, align="center", wrap=True)
 
 
 def out(plane):
     def build(base, S):
         return (
-            View.bar.note.set("Frames draw in their own theme. Pick one, or let them follow your system.")
+            View.bar.mode.set("auto") >> View.bar.note.set("Frames draw in their own theme. Pick one, or let them follow your system.")
             >> nu.ParallelAsync(
                 nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.preview.on_change()])), nu.let(nuspace.atomic(S.preview.fallback("auto")), View.bar.mode.set)),
                 nu.ReactEvery(View.bar.mode.on_change(), S.preview.set(nu.Str(View.bar.mode))),
@@ -242,25 +249,46 @@ def out(plane):
 
 
 ACTIVITY = _cell("""\
-import time
+#: Lines the feed keeps, newest first.
+KEEP = 30
+
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Activity", subtitle="Edits, proposals, decisions and releases, newest first")
+
+
+lines = View.card[0].to(nustd.ui.ColumnRef.slot(nustd.ui.LineRef, gap=0, max_height=320, scroll="y"))
+quiet = View.card[1].to(nustd.ui.TextRef.slot(tone="muted"))
 
 
 @nu.host
 def feed(log, inbox, releases, decided):
-    now = time.time()
-    rows = [(e["at"], f"**{e['who']}**  {e['what']}  ·  {kit.describe_change(e['changes'])}") for e in log or []]
-    rows += [(p["at"], f"**{p['who']}** proposed *{p['title']}*") for p in inbox or []]
-    rows += [(d["at"], f"**{d['who']}**'s *{d['title']}* was {d['verdict']}") for d in decided or [] if d.get("at")]
-    rows += [(r["at"], f"Release **{r['version']}** cut, {r['files']} files") for r in releases or []]
+    rows = [(e["at"], e["who"], f"{e['what']}: {kit.describe_change(e['changes'])}") for e in log or []]
+    rows += [(p["at"], p["who"], f"proposed {p['title']}") for p in inbox or []]
+    rows += [(d["at"], d["who"], f"{d['title']}, {d['verdict']}") for d in decided or [] if d.get("at")]
+    rows += [(r["at"], "Export", f"cut {r['version']}, {r['files']} files") for r in releases or []]
     rows.sort(key=lambda r: -r[0])
-    lines = [f"- {text}  ·  {kit.ago(at, now)}" for at, text in rows[:9]]
-    return "#### Activity\\n\\n" + ("\\n".join(lines) if lines else "Quiet so far. Move a knob on Tokens, or wait for the team.")
+    return [{"i": i, "at": at * 1000, "who": who, "what": what} for i, (at, who, what) in enumerate(rows[:KEEP])]
+
+
+def line(r):
+    at_ = lines[nu.Int(nu.Dict(r)["i"])]
+    return (
+        at_[0].to(nustd.ui.TextRef.slot(weight="medium")).set(nu.Dict(r)["who"]) >> at_[1].to(nustd.ui.TextRef).set(nu.Dict(r)["what"])
+        >> at_[2].to(nustd.ui.RelativeTimeRef).set(nu.Dict(r)["at"])
+    )
+
+
+def draw(rows):
+    n = nu.List(rows).len()
+    empty = lines.erase() >> quiet.set("Quiet so far. Move a knob on Tokens, or wait for the team.")
+    return nu.IfDo(n == 0, empty, quiet.erase() >> nu.ForEachDo(nu.List(rows), line) >> lines.truncate(n))
 
 
 def out(plane):
-    text = nustd.ui.MarkdownRef("activity")
     read = lambda S: feed(S.log.fallback([]), S.inbox.fallback([]), S.releases.fallback([]), S.decided.fallback([]))
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(S.rev.on_change(), S.mail.on_change())), nu.let(nuspace.atomic(read(S)), text.set), every=15.0))
+    moves = lambda S: nu.OnAny(S.rev.on_change(), S.mail.on_change(), S.decided.on_change(), S.releases.on_change())
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(nuspace.atomic(read(S)), draw)))
 """)
 
 
@@ -283,10 +311,10 @@ ACTIONS = _cell("""\
 class Bar(nustd.ui.Row):
     undo = nustd.ui.ButtonRef.slot(label="Undo", icon="undo-2", variant="secondary")
     reset = nustd.ui.ButtonRef.slot(label="Back to the language", icon="rotate-ccw", variant="ghost")
-    note = nustd.ui.TextRef.slot()
+    note = nustd.ui.TextRef.slot(tone="muted")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     bar = Bar.slot(gap=4, align="center", wrap=True)
 
 
@@ -319,19 +347,17 @@ COLUMNS = [
     {"key": "group", "label": "Group", "editable": False, "width": 100},
     {"key": "dusk", "label": "Dusk", "width": 110},
     {"key": "dawn", "label": "Dawn", "width": 110},
-    {"key": "use", "label": "Use", "editable": False},
+    {"key": "use", "label": "Use", "editable": False, "hide_below": 640},
     {"key": "changed", "label": "Changed", "kind": "bool", "editable": False, "width": 90},
 ]
 
 
-class Bar(nustd.ui.Row):
-    group = nustd.ui.SelectRef.slot(options=GROUPS)
-    hint = nustd.ui.TextRef.slot()
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Colors", subtitle="Edit a hex in place: every page drawing it follows.")
 
 
-class View(nustd.ui.Column):
-    bar = Bar.slot(gap=3, align="center")
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="token", editable=True, dense=True, label="Colors")
+group = View.card.actions[0].to(nustd.ui.SelectRef.slot(options=GROUPS))
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="token", editable=True, density="compact", label="Colors"))
 
 
 @nu.host
@@ -351,13 +377,10 @@ def change(ev):
 
 def out(plane):
     def build(base, S):
-        read = rows(S.spec.fallback({}), nu.Str(View.bar.group))
-        return (
-            View.bar.group.set("all") >> View.bar.hint.set("Edit a hex in place: every page drawing it follows.")
-            >> nu.ParallelAsync(
-                nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change(), View.bar.group.on_change()])), nu.let(nuspace.atomic(read), View.table.set_rows)),
-                nu.ReactEvery(View.table.on_edit(), lambda ev: kit.edit(S, change(ev), "you", "Edited a color")),
-            )
+        read = rows(S.spec.fallback({}), nu.Str(group))
+        return group.set("all") >> nu.ParallelAsync(
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change(), group.on_change()])), nu.let(nuspace.atomic(read), table.set_rows)),
+            nu.ReactEvery(table.on_edit(), lambda ev: kit.edit(S, change(ev), "you", "Edited a color")),
         )
 
     return kit.on_system(plane, build)
@@ -369,7 +392,7 @@ COLUMNS = [
     {"key": "key", "label": "Token", "editable": False, "width": 190},
     {"key": "group", "label": "Group", "editable": False, "width": 90},
     {"key": "value", "label": "Value", "width": 150},
-    {"key": "use", "label": "Use", "editable": False},
+    {"key": "use", "label": "Use", "editable": False, "hide_below": 640},
     {"key": "changed", "label": "Changed", "kind": "bool", "editable": False, "width": 90},
 ]
 
@@ -385,8 +408,14 @@ def change(ev):
     return {ev["key"]: str(ev["value"]).strip()}
 
 
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Scales", subtitle="Type, space, radius, motion and the mark. Edit a value in place.")
+
+
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", editable=True, density="compact", label="Scales"))
+
+
 def out(plane):
-    table = nustd.ui.TableRef("scales", props={"columns": COLUMNS, "row_key": "key", "editable": True, "dense": True, "label": "Type, space, radius, motion, mark"})
     return kit.on_system(plane, lambda base, S: nu.ParallelAsync(
         nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(S.spec.fallback({}))), table.set_rows)),
         nu.ReactEvery(table.on_edit(), lambda ev: kit.edit(S, change(ev), "you", "Edited a token")),
@@ -395,22 +424,25 @@ def out(plane):
 
 
 HISTORY = _cell("""\
-import time
+COLUMNS = [{"key": "when", "label": "When", "width": 110, "cell": nustd.ui.RelativeTimeRef}, {"key": "who", "label": "Who", "width": 140},
+           {"key": "what", "label": "What"}, {"key": "change", "label": "Change", "wrap": "truncate"}]
 
-COLUMNS = [{"key": "when", "label": "When", "width": 110}, {"key": "who", "label": "Who", "width": 140},
-           {"key": "what", "label": "What"}, {"key": "change", "label": "Change"}]
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="History", subtitle="Every edit, newest first")
+
+
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="i", density="compact", label="History", max_rows=12))
 
 
 @nu.host
 def rows(log):
-    now = time.time()
-    return [{"i": str(i), "when": kit.ago(e["at"], now), "who": e["who"], "what": e["what"],
-             "change": kit.describe_change(e["changes"]).replace("`", "")} for i, e in reversed(list(enumerate(log or [])))]
+    return [{"i": str(i), "when": e["at"] * 1000, "who": e["who"], "what": e["what"], "change": kit.describe_change(e["changes"])}
+            for i, e in reversed(list(enumerate(log or [])))]
 
 
 def out(plane):
-    table = nustd.ui.TableRef("history", props={"columns": COLUMNS, "row_key": "i", "dense": True, "label": "History, newest first", "max_rows": 12})
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(S.log.fallback([]))), table.set_rows), every=20.0))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(S.log.fallback([]))), table.set_rows)))
 """)
 
 
@@ -437,8 +469,8 @@ class Bar(nustd.ui.Row):
     hue = nustd.ui.LineChart.slot(("dusk", "dawn"), title="Chroma: the sky's tint, step by step", x_type="category", symbols=True, height=280)
 
 
-class View(nustd.ui.Column):
-    bar = Bar.slot(gap=6, align="start", wrap=True, min_width=320)
+class View(nu.Shape):
+    bar = Bar.slot(gap=6, align="start", wrap=True, grow={"lightness": 1, "hue": 1}, basis={"lightness": 320, "hue": 320})
 
 
 @nu.host
@@ -503,7 +535,7 @@ SHAPE = (
 
 
 CURVES = _cell("""\
-class View(nustd.ui.Column):
+class View(nu.Shape):
     curves = nustd.ui.LineChart.slot(("ease-out, enter", "ease-in, leave", "ease-in-out, move"), title="The three easings: progress over time",
                                      y_min=0, y_max=1, height=300, x_format="{value}%")
 
@@ -554,7 +586,7 @@ class Bar(nustd.ui.Row):
     shadow = nustd.ui.SwitchRef.slot(label="Ambient shadow")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     bar = Bar.slot(gap=4, align="center", wrap=True)
 
 
@@ -602,14 +634,14 @@ class Pick(nustd.ui.Column):
 
 
 class View(nustd.ui.Column):
-    about = nustd.ui.TextRef.slot()
-    walks = nustd.ui.GridRef.slot(Pick, min_width=124, gap=3)
+    about = nustd.ui.TextRef.slot(tone="muted")
+    walks = nustd.ui.GridRef.slot(Pick, max_columns=N, min_cell_width=124, gap=3)
 
 
 @nu.host
 def faces(v):
     s = v["spec"]
-    return [{"i": str(i), "doc": draw.tile(s, w, mode=v["mode"]), "label": "Use " + w["name"]} for i, w in enumerate(logo.variants(s))]
+    return [{"doc": draw.tile(s, w, mode=v["mode"]), "label": "Use " + w["name"]} for w in logo.variants(s)]
 
 
 @nu.host
@@ -624,12 +656,16 @@ def named(spec, i):
 
 
 def paint(rows):
-    return nu.ForEachDo(rows, lambda r: View.walks[nu.Str(r["i"])].face.set_html(r["doc"]) >> View.walks[nu.Str(r["i"])].use.set_label(r["label"]))
+    def one(i):
+        r = nu.Dict(nu.List(rows)[i])
+        return View.walks[i].face.set_html(r["doc"]) >> View.walks[i].use.set_label(r["label"])
+
+    return nu.Sequential(*(one(i) for i in range(N)))
 
 
 def out(plane):
     def build(base, S):
-        uses = [nu.ReactEvery(View.walks[str(i)].use.on_click(), kit.edit(S, ground(kit.spec(S), i), "you", named(kit.spec(S), i))) for i in range(N)]
+        uses = [nu.ReactEvery(View.walks[i].use.on_click(), kit.edit(S, ground(kit.spec(S), i), "you", named(kit.spec(S), i))) for i in range(N)]
         return View.about.set("Six grounds one step from the current one. Use one, and the next six walk on from there.") >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.follows(S))), nu.let(nuspace.atomic(faces(kit.seen(S))), paint)), *uses)
 
@@ -698,7 +734,7 @@ class Bar(nustd.ui.Row):
     worst = nustd.ui.StatRef.slot(label="Lowest pair")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     bar = Bar.slot(gap=4, align="center", wrap=True)
 
 
@@ -728,40 +764,52 @@ def out(plane):
 
 PAIRS = _cell("""\
 COLUMNS = [
-    {"key": "verdict", "label": "Verdict", "width": 120},
+    {"key": "verdict", "label": "Verdict", "width": 140, "cell": nustd.ui.StatusPillRef},
     {"key": "pair", "label": "Pair"},
-    {"key": "what", "label": "What it is"},
-    {"key": "dusk", "label": "Dusk", "kind": "number", "width": 80},
-    {"key": "dawn", "label": "Dawn", "kind": "number", "width": 80},
-    {"key": "min", "label": "Needs", "kind": "number", "width": 80},
+    {"key": "what", "label": "What it is", "hide_below": 640},
+    {"key": "dusk", "label": "Dusk", "kind": "number", "width": 80, "align": "end"},
+    {"key": "dawn", "label": "Dawn", "kind": "number", "width": 80, "align": "end"},
+    {"key": "min", "label": "Needs", "kind": "number", "width": 80, "align": "end"},
 ]
 
 ORDER = {"fail": 0, "under target": 1, "pass": 2}
 
 
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Contrast", subtitle="Every pair that must read, both themes, WCAG 2")
+
+
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Contrast"))
+
+
 @nu.host
 def rows(spec):
-    pairs = checks.run(spec)["pairs"]
-    return sorted(({k: r[k] for k in ("key", "verdict", "pair", "what", "dusk", "dawn", "min")} for r in pairs), key=lambda r: ORDER[r["verdict"]])
+    pairs = sorted(checks.run(spec)["pairs"], key=lambda r: ORDER[r["verdict"]])
+    return [{**{k: r[k] for k in ("key", "pair", "what", "dusk", "dawn", "min")}, "verdict": kit.pill(r["verdict"])} for r in pairs]
 
 
 def out(plane):
-    table = nustd.ui.TableRef("pairs", props={"columns": COLUMNS, "row_key": "key", "dense": True, "label": "Contrast, every pair, WCAG 2"})
     return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(kit.spec(S))), table.set_rows)))
 """)
 
 
 RULES = _cell("""\
-COLUMNS = [{"key": "verdict", "label": "Verdict", "width": 120}, {"key": "rule", "label": "Rule"}, {"key": "seen", "label": "Seen"}]
+COLUMNS = [{"key": "verdict", "label": "Verdict", "width": 140, "cell": nustd.ui.StatusPillRef}, {"key": "rule", "label": "Rule"}, {"key": "seen", "label": "Seen"}]
+
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Rules", subtitle="The language's own rules, checked on the spec")
+
+
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Rules"))
 
 
 @nu.host
 def rows(spec):
-    return [{k: r[k] for k in ("key", "verdict", "rule", "seen")} for r in checks.run(spec)["rules"]]
+    return [{"key": r["key"], "verdict": kit.pill(r["verdict"]), "rule": r["rule"], "seen": r["seen"]} for r in checks.run(spec)["rules"]]
 
 
 def out(plane):
-    table = nustd.ui.TableRef("rules", props={"columns": COLUMNS, "row_key": "key", "dense": True, "label": "The language's rules"})
     return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(kit.spec(S))), table.set_rows)))
 """)
 
@@ -778,11 +826,11 @@ CHECKS = (
 
 
 INBOX = _cell("""\
-import time
 from nudemos.design import studio
 
 COLUMNS = [{"key": "who", "label": "From", "width": 150}, {"key": "title", "label": "Proposal"},
-           {"key": "checks", "label": "Checks", "width": 140}, {"key": "when", "label": "Arrived", "width": 110}]
+           {"key": "checks", "label": "Checks", "width": 150, "cell": nustd.ui.StatusPillRef},
+           {"key": "when", "label": "Arrived", "width": 110, "cell": nustd.ui.RelativeTimeRef, "hide_below": 560}]
 
 
 class Studio(nustd.ui.Row):
@@ -790,29 +838,33 @@ class Studio(nustd.ui.Row):
     pace = nustd.ui.SliderRef.slot()
 
 
-class View(nustd.ui.Column):
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="id", clickable_rows=True, dense=True, label="Waiting for a decision")
-    studio = Studio.slot(gap=6, align="center")
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Inbox", subtitle="Waiting for a decision. Pick one to open it below.")
+
+
+# A row click picks the proposal Review opens: it selects, it does not leave the page.
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="id", clickable_rows=True, density="compact", label="Inbox"))
+studio_bar = View.card.footer[0].to(Studio.slot(gap=6, align="center", wrap=True))
 
 
 @nu.host
 def rows(inbox, stored, pick):
-    sp, now = specs.merged(stored), time.time()
+    sp = specs.merged(stored)
     return [{"id": p["id"], "who": p["who"], "title": ("> " if p["id"] == pick else "") + p["title"],
-             "checks": studio.verdict(sp, p["changes"]), "when": kit.ago(p["at"], now)} for p in inbox or []]
+             "checks": kit.pill(studio.verdict(sp, p["changes"])), "when": p["at"] * 1000} for p in inbox or []]
 
 
 def out(plane):
     def build(base, S):
         read = rows(S.inbox.fallback([]), S.spec.fallback({}), S.pick.fallback(""))
-        pace = View.studio.pace
-        first = View.table.set_rows([]) >> pace.set(24, min=6, max=90, step=2, label="Seconds between arrivals", show_value=True)
+        pace = studio_bar.pace
+        first = table.set_rows([]) >> pace.set(24, min=6, max=90, step=2, label="Seconds between arrivals", show_value=True)
         return first >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change(), S.rev.on_change(), S.pick.on_change()])), nu.let(nuspace.atomic(read), View.table.set_rows), every=15.0),
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.paused.on_change()])), nu.let(nuspace.atomic(S.paused.fallback(False).not_()), View.studio.live.set)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change(), S.rev.on_change(), S.pick.on_change()])), nu.let(nuspace.atomic(read), table.set_rows)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.paused.on_change()])), nu.let(nuspace.atomic(S.paused.fallback(False).not_()), studio_bar.live.set)),
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.pace.on_change()])), nu.let(nuspace.atomic(S.pace.fallback(studio.PACE)), pace.set_value)),
-            nu.ReactEvery(View.table.on_row_click(), lambda ev: S.pick.set(nu.Str(ev["key"]))),
-            nu.ReactEvery(View.studio.live.on_change(), S.paused.set(nu.Bool(View.studio.live).not_())),
+            nu.ReactEvery(table.on_row_click(), lambda ev: S.pick.set(nu.Str(ev["key"]))),
+            nu.ReactEvery(studio_bar.live.on_change(), S.paused.set(nu.Bool(studio_bar.live).not_())),
             nu.ReactEvery(pace.on_change(), S.pace.set(nu.float(pace))),
         )
 
@@ -824,16 +876,16 @@ OPEN = _cell("""\
 import time
 
 
-class Act(nustd.ui.Row):
-    accept = nustd.ui.ButtonRef.slot(label="Accept", icon="check")
-    decline = nustd.ui.ButtonRef.slot(label="Decline", icon="x", variant="secondary")
-    note = nustd.ui.TextRef.slot()
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Waiting for the team")
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.MarkdownRef.slot()
-    act = Act.slot(gap=2, align="center")
-    diff = nustd.ui.HtmlRef.slot(title="The proposal", bordered=False)
+accept = View.card.actions[0].to(nustd.ui.ButtonRef.slot(label="Accept", icon="check"))
+decline = View.card.actions[1].to(nustd.ui.ButtonRef.slot(label="Decline", icon="x", variant="secondary"))
+by_line = View.card[0].to(nustd.ui.LineRef)
+why = View.card[1].to(nustd.ui.MarkdownRef)
+diff = View.card[2].to(nustd.ui.HtmlRef.slot(title="The proposal", bordered=False))
+note = View.card.footer[0].to(nustd.ui.TextRef.slot(tone="muted", size="sm"))
 
 
 @nu.host
@@ -845,9 +897,10 @@ def opened(inbox, pick):
 @nu.host
 def shown(v, prop, waiting):
     if not prop:
-        return {"head": "#### Nothing waiting\\n\\nThe team's proposals land here as they come in.", "doc": draw.proposal(v["spec"], {}, mode=v["mode"]), "note": ""}
-    head = f"#### {prop['title']}\\n\\n**{prop['who']}**, {prop['role']}  ·  {kit.ago(prop['at'])}\\n\\n> {prop['why']}"
-    return {"head": head, "doc": draw.proposal(v["spec"], prop, mode=v["mode"]), "note": f"{waiting} waiting"}
+        return {"title": "Nothing waiting", "who": "", "role": "", "at": 0, "why": "The team's proposals land here as they come in.",
+                "doc": draw.proposal(v["spec"], {}, mode=v["mode"]), "note": ""}
+    return {"title": prop["title"], "who": prop["who"], "role": prop["role"], "at": prop["at"] * 1000, "why": prop["why"],
+            "doc": draw.proposal(v["spec"], prop, mode=v["mode"]), "note": f"{waiting} waiting"}
 
 
 @nu.host
@@ -886,17 +939,28 @@ def decide(S, prop, accepted):
     return nu.IfDo(has(prop), write >> move)
 
 
+def draw_open(v):
+    # Who sent it and when on one line, their reasons under it, then the proposal drawn.
+    sent = (
+        by_line[0].to(nustd.ui.TextRef.slot(weight="medium")).set(v["who"]) >> by_line[1].to(nustd.ui.TextRef.slot(tone="muted")).set(v["role"])
+        >> by_line[2].to(nustd.ui.RelativeTimeRef).set(v["at"])
+    )
+    return (
+        View.card.set_title(v["title"]) >> nu.IfDo(nu.Str(v["who"]) != "", sent, by_line.erase())
+        >> why.set(v["why"]) >> diff.set_html(v["doc"]) >> note.set(v["note"])
+    )
+
+
 def out(plane):
     def build(base, S):
         prop = opened(S.inbox.fallback([]), S.pick.fallback(""))
         read = shown(kit.seen(S), prop, count(S.inbox.fallback([])))
-        draw = lambda v: View.head.set(v["head"]) >> View.diff.set_html(v["doc"]) >> View.act.note.set(v["note"])
         moves = [S.mail.on_change(), S.pick.on_change(), S.rev.on_change(), S.preview.on_change()]
-        labels = View.head.set("#### Waiting for the team") >> View.act.accept.set("Accept", icon="check") >> View.act.decline.set("Decline", icon="x", variant="secondary")
+        labels = accept.set("Accept", icon="check") >> decline.set("Decline", icon="x", variant="secondary")
         return labels >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw)),
-            nu.ReactEvery(View.act.accept.on_click(), nu.let(nuspace.atomic(prop), lambda p: decide(S, p, True))),
-            nu.ReactEvery(View.act.decline.on_click(), nu.let(nuspace.atomic(prop), lambda p: decide(S, p, False))),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw_open)),
+            nu.ReactEvery(accept.on_click(), nu.let(nuspace.atomic(prop), lambda p: decide(S, p, True))),
+            nu.ReactEvery(decline.on_click(), nu.let(nuspace.atomic(prop), lambda p: decide(S, p, False))),
         )
 
     return kit.on_system(plane, build)
@@ -904,22 +968,25 @@ def out(plane):
 
 
 DECIDED = _cell("""\
-import time
+COLUMNS = [{"key": "verdict", "label": "Decision", "width": 120, "cell": nustd.ui.StatusPillRef}, {"key": "who", "label": "From", "width": 150},
+           {"key": "title", "label": "Proposal"}, {"key": "when", "label": "When", "width": 110, "cell": nustd.ui.RelativeTimeRef, "hide_below": 560}]
 
-COLUMNS = [{"key": "verdict", "label": "Decision", "width": 110}, {"key": "who", "label": "From", "width": 150},
-           {"key": "title", "label": "Proposal"}, {"key": "when", "label": "When", "width": 110}]
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Decided", subtitle="Newest first")
+
+
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Decided", max_rows=8))
 
 
 @nu.host
 def rows(done):
-    now = time.time()
-    return [{"key": f"{d['id']}-{i}", "verdict": d["verdict"], "who": d["who"], "title": d["title"], "when": kit.ago(d["at"], now)}
+    return [{"key": f"{d['id']}-{i}", "verdict": kit.pill(d["verdict"]), "who": d["who"], "title": d["title"], "when": d["at"] * 1000}
             for i, d in reversed(list(enumerate(done or [])))]
 
 
 def out(plane):
-    table = nustd.ui.TableRef("decided", props={"columns": COLUMNS, "row_key": "key", "dense": True, "label": "Decided", "max_rows": 8})
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change()])), nu.let(nuspace.atomic(rows(S.decided.fallback([]))), table.set_rows), every=30.0))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change()])), nu.let(nuspace.atomic(rows(S.decided.fallback([]))), table.set_rows)))
 """)
 
 
@@ -939,10 +1006,13 @@ class Go(nustd.ui.Row):
     cut = nustd.ui.ButtonRef.slot(label="Cut release", icon="package")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    drift = nustd.ui.MarkdownRef.slot()
-    go = Go.slot(gap=3, align="end")
+    card = nustd.ui.CardRef.slot(title="Cut a release", subtitle="A page and a job in its own process that writes every file")
+
+
+drift_text = View.card[0].to(nustd.ui.MarkdownRef)
+go = View.card[1].to(Go.slot(gap=3, align="end"))
 
 
 @nu.host
@@ -972,17 +1042,18 @@ def cut(base, S, export):
         v = nu.Str(version)
         return job.cut(base, export, v, nuspace.atomic(kit.spec(S))) >> View.history.push(nuspace.web.href(nuspace.atomic(job.release_page(base, v))))
 
-    typed = nu.Str(View.go.version).strip()
+    typed = nu.Str(go.version).strip()
     return nu.IfDo(typed != "", nu.let(typed, made))
 
 
 def out(plane):
     def build(base, S):
         read = nu.Dict.of(drift=drift(S.spec.fallback({}), S.releases.fallback([])), next=following(S.releases.fallback([])))
-        draw = lambda v: View.drift.set(v["drift"]) >> View.go.version.set(v["next"])
-        return View.drift.set("") >> View.go.version.set("") >> View.go.cut.set("Cut release", icon="package") >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change(), S.mail.on_change()])), nu.let(nuspace.atomic(read), draw)),
-            nu.ReactEvery(View.go.cut.on_click(), cut(base, S, plane)),
+        draw = lambda v: drift_text.set(v["drift"]) >> go.version.set(v["next"])
+        moves = [S.rev.on_change(), S.mail.on_change(), S.releases.on_change()]
+        return drift_text.set("") >> go.version.set("") >> go.cut.set("Cut release", icon="package") >> nu.ParallelAsync(
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw)),
+            nu.ReactEvery(go.cut.on_click(), cut(base, S, plane)),
         )
 
     return kit.on_system(plane, build)
@@ -990,36 +1061,34 @@ def out(plane):
 
 
 RELEASES = _cell("""\
-import time
+from nudemos import pages
 
-COLUMNS = [{"key": "version", "label": "Release", "width": 110}, {"key": "files", "label": "Files", "kind": "number", "width": 80},
-           {"key": "size", "label": "Size", "width": 100}, {"key": "moved", "label": "From the language"}, {"key": "when", "label": "Cut", "width": 110}]
+COLUMNS = [{"key": "version", "label": "Release", "width": 110, "cell": nustd.ui.PageLinkRef.slot(variant="inline")}, {"key": "files", "label": "Files", "kind": "number", "width": 80, "align": "end"},
+           {"key": "size", "label": "Size", "width": 100, "align": "end"}, {"key": "moved", "label": "From the language", "hide_below": 560},
+           {"key": "when", "label": "Cut", "width": 110, "cell": nustd.ui.RelativeTimeRef}]
 
 
-class View(nustd.ui.Column):
-    history = nustd.ui.HistoryRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="page", clickable_rows=True, dense=True, label="Releases, newest first")
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Releases", subtitle="Newest first. Each opens its page.")
+
+
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Releases"))
 
 
 @nu.host
 def rows(releases):
-    now = time.time()
     out = []
     for r in reversed(releases or []):
         moved = len([k for k in specs.changed(r.get("spec") or {}) if not k.startswith("knob.")])
-        out.append({"page": r["page"], "version": r["version"], "files": r["files"], "size": f"{r['bytes'] / 1024:.0f} KB",
-                    "moved": f"{moved} tokens" if moved else "as the language ships it", "when": kit.ago(r["at"], now)})
+        out.append({"key": r["page"], "version": {"page": r["page"], "label": r["version"]}, "files": r["files"], "size": f"{r['bytes'] / 1024:.0f} KB",
+                    "moved": f"{moved} tokens" if moved else "as the language ships it", "when": r["at"] * 1000})
     return out
 
 
 def out(plane):
-    def build(base, S):
-        return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change()])), nu.let(nuspace.atomic(rows(S.releases.fallback([]))), View.table.set_rows), every=30.0),
-            nu.ReactEvery(View.table.on_row_click(), lambda ev: View.history.push(nuspace.web.href(ev["key"]))),
-        )
-
-    return kit.on_system(plane, build)
+    read = lambda S: pages.linked(rows(S.releases.fallback([])), "version")
+    moves = lambda S: nu.OnAny(S.mail.on_change(), S.releases.on_change())
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(nuspace.atomic(read(S)), table.set_rows)))
 """)
 
 
@@ -1042,17 +1111,16 @@ BUILD_STATUS = _cell(
     _RELEASE_HEAD
     + """\
 
-class Tiles(nustd.ui.Grid):
-    files = nustd.ui.StatRef.slot(label="Files")
-    size = nustd.ui.StatRef.slot(label="Size")
-    took = nustd.ui.StatRef.slot(label="Took")
-    now = nustd.ui.StatRef.slot(label="Writing")
+TILES = {"files": "Files", "size": "Size", "took": "Took", "now": "Writing"}
 
 
-class View(nustd.ui.Column):
-    pill = nustd.ui.StatusPillRef.slot()
-    progress = nustd.ui.ProgressRef.slot()
-    tiles = Tiles.slot(columns=4, min_width=140, gap=3)
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Build", subtitle="The release job, in its own process")
+
+
+pill = View.card.actions[0].to(nustd.ui.StatusPillRef)
+progress = View.card[0].to(nustd.ui.ProgressRef)
+tiles = View.card[1].to(nustd.ui.GridRef.slot(nustd.ui.StatRef, max_columns=4, min_cell_width=140, gap=3))
 
 
 @nu.host
@@ -1063,16 +1131,15 @@ def summary(status, done, total, index, started, finished, current):
     end = finished or time.time()
     took = f"{end - started:.1f}s" if started else "-"
     tone = {"done": "ok", "building": "info"}.get(status, "neutral")
-    word = {"done": "released", "building": "building in its own process"}.get(status, "starting")
+    word = {"done": "released", "building": "building"}.get(status, "starting")
     return {"tone": tone, "word": word, "value": (done / total * 100) if total else 0.0, "caption": f"{done} of {total} files",
             "files": str(n), "size": f"{size / 1024:.0f} KB", "took": took, "now": current or ("all written" if status == "done" else "-")}
 
 
 def draw(v):
-    t = View.tiles
     return (
-        View.pill.set(v["word"], tone=v["tone"]) >> View.progress.set(v["value"], caption=v["caption"])
-        >> t.files.set_value(v["files"]) >> t.size.set_value(v["size"]) >> t.took.set_value(v["took"]) >> t.now.set_value(v["now"])
+        pill.set(v["word"], tone=v["tone"]) >> progress.set(v["value"], caption=v["caption"])
+        >> nu.Sequential(*(tiles[k].set(v[k], label=label) for k, label in TILES.items()))
     )
 
 
@@ -1094,8 +1161,15 @@ BUILD_FILES = _cell(
     _RELEASE_HEAD
     + """\
 
-COLUMNS = [{"key": "name", "label": "File"}, {"key": "kind", "label": "Kind", "width": 80},
-           {"key": "size", "label": "Size", "width": 100}, {"key": "ms", "label": "Drawn in", "width": 100}]
+COLUMNS = [{"key": "name", "label": "File"}, {"key": "kind", "label": "Kind", "width": 80, "cell": nustd.ui.BadgeRef.slot(variant="neutral", size="sm")},
+           {"key": "size", "label": "Size", "width": 100, "align": "end"}, {"key": "ms", "label": "Drawn in", "width": 100, "align": "end"}]
+
+
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Files written", subtitle="As the job writes them")
+
+
+table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Files"))
 
 
 @nu.host
@@ -1105,8 +1179,6 @@ def rows(index):
 
 
 def out(plane):
-    table = nustd.ui.TableRef("files", props={"columns": COLUMNS, "row_key": "key", "dense": True, "label": "Files written"})
-
     def follow(jb):
         b = job.build_at(jb)
         return nu.Reconcile(nuspace.atomic(b.done.on_change()), nu.let(nuspace.atomic(rows(b.index.fallback([]))), table.set_rows), every=3.0)

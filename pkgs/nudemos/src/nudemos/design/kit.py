@@ -9,14 +9,14 @@
 - :func:`edit`, :func:`undo`, :func:`reset`: the writes, each over a
   :class:`System`. Each is one change to the spec and one line in the
   history, and moves ``rev``, so every page drawing from the spec redraws.
-- :func:`go`: send the shell to a page.
+- :func:`pill`, :func:`describe_change`, :func:`tally`: what the tables and
+  feeds show, from what the store holds.
 
 Cells import this module, so their own sources (:mod:`.cells`) stay short.
 """
 
 from __future__ import annotations
 
-import time as _time
 from typing import TYPE_CHECKING, Any
 
 import nu
@@ -40,6 +40,7 @@ __all__ = [
     "edit",
     "is_root",
     "on_system",
+    "pill",
     "reset",
     "root_of",
     "spec",
@@ -270,30 +271,38 @@ def reset(s: System, who: nu.StrArg = "you") -> nu.Nu:
 # --- small shapes ----------------------------------------------------------------------------------
 
 
-def ago(at: float, now: float | None = None) -> str:
-    """``just now``, ``40s ago``, ``3 min ago``, ``2 h ago``."""
-    s = max(0.0, (now or _time.time()) - at)
-    if s < 10:
-        return "just now"
-    if s < 60:
-        return f"{s:.0f}s ago"
-    if s < 3600:
-        return f"{s / 60:.0f} min ago"
-    if s < 86400:
-        return f"{s / 3600:.0f} h ago"
-    days = round(s / 86400)
-    return "yesterday" if days <= 1 else f"{days} days ago"
+#: The pill tone for each word a check or a decision says.
+TONES = {
+    "pass": "ok",
+    "clean": "ok",
+    "accepted": "ok",
+    "under target": "warn",
+    "declined": "neutral",
+    "fail": "danger",
+}
+
+
+def pill(word: str) -> dict[str, str]:
+    """A status pill cell for ``word``: ``pass``, ``under target``, ``fail``, ``accepted``, ``2 fails``."""
+    tone = TONES.get(word) or (
+        "danger"
+        if word.endswith("fails")
+        else "warn"
+        if word.endswith("under target")
+        else "neutral"
+    )
+    return {"label": word, "tone": tone}
 
 
 def describe_change(changes: dict) -> str:
-    """``afterglow (dusk) #8946db to #9a4fe0, and 5 more``."""
+    """``afterglow (dusk) #8946db to #9a4fe0, and 5 more``: plain text, for a table cell or a feed line."""
     items = list(changes.items())
     if not items:
         return ""
     k, (old, new) = items[0]
     name = k.split(":", 1)[-1] + (f" ({k.split(':')[0]})" if ":" in k else "")
     more = f", and {len(items) - 1} more" if len(items) > 1 else ""
-    return f"`{name}` {old} to {new}{more}"
+    return f"{name} {old} to {new}{more}"
 
 
 @nu.host

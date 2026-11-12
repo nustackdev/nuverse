@@ -8,7 +8,8 @@ import tarfile
 import pytest
 
 import nu
-from nudemos.ops import model, shape
+import nuspace
+from nudemos.ops import cells, model, shape
 from nudemos.ops.gateway import RELEASES, Gateway
 from nudemos.ops.jobs import SOURCES
 from nudemos.ops.work import Shoppers, Worker
@@ -95,7 +96,11 @@ def test_log_rows_filter_by_level_and_text() -> None:
         {"ts_us": 2, "level": "info", "msg": "GET /api/cart 200", "fields": {}},
         {"ts_us": 1, "level": "warning", "msg": "attempt 1 of 3", "fields": {"attempt": 1}},
     ]
-    assert [r["level"] for r in shape.log_rows(rows, "warning", "")] == ["error", "warning"]
+    kept = shape.log_rows(rows, "warning", "")
+    assert [r["level"] for r in kept] == [
+        {"label": "error", "variant": "danger"},
+        {"label": "warning", "variant": "warn"},
+    ]
     assert [r["message"] for r in shape.log_rows(rows, "debug", "ranking")] == [
         "GET /api/search 500"
     ]
@@ -113,12 +118,99 @@ def test_status_components_follow_the_routes() -> None:
         "gateway": {"status": "running"},
         "linkcheck": {"last": {"ok": False, "summary": "6 broken links"}},
     }
-    parts = {p["name"]: p for p in shape.components(gw, jobs, {})}
-    assert parts["Search"]["label"] == "Partial outage"
-    assert parts["Storefront"]["tone"] == "ok"
-    assert parts["Help center"]["label"] == "Broken links"
+    parts = {p["key"]: p for p in shape.components(gw, jobs, {})}
+    assert parts["search"]["status"] == {"label": "Partial outage", "tone": "danger"}
+    assert parts["storefront"]["status"]["tone"] == "ok"
+    assert parts["help"]["status"]["label"] == "Broken links"
+    assert len(parts) == 5
     down = shape.components(gw, {"gateway": {"status": "crashed"}}, {})
-    assert down[0]["label"] == "Major outage"
+    assert down[0]["status"]["label"] == "Major outage"
+
+
+def test_job_rows_link_each_job_to_its_page_and_carry_times() -> None:
+    jobs = {
+        "backup": {
+            "kind": "scheduled",
+            "status": "ok",
+            "last": {"ended": 1000.0, "summary": "3 archives"},
+        },
+        "gateway": {"kind": "service", "status": "crashed", "reason": "out of memory"},
+    }
+    rows = {r["key"]: r for r in shape.job_rows(jobs, {"backup": "p7"}, 1010.0)}
+    assert set(rows) == set(model.JOBS)
+    backup, gateway = rows["backup"], rows["gateway"]
+    assert backup["job"] == {"page": "p7", "label": "backup"}
+    assert (backup["last"], backup["said"]) == (1_000_000, "3 archives")
+    assert backup["status"] == {"label": "ok", "tone": "ok"}
+    # A job whose page is not made yet draws its name unlinked.
+    assert gateway["job"] == {"page": "", "label": "gateway"}
+    assert (gateway["last"], gateway["said"]) == (None, "out of memory")
+    assert gateway["status"]["tone"] == "danger"
+
+
+def test_incident_rows_open_first_with_their_pages() -> None:
+    incidents = {
+        "INC-1": {"id": "INC-1", "sev": 2, "status": "resolved", "opened": 10.0, "resolved": 70.0},
+        "INC-2": {"id": "INC-2", "sev": 1, "status": "open", "opened": 50.0},
+    }
+    rows = shape.incident_rows(incidents, {"INC-2": "p9"}, 100.0)
+    assert [r["key"] for r in rows] == ["INC-2", "INC-1"]
+    assert rows[0]["incident"] == {"page": "p9", "label": "INC-2"}
+    assert rows[0]["sev"] == {"label": "sev 1", "variant": "danger"}
+    assert (rows[0]["opened"], rows[1]["lasted"]) == (50_000, "1m 00s")
+    assert rows[1]["incident"]["page"] == ""
+
+
+def test_rule_rows_and_feed_rows_carry_cells() -> None:
+    (rule,) = shape.rule_rows({"err": {"title": "Errors", "on": True, "firing": True, "last": 5.0}})
+    assert rule["state"] == {"label": "firing", "tone": "danger"}
+    assert (rule["last"], rule["fired"], rule["on"]) == (5000, 0, True)
+    (off,) = shape.rule_rows({"err": {"on": False}})
+    assert off["state"]["label"] == "off"
+    assert off["last"] is None
+    (event,) = shape.feed_rows([{"at": 2.0, "kind": "deploy", "text": "1.9.0 live"}])
+    assert event["when"] == 2000
+    assert event["kind"] == {"label": "deploy", "variant": "brand"}
+
+
+def test_a_timeline_keeps_exact_clock_times() -> None:
+    inc = {
+        "timeline": [
+            {"at": 1.0, "text": "opened", "who": "rule"},
+            {"at": 2.0, "text": "on it", "who": "you"},
+        ]
+    }
+    rows = shape.timeline(inc)
+    assert [(r["what"], r["who"]) for r in rows] == [("opened", ""), ("on it", "you")]
+    assert rows[0]["time"] == shape.clock(1.0)
+
+
+# --- the cells load ------------------------------------------------------------------------------
+
+# Every page cell, loaded as the kernel loads it and compiled. Never run: on a
+# real page the welcome cell seeds the space (the gateway and supervised jobs),
+# and every other cell follows them.
+CELLS = {
+    f"{page}.{name}": source
+    for page, group in (
+        ("root", cells.ROOT),
+        *((key, group) for key, _, _, group in cells.FOLDERS),
+        ("job", cells.JOB),
+        ("incident", cells.INCIDENT_CELLS),
+    )
+    for name, source in group
+}
+
+
+@pytest.mark.parametrize("source", list(CELLS.values()), ids=list(CELLS))
+async def test_every_ops_cell_loads(store, source) -> None:
+    from nuspace import Space
+
+    await store.do(nuspace.plane.add("p", backend="async"))
+    await store.do(nuspace.cell.add("p", source, id="c"))
+    assert await store.read(Space.cells["c"].fabrics) == ["ui"]
+    load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"})
+    nu.validate(nu.compile(await store.run(nuspace.atomic(load))))
 
 
 @pytest.mark.parametrize("release", ["1.8.3", "1.9.0"])
@@ -174,7 +266,6 @@ def test_a_monitored_incident_is_not_open_on_the_tiles() -> None:
 
 
 async def test_the_first_open_makes_the_pages_and_the_jobs_once(store, tmp_path):
-    import nuspace
     from nudemos import headless, ops
     from nudemos.ops import jobs, kit, state
     from nuspace import Space
@@ -213,7 +304,6 @@ async def test_the_first_open_makes_the_pages_and_the_jobs_once(store, tmp_path)
 
 
 async def test_pausing_a_job_takes_it_off_its_schedule_and_resuming_puts_it_back(store, tmp_path):
-    import nuspace
     from nudemos import ops
     from nudemos.ops import kit, state
     from nuspace.system import supervisor

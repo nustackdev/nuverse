@@ -14,7 +14,19 @@ import nu
 import nu.prog
 import nuspace
 import nustd.kv
-from nudemos import agents, counter, data, movies, ops, recipes, research, sampled, tour
+from nudemos import (
+    agents,
+    counter,
+    data,
+    design,
+    knowledge,
+    movies,
+    ops,
+    recipes,
+    research,
+    sampled,
+    tour,
+)
 from nuspace import Space
 from nuspace.places import inside
 from nuspace.specs import PlaneSpec, SpecCells
@@ -31,7 +43,8 @@ if TYPE_CHECKING:
 DEMOS = [counter, sampled]
 MOVIES = [movies]
 SPECS = [tour.PLANE, *(m.PLANE for m in (*DEMOS, *MOVIES))]
-SOURCES = [source for spec in SPECS for _, source in spec.cells]
+#: Each source once: specs that share a cell source share its test id.
+SOURCES = list(dict.fromkeys(source for spec in SPECS for _, source in spec.cells))
 
 
 def _every_cell(spec: PlaneSpec) -> list[tuple[str, str]]:
@@ -39,9 +52,14 @@ def _every_cell(spec: PlaneSpec) -> list[tuple[str, str]]:
     return [*spec.cells, *(c for child in spec.children for c in _every_cell(child))]
 
 
-#: The demos keyed once per space, and every cell their roots seed: built as the kernel builds them.
+#: The demos keyed once per space, and every cell the bigger demos' roots seed, each source once:
+#: built as the kernel builds them.
 KEYED = [ops, research, data]
-KEYED_SOURCES = [s for m in (*KEYED, agents, recipes) for _, s in _every_cell(m.PLANE)]
+KEYED_SOURCES = list(
+    dict.fromkeys(
+        s for m in (*KEYED, agents, recipes, design, knowledge) for _, s in _every_cell(m.PLANE)
+    )
+)
 
 
 class _Counter(nu.Shape):
@@ -288,7 +306,7 @@ async def test_sampled_feeds_in_batches_and_charts_a_sample(store):
 
 
 # The way a demo moves the page: a HistoryRef slot in the cell's View, pushed
-# a pane URL. The row clicks and launches across the demos all do this.
+# a pane URL. The launches across the demos do this.
 PUSHES = """\
 import nu
 import nu.prog

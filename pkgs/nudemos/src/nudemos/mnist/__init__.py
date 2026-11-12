@@ -38,40 +38,38 @@ TEXT = """\\
 
 A small CNN learns to read handwritten digits, and every run is tracked live.
 
-- **Launch** starts a run: pick the knobs, press Launch. Each run gets a page, and a headless job under it that trains in its own process.
-- A **run page** shows the curves, the weights and gradients of every layer over training, and twelve test digits flipping from wrong to right. Drag the learning rate while it trains, stop it, resume it.
-- **Compare** lines the runs up: a table, overlaid curves, the best one in a sentence.
-- **Read** puts a run's model to work: draw a digit and it reads it. Pick a run still training and watch its reading change as checkpoints land.
-
 Nu owns the loop, torch owns the step: the job cell is a Nu loop over a trainer resource, the metrics land in kh57 series, and a chart samples them at the same cost however long the run. The models live in the space too, each run's latest checkpoint and its best. Close the space mid run and open it again: the run picks up from its last checkpoint.
 """
 
-class Links(nustd.ui.Row):
-    launch = nustd.ui.LinkRef.slot()
-    compare = nustd.ui.LinkRef.slot()
-    read = nustd.ui.LinkRef.slot()
+#: What the root's first three children hold, in the order the spec makes them.
+WAYS = [
+    "Pick the knobs and start a run; each gets a page that trains live",
+    "Every run side by side: a table, overlaid curves, the best one",
+    "Draw a digit and a run's model reads it, checkpoint by checkpoint",
+]
 
 
-class View(nustd.ui.Column):
-    text = nustd.ui.MarkdownRef.slot()
-    links = Links.slot(gap=4)
+class View(nu.Shape):
+    page = nustd.ui.ColumnRef.slot(gap=4)
+
+
+text = View.page["text"].to(nustd.ui.MarkdownRef)
+ways = View.page["ways"].to(nustd.ui.GridRef.slot(max_columns=3, min_cell_width=200, gap=3))
 
 
 def links(kids):
-    # Launch, Compare and Read, the first three planes under this one.
-    def to(i):
-        return nuspace.web.href(nu.List(kids)[i])
+    def way(i, what):
+        pid = nu.Str(nu.List(kids)[i])
+        tile = ways[pid].to(nustd.ui.PageLinkRef.slot(variant="tile"))
+        return nuspace.web.link(tile, pid, description=what)
 
-    L = View.links
-    return (
-        L.launch.set(href=to(0), label="Launch a run") >> L.compare.set(href=to(1), label="Compare runs")
-        >> L.read.set(href=to(2), label="Read a digit")
-    )
+    return nu.Sequential(*(way(i, what) for i, what in enumerate(WAYS)))
 
 
 def out(plane):
+    # Launch, Compare and Read, the first three planes under this one.
     first = nuspace.Space.planes[plane].children.keys(limit=3)
-    return View.text.set(TEXT) >> nu.let(nuspace.atomic(first), links) >> nu.ForeverDo(nu.Delay(3600.0))
+    return text.set(TEXT) >> nuspace.atomic(nu.let(first, links)) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 

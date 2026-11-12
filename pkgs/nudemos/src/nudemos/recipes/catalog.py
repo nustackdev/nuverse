@@ -1,11 +1,16 @@
 """Catalog: the instruments as a list to act on.
 
-A page header with search and an add button, then tabs over the list. The
-list is a grid of cards, each with its picture on top, its state on the
-header's right and its actions in a footer pinned to the bottom, so a row
-of cards lines its buttons up whatever each one says. Under it, saved views
-as whole-card links, recently viewed pages as page links, and an empty
-archive that says what would be there and where to read more.
+A page header with filters and an add button, then tabs over the list. The
+list is a grid of cards, each with its picture in the card's media, its
+state on the header's right and its actions in the footer pinned to the
+bottom, so a row of cards lines its buttons up whatever each one says.
+Under it, saved views as whole-card links, recently viewed pages as page
+links, and an empty archive that says what would be there and where to
+read more.
+
+Every child is reached from its container and named with ``.to(Kind)``
+where it is placed: a tab by its id, a card's parts as ``card.media``,
+``card.actions`` and ``card.footer``, repeated items by position.
 """
 
 from __future__ import annotations
@@ -27,189 +32,171 @@ __all__ = ["page"]
 #: How each state reads: (pill tone, pill label).
 STATES = {"open": ("ok", "Open"), "busy": ("warn", "Busy"), "closed": ("neutral", "Down")}
 
-#: Saved views: (key, title, what it shows, count, the page it opens).
+#: Saved views: (title, what it shows, count, the page it opens).
 VIEWS = (
-    (
-        "clear",
-        "Clear tonight",
-        "Open instruments under a clear forecast",
-        "7 instruments",
-        "dashboard",
-    ),
-    ("south", "Southern sky", "Everything below the equator", "9 instruments", "dashboard"),
-    ("mine", "Booked by me", "Your requests, next one first", "3 bookings", "detail"),
+    ("Clear tonight", "Open instruments under a clear forecast", "7 instruments", "dashboard"),
+    ("Southern sky", "Everything below the equator", "9 instruments", "dashboard"),
+    ("Booked by me", "Your requests, next one first", "3 bookings", "detail"),
 )
 
-#: Recently viewed pages: (key, title, where it is, when, the page it opens).
+#: Recently viewed pages: (title, where it is, when, the page it opens).
 RECENT = (
-    ("kestrel", "Kestrel 2", "Atacama, reflector", "Today", "detail"),
-    ("plan", "Tonight's plan", "Kestrel 2, six slots", "Today", "detail"),
-    ("members", "Members", "Settings, 12 people", "Yesterday", "settings"),
+    ("Kestrel 2", "Atacama, reflector", "Today", "detail"),
+    ("Tonight's plan", "Kestrel 2, six slots", "Today", "detail"),
+    ("Members", "Settings, 12 people", "Yesterday", "settings"),
 )
+
+
+def _card(grid: ui.Ref, i: int, item: dict, to: Mapping[str, str]) -> list[nu.Nu]:
+    """One instrument's card at position ``i``: picture, state, words, actions."""
+    tone, state = STATES[item["status"]]
+    queue = f"{item['queue']} in queue" if item["queue"] else "Queue paused"
+    card = grid[i].to(
+        ui.CardRef.slot(
+            title=item["name"],
+            subtitle=f"{item['aperture']} {item['kind'].lower()}, {item['site']}",
+        )
+    )
+    footer = card.footer.to(ui.RowRef.slot(gap=2, justify="between"))
+    return [
+        card.media.to(
+            ui.ImageRef.slot(
+                src=meridian.sky(item["seed"], item["hue"], 640, 360),
+                alt="",
+                fit="cover",
+                aspect="16/9",
+            )
+        ).init(),
+        card.actions[0].to(ui.StatusPillRef.slot(tone=tone, label=state)).init(),
+        card[0].to(ui.TextRef.slot(value=item["summary"], tone="secondary", size="sm")).init(),
+        card[1]
+        .to(ui.TextRef.slot(value=f"{queue}, seeing {item['seeing']}", tone="muted", size="xs"))
+        .init(),
+        footer[0]
+        .to(ui.ButtonRef.slot(label="Details", variant="secondary", size="sm", href=to["detail"]))
+        .init(),
+        footer[1]
+        .to(
+            ui.ButtonRef.slot(
+                label="Book", icon="calendar", size="sm", disabled=item["status"] == "closed"
+            )
+        )
+        .init(),
+    ]
 
 
 def page(links: Mapping[str, str] | None = None) -> nu.Nu:
     """The catalog, drawn."""
     to = meridian.links(links)
-    shown: list[nu.Nu] = []
-
-    def put(ref_cls: type[ui.Ref], segment: str, parent: ui.Ref | None, **props: object) -> ui.Ref:
-        ref = ref_cls(segment, parent_ref=parent, props=props)
-        shown.append(ref.init())
-        return ref
-
-    root = put(ui.ContainerRef, "catalog", None, size="main", gap=10)
+    root = ui.ContainerRef("catalog", props={"gap": 10})
 
     # --- header ------------------------------------------------------------------------------
-    head = put(ui.RowRef, "head", root, align="end", gap=2, wrap=True)
-    put(
-        ui.HeadingRef,
-        "title",
-        head,
-        label="Instruments",
-        level=1,
-        size="3xl",
-        eyebrow="Meridian network",
-        subtitle="Every telescope on the network. Book one, or open it for tonight's plan.",
-    )
-    put(ui.SpacerRef, "push", head)
-    put(ui.ButtonRef, "filter", head, label="Filters", icon="sliders-horizontal", variant="outline")
-    put(ui.ButtonRef, "add", head, label="Add instrument", icon="plus")
+    head = root["head"].to(ui.RowRef.slot(align="end", gap=2, wrap=True, grow={"title": 1}))
+    shown = [
+        root.init(),
+        head["title"]
+        .to(
+            ui.HeadingRef.slot(
+                label="Instruments",
+                level=1,
+                size="3xl",
+                eyebrow="Meridian network",
+                subtitle="Every telescope on the network. Book one, or open it for tonight's plan.",
+            )
+        )
+        .init(),
+        head["filter"]
+        .to(ui.ButtonRef.slot(label="Filters", icon="sliders-horizontal", variant="outline"))
+        .init(),
+        head["add"].to(ui.ButtonRef.slot(label="Add instrument", icon="plus")).init(),
+    ]
 
     # --- the list, under tabs -----------------------------------------------------------------
     open_now = [i for i in meridian.INSTRUMENTS if i["status"] == "open"]
-    tabs = put(
-        ui.TabsRef,
-        "views",
-        root,
-        tabs=[
-            {"id": "all", "label": f"All {len(meridian.INSTRUMENTS)}"},
-            {"id": "open", "label": f"Open tonight {len(open_now)}"},
-            {"id": "down", "label": "Down 1"},
-        ],
-        active="all",
-        variant="line",
+    tabs = root["views"].to(
+        ui.TabsRef.slot(
+            tabs=[
+                {"id": "all", "label": f"All {len(meridian.INSTRUMENTS)}"},
+                {"id": "open", "label": f"Open tonight {len(open_now)}"},
+                {"id": "down", "label": "Down 1"},
+            ],
+            active="all",
+            variant="line",
+        )
     )
-    grid = put(ui.GridRef, "all", tabs, columns=3, min_width=260, gap=5)
-    for item in meridian.INSTRUMENTS:
-        tone, state = STATES[item["status"]]
-        card = put(
-            ui.CardRef,
-            item["id"],
-            grid,
-            title=item["name"],
-            subtitle=f"{item['aperture']} {item['kind'].lower()}, {item['site']}",
+    grid = tabs["all"].to(ui.GridRef.slot(max_columns=3, min_cell_width=260, gap=5))
+    for i, item in enumerate(meridian.INSTRUMENTS):
+        shown += _card(grid, i, item, to)
+    rows = tabs["open"].to(ui.ColumnRef.slot(gap=1))
+    shown += [
+        rows[i]
+        .to(
+            ui.PageLinkRef.slot(
+                href=to["detail"],
+                title=item["name"],
+                icon="target",
+                description=item["summary"],
+                meta=item["site"],
+            )
         )
-        put(
-            ui.ImageRef,
-            "media",
-            card,
-            src=meridian.sky(item["seed"], item["hue"], 640, 360),
-            alt="",
-            fit="cover",
-            aspect="16/9",
+        .init()
+        for i, item in enumerate(open_now)
+    ]
+    shown.append(
+        tabs["down"]
+        .to(
+            ui.EmptyStateRef.slot(
+                icon="wrench",
+                label="Merlin is down for a mirror recoat",
+                description="Back on Friday. Its queue is paused, not dropped.",
+            )
         )
-        put(ui.StatusPillRef, "actions", card, tone=tone, label=state)
-        put(ui.TextRef, "summary", card, value=item["summary"], tone="secondary", size="sm")
-        queue = f"{item['queue']} in queue" if item["queue"] else "Queue paused"
-        put(
-            ui.TextRef,
-            "meta",
-            card,
-            value=f"{queue}, seeing {item['seeing']}",
-            tone="muted",
-            size="xs",
-        )
-        footer = put(ui.RowRef, "footer", card, gap=2)
-        put(
-            ui.ButtonRef,
-            "open",
-            footer,
-            label="Details",
-            variant="secondary",
-            size="sm",
-            href=to["detail"],
-        )
-        put(ui.SpacerRef, "push", footer)
-        put(
-            ui.ButtonRef,
-            "book",
-            footer,
-            label="Book",
-            icon="calendar",
-            size="sm",
-            disabled=item["status"] == "closed",
-        )
-    rows = put(ui.ColumnRef, "open", tabs, gap=1)
-    for item in open_now:
-        put(
-            ui.PageLinkRef,
-            item["id"],
-            rows,
-            href=to["detail"],
-            title=item["name"],
-            icon="target",
-            description=item["summary"],
-            meta=item["site"],
-        )
-    put(
-        ui.EmptyStateRef,
-        "down",
-        tabs,
-        icon="wrench",
-        label="Merlin is down for a mirror recoat",
-        description="Back on Friday. Its queue is paused, not dropped.",
+        .init()
     )
 
     # --- saved views: whole cards as links -----------------------------------------------------
-    saved = put(
-        ui.PageSectionRef,
-        "saved",
-        root,
-        title="Saved views",
-        description="Filters you keep coming back to.",
+    saved = root["saved"].to(
+        ui.PageSectionRef.slot(title="Saved views", description="Filters you keep coming back to.")
     )
-    put(
-        ui.ButtonRef,
-        "new",
-        saved.actions,
-        label="New view",
-        icon="plus",
-        variant="ghost",
-        size="sm",
+    shown.append(
+        saved.actions[0]
+        .to(ui.ButtonRef.slot(label="New view", icon="plus", variant="ghost", size="sm"))
+        .init()
     )
-    cards = put(ui.GridRef, "cards", saved, columns=3, min_width=220, gap=4)
-    for key, title, what, count, opens in VIEWS:
-        card = put(
-            ui.CardRef, key, cards, title=title, subtitle=what, href=to[opens], variant="sunken"
+    cards = saved[0].to(ui.GridRef.slot(max_columns=3, min_cell_width=220, gap=4))
+    for i, (title, what, count, opens) in enumerate(VIEWS):
+        card = cards[i].to(
+            ui.CardRef.slot(title=title, subtitle=what, href=to[opens], variant="sunken")
         )
-        put(ui.TextRef, "count", card, value=count, weight="medium", size="sm")
+        shown.append(card[0].to(ui.TextRef.slot(value=count, weight="medium", size="sm")).init())
 
     # --- recently viewed and the archive ---------------------------------------------------------
-    lower = put(ui.GridRef, "lower", root, columns=2, min_width=300, gap=8)
-    recent = put(ui.PageSectionRef, "recent", lower, title="Recently viewed")
-    for key, title, where, when, opens in RECENT:
-        put(
-            ui.PageLinkRef,
-            key,
-            recent,
-            href=to[opens],
-            title=title,
-            icon="file-text",
-            description=where,
-            meta=when,
+    lower = root["lower"].to(ui.GridRef.slot(cols=2, gap=8, stack_below=768))
+    recent = lower[0, 0].to(ui.PageSectionRef.slot(title="Recently viewed", gap=1))
+    shown += [
+        recent[i]
+        .to(
+            ui.PageLinkRef.slot(
+                href=to[opens], title=title, icon="file-text", description=where, meta=when
+            )
         )
-    archive = put(ui.PageSectionRef, "archive", lower, title="Archived")
-    box = put(ui.BoxRef, "box", archive, border="hairline", padding="lg")
-    put(
-        ui.EmptyStateRef,
-        "empty",
-        box,
-        icon="archive",
-        label="Nothing archived yet",
-        description="Retired instruments land here, frames and history kept.",
-        action="How archiving works",
-        action_href=to["landing"],
+        .init()
+        for i, (title, where, when, opens) in enumerate(RECENT)
+    ]
+    archive = lower[0, 1].to(ui.PageSectionRef.slot(title="Archived"))
+    box = archive[0].to(ui.CardRef.slot(variant="outline", padding=6))
+    shown.append(
+        box[0]
+        .to(
+            ui.EmptyStateRef.slot(
+                icon="archive",
+                label="Nothing archived yet",
+                description="Retired instruments land here, frames and history kept.",
+                action="How archiving works",
+                action_href=to["landing"],
+            )
+        )
+        .init()
     )
 
     return nu.Sequential(*shown)

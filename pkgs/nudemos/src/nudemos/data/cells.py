@@ -41,7 +41,7 @@ class Bar(nustd.ui.Row):
     line = nustd.ui.TextRef.slot()
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     bar = Bar.slot(gap=2, align="center")
 
 
@@ -57,35 +57,34 @@ def out(plane):
 
 
 FILTERS = cell("""\
-RANGES = ["Last 7 days", "Last 30 days", "Last 90 days", "Last 12 months", "All time"]
-CHANNELS = ["All", "Web store", "Subscription", "Marketplace", "Wholesale", "Pop-up"]
-CATEGORIES = ["All", "Blends", "Single origin", "Subscription", "Gear", "Merch"]
+OPTIONS = {
+    "range": ["Last 7 days", "Last 30 days", "Last 90 days", "Last 12 months", "All time"],
+    "channel": ["All", "Web store", "Subscription", "Marketplace", "Wholesale", "Pop-up"],
+    "category": ["All", "Blends", "Single origin", "Subscription", "Gear", "Merch"],
+}
+LABELS = {"range": "Range", "channel": "Channel", "category": "Category"}
 
 
-def pick(label, options):
-    return type("Pick", (nustd.ui.Field,), {"choice": nustd.ui.SelectRef.slot(options=options)}).slot(label=label)
+class View(nu.Shape):
+    filters = nustd.ui.GridRef.slot(max_columns=3, min_cell_width=180, gap=3)
 
 
-class Filters(nustd.ui.Grid):
-    range = pick("Range", RANGES)
-    channel = pick("Channel", CHANNELS)
-    category = pick("Category", CATEGORIES)
-
-
-class View(nustd.ui.Column):
-    filters = Filters.slot(columns=3, min_width=180, gap=3)
+# A labelled select per filter, each the control of a Field in the grid.
+PICKS = {
+    k: View.filters[k].to(nustd.ui.FieldRef.slot(label=LABELS[k])).control.to(nustd.ui.SelectRef.slot(options=v))
+    for k, v in OPTIONS.items()
+}
 
 
 def out(plane):
     def follow(root):
-        F = View.filters
-        shown = lambda f: F.range.choice.set(f["range"]) >> F.channel.choice.set(f["channel"]) >> F.category.choice.set(f["category"])
-        asked = nu.Dict.of(range=nu.Str(F.range.choice), channel=nu.Str(F.channel.choice), category=nu.Str(F.category.choice))
+        shown = lambda f: nu.Sequential(*(PICKS[k].set(f[k]) for k in OPTIONS))
+        asked = nu.Dict.of(**{k: nu.Str(PICKS[k]) for k in OPTIONS})
         # One filter for the whole space: set here, every page that reads it moves.
         save = nuspace.atomic(SHOP.filters.set(asked))
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.filters.on_change()])), nu.let(nuspace.atomic(SHOP.filters.fallback({})), shown)),
-            *(nu.ReactEvery(p.choice.on_change(), save) for p in (F.range, F.channel, F.category)),
+            *(nu.ReactEvery(p.on_change(), save) for p in PICKS.values()),
         )
 
     return kit.on_shop(plane, follow)
@@ -96,6 +95,8 @@ def out(plane):
 
 
 WELCOME = cell('''\
+import nuspace.web as web
+
 TEXT = """\\
 Owlbridge roasts coffee in Portland and sells it four ways: the web store, a monthly subscription, \\
 a marketplace, and wholesale to cafes. These are its numbers, live: orders land as they are placed, \\
@@ -106,12 +107,17 @@ is a small program you can open and change.
 
 class View(nustd.ui.Column):
     about = nustd.ui.MarkdownRef.slot()
-    ways = nustd.ui.MarkdownRef.slot()
+    ways = nustd.ui.GridRef.slot(max_columns=3, min_cell_width=220, gap=3)
 
 
 def out(plane):
+    def tiles(pages):
+        # A tile per page, titled and marked off the store, with what it is for.
+        tile = lambda key, what: nuspace.atomic(web.link(View.ways[key].to(nustd.ui.PageLinkRef.slot(variant="tile")), nu.Str(pages[key]), description=what))
+        return nu.Sequential(*(tile(key, what) for key, what in views.PAGES))
+
     def build(root):
-        return View.about.set(TEXT) >> nu.let(nuspace.atomic(kit.pages(root)), lambda p: View.ways.set(views.ways(p))) >> nu.ForeverDo(nu.Delay(3600.0))
+        return nu.let(nuspace.atomic(kit.pages(root)), tiles) >> nu.ForeverDo(nu.Delay(3600.0))
 
     # The first open writes two years of history and starts the jobs; every other cell waits for it.
     seeded = nu.let(nuspace.atomic(kit.ROOT_ID), lambda root: kit.seed(nu.Str(root)))
@@ -131,15 +137,13 @@ KEYS = {
     "new": "New customers today",
 }
 
-Tiles = type("Tiles", (nustd.ui.Grid,), {k: nustd.ui.StatRef.slot(label=v) for k, v in KEYS.items()})
 
-
-class View(nustd.ui.Column):
-    tiles = Tiles.slot(columns=4, min_width=180, gap=3)
+class View(nu.Shape):
+    tiles = nustd.ui.GridRef.slot(nustd.ui.CardRef.slot(size="sm"), max_columns=4, min_cell_width=160, gap=3)
 
 
 def draw(t):
-    tile = lambda k: getattr(View.tiles, k).set(t[k]["value"], delta=t[k]["delta"], trend=t[k]["trend"])
+    tile = lambda k: View.tiles[k][0].to(nustd.ui.StatRef).set(t[k]["value"], label=KEYS[k], delta=t[k]["delta"], trend=t[k]["trend"])
     return nu.IfDo(nu.Bool(t), nu.Sequential(*(tile(k) for k in KEYS)))
 
 
@@ -150,24 +154,23 @@ def out(plane):
 
 
 TODAY = cell("""\
-class Both(nustd.ui.Grid):
-    today = nustd.ui.LineChart.slot(
-        ("Today", "Same day last week"), title="Revenue today, hour by hour", x_type="category",
-        y_format="${value}", height=280, colors=("var(--chart-1)", "var(--chart-neutral, #9aa0a6)"),
-    )
-    month = nustd.ui.BarChart.slot(
-        ("Web store", "Subscription", "Marketplace", "Wholesale"), title="The last 30 days, by channel",
-        stack=True, x_type="time", value_format="${value}", height=280, option={"legend": {"type": "plain"}},
-    )
+class View(nu.Shape):
+    both = nustd.ui.GridRef.slot(cols=2, gap=4, stack_below=900)
 
 
-class View(nustd.ui.Column):
-    both = Both.slot(columns=2, min_width=420, gap=4)
+today = View.both[0, 0].to(nustd.ui.LineChart.slot(
+    ("Today", "Same day last week"), title="Revenue today, hour by hour", x_type="category",
+    y_format="${value}", height=280, colors=("var(--chart-1)", "var(--chart-neutral, #9aa0a6)"),
+))
+month = View.both[0, 1].to(nustd.ui.BarChart.slot(
+    ("Web store", "Subscription", "Marketplace", "Wholesale"), title="The last 30 days, by channel",
+    stack=True, x_type="time", value_format="${value}", height=280, option={"legend": {"type": "plain"}},
+))
 
 
 def out(plane):
     def build(root):
-        draw = lambda v: nu.IfDo(nu.Bool(v), View.both.today.set(v["today"]) >> View.both.month.set(v["month"]))
+        draw = lambda v: nu.IfDo(nu.Bool(v), today.set(v["today"]) >> month.set(v["month"]))
         return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.beat.on_change()])), nu.let(nuspace.atomic(kit.read("overview")), draw))
 
     return kit.on_shop(plane, build)
@@ -176,23 +179,25 @@ def out(plane):
 
 FEED = cell("""\
 COLUMNS = [
-    {"key": "time", "label": "Time", "width": 90},
+    {"key": "time", "label": "Placed", "width": 120, "cell": nustd.ui.RelativeTimeRef},
     {"key": "order", "label": "Order", "width": 100},
     {"key": "customer", "label": "Customer"},
-    {"key": "items", "label": "Items"},
-    {"key": "channel", "label": "Channel", "width": 120},
-    {"key": "total", "label": "Total", "kind": "number", "width": 100},
+    {"key": "items", "label": "Items", "hide_below": 720},
+    {"key": "channel", "label": "Channel", "width": 130, "cell": nustd.ui.BadgeRef.slot(size="sm"), "hide_below": 560},
+    {"key": "total", "label": "Total", "kind": "number", "width": 100, "align": "end"},
 ]
 
 
-class View(nustd.ui.Column):
-    head = nustd.ui.HeadingRef.slot(level=4)
-    feed = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="order", dense=True, label="Orders as they land")
+class View(nu.Shape):
+    card = nustd.ui.CardRef.slot(title="Orders as they land", subtitle="newest first")
+
+
+feed = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="order", density="compact", label="Orders as they land"))
 
 
 def out(plane):
     def build(root):
-        return View.head.set("Orders as they land") >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.feed.on_change()])), nu.let(nuspace.atomic(SHOP.feed.fallback([])), View.feed.set_rows))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.feed.on_change()])), nu.let(nuspace.atomic(SHOP.feed.fallback([])), feed.set_rows))
 
     return kit.on_shop(plane, build)
 """)

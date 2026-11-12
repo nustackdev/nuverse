@@ -11,8 +11,6 @@ from . import shape
 
 
 __all__ = [
-    "TONES",
-    "clock",
     "components",
     "deploy_rows",
     "feed_rows",
@@ -25,6 +23,7 @@ __all__ = [
     "log_rows",
     "machine_tiles",
     "named",
+    "page_rows",
     "proc_rows",
     "pulse",
     "release_notes",
@@ -32,12 +31,11 @@ __all__ = [
     "rule_rows",
     "run_rows",
     "series",
+    "step_rows",
     "timeline",
 ]
 
 
-TONES = nu.host(shape.TONES, name="Tones")
-clock = nu.host(shape.clock, name="Clock")
 components = nu.host(shape.components, name="Components")
 deploy_rows = nu.host(shape.deploy_rows, name="DeployRows")
 feed_rows = nu.host(shape.feed_rows, name="FeedRows")
@@ -50,6 +48,7 @@ joined = nu.host(shape.joined, name="Joined")
 log_rows = nu.host(shape.log_rows, name="LogRows")
 machine_tiles = nu.host(shape.machine_tiles, name="MachineTiles")
 named = nu.host(shape.named, name="Named")
+page_rows = nu.host(shape.page_rows, name="PageRows")
 proc_rows = nu.host(shape.proc_rows, name="ProcRows")
 pulse = nu.host(shape.pulse, name="Pulse")
 release_notes = nu.host(shape.release_notes, name="ReleaseNotes")
@@ -57,4 +56,5 @@ route_rows = nu.host(shape.route_rows, name="RouteRows")
 rule_rows = nu.host(shape.rule_rows, name="RuleRows")
 run_rows = nu.host(shape.run_rows, name="RunRows")
 series = nu.host(shape.series, name="Series")
+step_rows = nu.host(shape.step_rows, name="StepRows")
 timeline = nu.host(shape.timeline, name="Timeline")

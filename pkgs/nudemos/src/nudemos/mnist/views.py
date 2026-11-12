@@ -278,7 +278,11 @@ def plan(hp: dict, count: int, name: str, how: str) -> list:
 
 @nu.host
 def rows(runs: list, picked: list | None = None) -> list:
-    """One dict per run for a table, keyed by its page, newest first. ``plot`` says if it is picked."""
+    """One dict per run for a table, keyed by its page, newest first. ``plot`` says if it is picked.
+
+    ``run`` is ``{page, label}`` for a link cell, ``status`` ``{label, tone}`` for a
+    pill, ``progress`` a fraction for a bar (None before the run knows its length).
+    """
     out = []
     for page, name, v in reversed(runs):
         hp, now = v["hp"] or {}, v["now"] or {}
@@ -287,15 +291,15 @@ def rows(runs: list, picked: list | None = None) -> list:
             {
                 "page": page,
                 "plot": page in (picked or []),
-                "run": name,
-                "status": v["status"],
+                "run": {"page": page, "label": name},
+                "status": {"label": v["status"], "tone": TONES.get(v["status"], "neutral")},
                 "optimizer": hp.get("optimizer", ""),
                 "lr": lr_text(v["lr"] or hp.get("lr", 0)),
                 "batch": hp.get("batch_size", ""),
                 "channels": hp.get("channels", ""),
                 "dropout": hp.get("dropout", ""),
                 "epochs": hp.get("epochs", ""),
-                "progress": f"{100 * v['step'] / total:.0f}%" if total else "-",
+                "progress": v["step"] / total if total else None,
                 "loss": f"{now['loss']:.4f}" if "loss" in now else "-",
                 "best": _pct(v["best"] or None),
                 "final": _pct(v["final"]),
@@ -310,11 +314,11 @@ def _score(v: dict) -> float:
 
 @nu.host
 def leader(runs: list) -> dict:
-    """The leaderboard, live prose: the best run, how it was trained, and the rest. And a link to it.
+    """The leaderboard, live prose: the best run, how it was trained, and the rest. And its page.
 
-    ``{text, href, label}``, ``href`` empty while no run has a test score.
+    ``{text, page, label}``, ``page`` empty while no run has a test score.
     """
-    none = {"href": "", "label": ""}
+    none = {"page": "", "label": ""}
     if not runs:
         return {"text": "No runs yet. Launch one: a minute or two on a laptop CPU.", **none}
     ranked = sorted(runs, key=lambda r: -_score(r[2]))
@@ -334,7 +338,7 @@ def leader(runs: list) -> dict:
         gap = 100 * (best - _score(ranked[1][2]))
         ahead = f"{gap:.2f} points ahead of" if gap >= 0.005 else "level with"
         rest += f" {ahead} {ranked[1][1]}."
-    return {"text": line + rest, "href": f"/{page}", "label": f"Open {name}"}
+    return {"text": line + rest, "page": page, "label": f"Open {name}"}
 
 
 def series(root: nu.StrArg) -> nu.Nu:

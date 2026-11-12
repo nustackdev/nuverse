@@ -1,4 +1,4 @@
-"""What the cells show that is not a computation over the tables: status lines, links, labels.
+"""What the cells show that is not a computation over the tables: status lines, page list, labels.
 
 Plain functions as host terms, shaped for the widgets.
 """
@@ -10,7 +10,7 @@ from typing import Any
 import nu
 
 
-__all__ = ["status", "ways"]
+__all__ = ["PAGES", "sources", "status"]
 
 
 @nu.host
@@ -33,31 +33,24 @@ def status(stream: dict, live: bool, index: dict, pace: str, now: float) -> dict
     return {"tone": "warn", "pulse": False, "line": f"Stream starting  ·  {tables}"}
 
 
-#: The pages, in the order the overview lists them: key, label, what it is for.
+#: The pages, in the order the overview lists them: key, what it is for.
 PAGES = [
-    ("revenue", "Revenue", "by day, channel and category"),
-    ("funnel", "Funnel", "from session to purchase"),
-    ("cohorts", "Cohorts", "who comes back"),
-    ("customers", "Customers", "the best ones, a page each"),
-    ("products", "Products", "the catalog sheet"),
-    ("forecast", "Forecast", "the next twelve months, what-ifs"),
-    ("metrics", "Metrics", "a cell per metric"),
-    ("events", "Events", "every web event, queried"),
-    ("imports", "Imports", "exports dropped in the inbox"),
-    ("sources", "Sources", "the tables and the stream"),
+    ("revenue", "By day, channel and category."),
+    ("funnel", "From session to purchase."),
+    ("cohorts", "Who comes back."),
+    ("customers", "The best ones, a page each."),
+    ("products", "The catalog as a sheet."),
+    ("forecast", "The next twelve months, with what-ifs."),
+    ("metrics", "A cell per metric."),
+    ("events", "Every web event, queried."),
+    ("imports", "Exports dropped in the inbox."),
+    ("sources", "The tables and the stream."),
 ]
 
 
 @nu.host
-def ways(pages: dict[str, str]) -> str:
-    """The overview's map of the space: a link per page, with what it is for."""
-    parts = [f"[{label}]({pages[key]}) {what}" for key, label, what in PAGES if key in pages]
-    return "  ·  ".join(parts)
-
-
-@nu.host
 def top_head(count: int) -> str:
-    return f"Top customers in range, of {count:,} who ordered. Click one to open their page."
+    return f"Of {count:,} who ordered. Click one to open their page."
 
 
 @nu.host
@@ -131,22 +124,8 @@ only the ones that moved."""
 
 @nu.host
 def sources(index: dict[str, dict]) -> dict[str, Any]:
-    """The tables and the newest shards, from the index."""
-    import time
-
+    """The tables and the newest shards, from the index. Write times in epoch ms."""
     from .gen import DTYPES
-
-    def ago(at: int) -> str:
-        s = max(0, int(time.time()) - int(at))
-        return (
-            "just now"
-            if s < 5
-            else f"{s}s ago"
-            if s < 120
-            else f"{s // 60} min ago"
-            if s < 7200
-            else f"{s // 3600} h ago"
-        )
 
     tables = []
     for name in ("lines", "people", "events"):
@@ -164,7 +143,7 @@ def sources(index: dict[str, dict]) -> dict[str, Any]:
                 "shards": len(mine),
                 "size": f"{rows * DTYPES[name].itemsize / 1e6:.1f} MB",
                 "from": ", ".join(f"{k} {v:,}" for k, v in kinds.items()),
-                "latest": ago(max((int(e.get("at") or 0) for e in mine), default=0)),
+                "latest": 1000 * max((int(e.get("at") or 0) for e in mine), default=0),
             }
         )
     newest = sorted(index.items(), key=lambda kv: (-int(kv[1].get("at") or 0), -int(kv[0])))[:10]
@@ -175,7 +154,7 @@ def sources(index: dict[str, dict]) -> dict[str, Any]:
             "rows": e.get("rows"),
             "origin": e.get("origin"),
             "v": e.get("v"),
-            "at": ago(e.get("at") or 0),
+            "at": 1000 * int(e.get("at") or 0),
         }
         for k, e in newest
     ]

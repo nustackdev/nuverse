@@ -67,9 +67,16 @@ def test_history_merges_a_drag_into_one_line():
     assert len(log) == 2
 
 
-def test_ago_reads_like_a_person():
-    assert kit.ago(1000.0, 1005.0) == "just now"
-    assert kit.ago(0.0, 3 * 86400.0) == "3 days ago"
+def test_verdicts_draw_as_toned_pills():
+    assert kit.pill("pass") == {"label": "pass", "tone": "ok"}
+    assert kit.pill("under target")["tone"] == "warn"
+    assert kit.pill("2 fails")["tone"] == "danger"
+    assert kit.pill("declined")["tone"] == "neutral"
+
+
+def test_a_change_reads_as_plain_text():
+    line = kit.describe_change({"dusk:afterglow": ["#8946db", "#9a4fe0"], "radius.md": ["6", "8"]})
+    assert line == "afterglow (dusk) #8946db to #9a4fe0, and 1 more"
 
 
 def test_variants_are_six_and_differ():
