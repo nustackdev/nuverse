@@ -1,9 +1,10 @@
 """The Messages plane: one stream, read off either end, filtered, live.
 
 - ``bar``: the store's state, as on every Log plane.
-- ``messages``: pick a stream, newest or oldest first, how many, a level,
-  a bit of text; the entries read in a table, newest first by default, with
-  tiles over them. Click a row to see the entry whole in a drawer, its fields as JSON.
+- ``messages`` (:func:`out`): a toolbar to pick a stream, newest or oldest
+  first, how many, a level, a bit of text; tiles over the read; the entries
+  in a table, newest first by default. Click a row to see the entry whole
+  in a drawer, its fields as JSON.
 
 Each read takes ``count`` entries off one end of the stream: a bounded
 cursor scan, O(count) however long the stream. The level and text filters
@@ -15,76 +16,114 @@ follows the store: a new stream shows up in the picker on its own.
 
 from __future__ import annotations
 
+import nu
+import nuspace
+import nustd.time
+import nustd.ui as ui
 from nuspace.specs import PlaneSpec, WebOptions
 
-from .cells import BAR, cell
+from . import consts, fmt, reads
+from .cells import BAR, MESSAGES
+from .state import following, root_of, with_store
 
 
-__all__ = ["MESSAGES", "PLANE"]
+__all__ = ["PLANE", "View", "out"]
 
 
-MESSAGES = cell("""\
 #: Seconds between looks at the stream list.
 NAMES_EVERY = 2.0
 
 COLUMNS = [
-    {"key": "time", "label": "Time", "width": 150, "sortable": False},
-    {"key": "level", "label": "Level", "width": 96, "sortable": False},
-    {"key": "message", "label": "Message", "sortable": False},
-    {"key": "fields", "label": "Fields", "sortable": False},
+    {
+        "key": "time",
+        "label": "Time",
+        "width": 150,
+        "wrap": "nowrap",
+        "sortable": False,
+        "cell": ui.TextRef.slot(mono=True, size="sm"),
+    },
+    {
+        "key": "level",
+        "label": "Level",
+        "width": 96,
+        "sortable": False,
+        "cell": ui.BadgeRef.slot(size="sm"),
+    },
+    {"key": "message", "label": "Message", "wrap": "truncate", "sortable": False},
+    {
+        "key": "fields",
+        "label": "Fields",
+        "wrap": "truncate",
+        "hide_below": 720,
+        "sortable": False,
+        "cell": ui.TextRef.slot(mono=True, size="sm", tone="muted"),
+    },
 ]
 
-
-class StreamField(nustd.ui.Field):
-    choice = nustd.ui.SelectRef.slot(placeholder="No streams yet", searchable=True)
-
-
-class ModeField(nustd.ui.Field):
-    choice = nustd.ui.RadioGroupRef.slot(options=list(consts.MODE_OPTIONS), selected=consts.DEFAULT_MODE, orientation="horizontal")
+#: The tiles over the table, in order: what of the read each counts.
+TILES = (("shown", "Shown"), ("warnings", "Warnings"), ("errors", "Errors"), ("newest", "Newest"))
 
 
-class CountField(nustd.ui.Field):
-    choice = nustd.ui.NumberInputRef.slot(min=consts.MIN_COUNT, max=consts.MAX_COUNT, step=50, default=consts.DEFAULT_COUNT)
+# ---- the view ---------------------------------------------------------------
+#
+#   [ stream ][ read from ][ how many ][ level ][ filter.......... ]   one per line when narrow
+#   [ shown ][ warnings ][ errors ][ newest ]
+#   [ Entries: the table, scrolling inside its card                ]
 
 
-class LevelField(nustd.ui.Field):
-    choice = nustd.ui.SelectRef.slot(options=list(consts.LEVEL_OPTIONS), selected=consts.DEFAULT_LEVEL)
+class View(nu.Shape):
+    """The ``messages`` cell's root."""
+
+    messages = ui.ColumnRef.slot(gap=4)
 
 
-class TextField(nustd.ui.Field):
-    choice = nustd.ui.InputRef.slot(placeholder="Text in the message, then Enter")
+tools = View.messages[0].to(
+    ui.RowRef.slot(gap=3, align="end", stack_below=720, grow={0: 3, 1: 2, 2: 2, 3: 2, 4: 3})
+)
 
 
-class Pickers(nustd.ui.Grid):
-    stream = StreamField.slot(label="Stream")
-    mode = ModeField.slot(label="Read from")
-    count = CountField.slot(label="How many")
-    level = LevelField.slot(label="Level")
-    text = TextField.slot(label="Filter")
+def _picker(i: int, label: str) -> ui.FieldRef:
+    return tools[i].to(ui.FieldRef.slot(label=label))
 
 
-class Tiles(nustd.ui.Grid):
-    shown = nustd.ui.StatRef.slot(label="Shown")
-    warnings = nustd.ui.StatRef.slot(label="Warnings")
-    errors = nustd.ui.StatRef.slot(label="Errors")
-    newest = nustd.ui.StatRef.slot(label="Newest")
+stream = _picker(0, "Stream").control.to(
+    ui.SelectRef.slot(placeholder="No streams yet", searchable=True)
+)
+mode = _picker(1, "Read from").control.to(
+    ui.RadioGroupRef.slot(
+        options=list(consts.MODE_OPTIONS), selected=consts.DEFAULT_MODE, orientation="horizontal"
+    )
+)
+count = _picker(2, "How many").control.to(
+    ui.NumberInputRef.slot(
+        min=consts.MIN_COUNT, max=consts.MAX_COUNT, step=50, default=consts.DEFAULT_COUNT
+    )
+)
+level = _picker(3, "Level").control.to(
+    ui.SelectRef.slot(options=list(consts.LEVEL_OPTIONS), selected=consts.DEFAULT_LEVEL)
+)
+text = _picker(4, "Filter").control.to(
+    ui.InputRef.slot(placeholder="Text in the message, then Enter")
+)
 
+empty = View.messages[1].to(ui.EmptyStateRef)
+main = View.messages[2].to(ui.ColumnRef.slot(gap=4))
 
-class Entry(nustd.ui.Sheet):
-    json = nustd.ui.JsonViewerRef.slot(expand_depth=3, copyable=True)
+tiles = main[0].to(ui.GridRef.slot(max_columns=4, min_cell_width=160, gap=3))
+stats = [
+    tiles[i].to(ui.CardRef.slot(size="sm"))[0].to(ui.StatRef.slot(label=label))
+    for i, (_, label) in enumerate(TILES)
+]
 
+entries = main[1].to(ui.CardRef.slot(title="Entries", max_height=640, scroll="y"))
+table = entries[0].to(
+    ui.DataTableRef.slot(
+        columns=COLUMNS, row_key="key", clickable_rows=True, density="compact", label="Messages"
+    )
+)
 
-class Main(nustd.ui.Column):
-    tiles = Tiles.slot(columns=4, min_width=140, gap=3)
-    note = nustd.ui.TextRef.slot()
-    table = nustd.ui.TableRef.slot(columns=COLUMNS, row_key="key", clickable_rows=True, dense=True, label="Messages")
-    entry = Entry.slot(title="Entry", side="right", size="lg")
-
-
-class View(nustd.ui.Column):
-    pickers = Pickers.slot(columns=5, min_width=150, gap=3)
-    empty = nustd.ui.EmptyStateRef.slot()
-    main = Main.slot(gap=3)
+entry = main[2].to(ui.SheetRef.slot(title="Entry", side="right", width=560))
+whole = entry[0].to(ui.JsonViewerRef.slot(expand_depth=3, copyable=True))
 
 
 class Pick(nu.Shape):
@@ -100,72 +139,82 @@ class Pick(nu.Shape):
     tiles = nu.ObjectRef.slot()
 
 
-P, M = View.pickers, View.main
+# ---- the program ------------------------------------------------------------
 
 
-def tile(ref, t):
-    return ref.set(t["value"], delta=t["delta"])
+def draw(v: nu.Dict) -> nu.Nu:
+    shown = nu.Dict(v["tiles"])
+    counts = nu.Sequential(
+        *(
+            stats[i].set(shown[k]["value"], delta=shown[k]["delta"])
+            for i, (k, _) in enumerate(TILES)
+        )
+    )
+    rows = entries.set_caption(v["empty"]) >> table.set_rows(v["rows"])
+    return nu.IfDo(Pick.tiles != v["tiles"], counts >> Pick.tiles.set(v["tiles"])) >> nu.IfDo(
+        Pick.rows != v["rows"], rows >> Pick.rows.set(v["rows"])
+    )
 
 
-def draw(v):
-    t, shown = M.tiles, nu.Dict(v["tiles"])
-    tiles = tile(t.shown, shown["shown"]) >> tile(t.warnings, shown["warnings"]) >> tile(t.errors, shown["errors"]) >> tile(t.newest, shown["newest"])
-    rows = M.note.set(v["empty"]) >> M.table.set_rows(v["rows"])
-    return nu.IfDo(Pick.tiles != v["tiles"], tiles >> Pick.tiles.set(v["tiles"])) >> nu.IfDo(Pick.rows != v["rows"], rows >> Pick.rows.set(v["rows"]))
-
-
-def paint():
+def paint() -> nu.Nu:
     # One read of `count` entries, shaped once, drawn where it changed.
     got = nu.If(Pick.stream == "", nu.List.of(), reads.entries(Pick.stream, Pick.mode, Pick.count))
 
-    def show(entries):
-        shaped = fmt.messages(entries, Pick.level, Pick.text, nustd.time.time())
-        return Pick.read.set(entries) >> nu.let(shaped, lambda v: draw(nu.Dict(v)))
+    def show(read: nu.Nu) -> nu.Nu:
+        shaped = fmt.messages(read, Pick.level, Pick.text, nustd.time.time())
+        return Pick.read.set(read) >> nu.let(shaped, lambda v: draw(nu.Dict(v)))
 
     return nu.let(got, show)
 
 
-def names():
+def names() -> nu.Nu:
     # New streams show up; a tab whose stream went away moves to the first one there is.
-    def show(got):
-        kept = fmt.pick(got, Pick.stream)
-        moved = lambda k: nu.IfDo(nu.Str(k) != Pick.stream, Pick.stream.set(nu.Str(k)) >> P.stream.choice.set(nu.Str(k)) >> paint())
-        return P.stream.choice.set_options(fmt.options(got)) >> nu.let(kept, moved)
+    def show(got: nu.Nu) -> nu.Nu:
+        def moved(k: nu.Nu) -> nu.Nu:
+            to = nu.Str(k)
+            return nu.IfDo(to != Pick.stream, Pick.stream.set(to) >> stream.set(to) >> paint())
+
+        return stream.set_options(fmt.options(got)) >> nu.let(fmt.pick(got, Pick.stream), moved)
 
     return nu.let(reads.streams(), show)
 
 
-def opened(e):
+def opened(e: nu.Nu) -> nu.Nu:
     # A row gone from the last read opens nothing.
     shown = nu.Dict(e)
-    return nu.IfDo(nu.Is(e, None), nu.Noop(), M.entry.json.set_value(shown) >> M.entry.set(open=True, title=shown["title"]))
+    return nu.IfDo(
+        nu.Is(e, None),
+        nu.Noop(),
+        whole.set_value(shown) >> entry.set(open=True, title=shown["title"]),
+    )
 
 
-def picked():
-    def on(field, keep):
-        return nu.ReactEvery(field.choice.on_change(), keep >> paint())
+def picked() -> list[nu.Nu]:
+    def on(control: ui.Ref, keep: nu.Nu) -> nu.Nu:
+        return nu.ReactEvery(control.on_change(), keep >> paint())
 
-    count = fmt.bounded(P.count.choice, Pick.count, consts.MIN_COUNT, consts.MAX_COUNT)
+    held = fmt.bounded(count, Pick.count, consts.MIN_COUNT, consts.MAX_COUNT)
     return [
-        on(P.stream, Pick.stream.set(nu.Str(P.stream.choice))),
-        on(P.mode, Pick.mode.set(nu.Str(P.mode.choice))),
-        on(P.count, Pick.count.set(nu.int(count))),
-        on(P.level, Pick.level.set(nu.Str(P.level.choice))),
-        on(P.text, Pick.text.set(nu.Str(P.text.choice))),
-        nu.ReactEvery(M.table.on_row_click(), lambda ev: nu.let(fmt.entry(Pick.read, ev["key"]), opened)),
+        on(stream, Pick.stream.set(nu.Str(stream))),
+        on(mode, Pick.mode.set(nu.Str(mode))),
+        on(count, Pick.count.set(nu.int(held))),
+        on(level, Pick.level.set(nu.Str(level))),
+        on(text, Pick.text.set(nu.Str(text))),
+        nu.ReactEvery(
+            table.on_row_click(), lambda ev: nu.let(fmt.entry(Pick.read, ev["key"]), opened)
+        ),
         # Closed in the tab (Esc, the backdrop, the button): the drawer stays open until told.
-        nu.ReactEvery(M.entry.on_change(), M.entry.set_open(False)),
+        nu.ReactEvery(entry.on_change(), entry.set_open(False)),
     ]
 
 
-def off(said):
-    seen = nu.Dict(said)
-    return View.main.erase() >> View.empty.set(seen["title"], seen["note"])
+def off(seen: nu.Dict) -> nu.Nu:
+    return main.erase() >> empty.set(seen["title"], seen["note"])
 
 
-def live(s):
+def live(s: nu.Dict) -> nu.Nu:
     # Drawn afresh: the main view was erased while the store was away.
-    fresh = View.empty.erase() >> Pick.rows.set(None) >> Pick.tiles.set(None) >> Pick.read.set([])
+    fresh = empty.erase() >> Pick.rows.set(None) >> Pick.tiles.set(None) >> Pick.read.set([])
     loops = [
         nu.ForeverDo(names() >> nu.Delay(NAMES_EVERY)),
         nu.ForeverDo(paint() >> nu.Delay(s["every"])),
@@ -173,24 +222,34 @@ def live(s):
     return fresh >> nu.ParallelAsync(*loops, *picked())
 
 
-def placed():
-    # A slot shows once it is first written, in the order written: the pickers come first.
-    return (
-        P.stream.choice.set_options([]) >> P.mode.choice.set(Pick.mode) >> P.count.choice.set_value(Pick.count)
-        >> P.level.choice.set(Pick.level) >> P.text.choice.set(Pick.text)
-    )
+def out(plane: nu.StrArg) -> nu.Nu:
+    """The ``messages`` cell on ``plane``: the toolbar, the tiles and the table, live."""
 
+    def view(s: nu.Dict) -> nu.Nu:
+        shown = (
+            stream.init()
+            >> mode.set(Pick.mode)
+            >> count.set_value(Pick.count)
+            >> level.set(Pick.level)
+            >> text.set(Pick.text)
+        )
+        return Pick.count.set(nu.int(s["count"])) >> shown >> with_store(s, lambda: live(s), off)
 
-def out(plane):
-    def view(s):
-        return Pick.count.set(nu.int(s["count"])) >> placed() >> with_store(s, lambda: live(s), off)
-
-    def follow(root):
-        seeds = dict(stream="", mode=consts.DEFAULT_MODE, count=consts.DEFAULT_COUNT, level=consts.DEFAULT_LEVEL, text="")
-        return nu.Frame(Pick, following(root, view), **seeds, read=[], rows=None, tiles=None)
+    def follow(root: nu.Str) -> nu.Nu:
+        return nu.Frame(
+            Pick,
+            following(root, view),
+            stream="",
+            mode=consts.DEFAULT_MODE,
+            count=consts.DEFAULT_COUNT,
+            level=consts.DEFAULT_LEVEL,
+            text="",
+            read=[],
+            rows=None,
+            tiles=None,
+        )
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
-""")
 
 
 PLANE = PlaneSpec(

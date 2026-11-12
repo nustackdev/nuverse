@@ -1,125 +1,152 @@
 """The root Log plane's own cells: what this is, and the store at a glance.
 
-- :data:`INTRO`: what the planes under it do, with a link to each.
-- :data:`OVERVIEW`: every stream with its newest entry, every series with
-  its latest point. One entry or a small sample per name, the first
-  :data:`~nulog.planes.consts.OVERVIEW_CAP` names of each.
+- ``intro`` (:func:`intro`): what the planes under it do, a tile each that
+  opens it.
+- ``overview`` (:func:`out`): every stream with its newest entry, every
+  series with its latest point, side by side. One entry or a small sample
+  per name, the first :data:`~nulog.planes.consts.OVERVIEW_CAP` names of
+  each, drawn again only when what they show changed.
 """
 
 from __future__ import annotations
 
-from .cells import cell
-
-
-__all__ = ["INTRO", "OVERVIEW", "ROOT"]
-
-
-INTRO = '''\
 import nu
-import nustd.ui
 import nuspace
-from nulog.planes.state import child
+import nuspace.web as web
+import nustd.ui as ui
 
-TEXT = """\\
+from . import config, consts, fmt, messages, metrics, reads
+from .state import child, following, root_of, with_store
+
+
+__all__ = ["Intro", "View", "intro", "out"]
+
+
+# ---- intro ------------------------------------------------------------------
+
+TEXT = """\
 ### Logs and metrics, live
 
-A nulog store, read as it is written: every stream of log entries and every metric series in it.
-
-- **Messages** reads one stream, newest or oldest first, filtered by level and text. Click an entry to see it whole.
-- **Metrics** charts one series over a window, from a sample: the same cost at a thousand points or a billion.
-- **Config** picks the store and how often to read it. Changing it takes effect at once.
-
+A nulog store, read as it is written: every stream of log entries and every metric series in it. \
 The store is opened read only, as a RocksDB secondary, so it is safe on a store another process is writing.
 """
 
-
-class Links(nustd.ui.Row):
-    messages = nustd.ui.LinkRef.slot()
-    metrics = nustd.ui.LinkRef.slot()
-    config = nustd.ui.LinkRef.slot()
+#: The planes the tiles open, as the root makes them.
+PAGES = (messages.PLANE, metrics.PLANE, config.PLANE)
 
 
-class View(nustd.ui.Column):
-    text = nustd.ui.MarkdownRef.slot()
-    links = Links.slot(gap=4)
+class Intro(nu.Shape):
+    """The ``intro`` cell's root."""
+
+    intro = ui.ColumnRef.slot(gap=4)
 
 
-def to(ref, plane, spec, label):
-    def go(p):
-        return nu.IfDo(nu.Str(p) != "", ref.set(href=nu.Str("/") + nu.Str(p), label=label))
-
-    return nu.let(nuspace.atomic(child(plane, spec)), go)
+text = Intro.intro[0].to(ui.MarkdownRef)
+pages = Intro.intro[1].to(ui.GridRef.slot(max_columns=3, min_cell_width=220, gap=3))
 
 
-def out(plane):
-    L = View.links
-    links = (
-        to(L.messages, plane, "nulog_messages", "Read messages")
-        >> to(L.metrics, plane, "nulog_metrics", "Chart metrics")
-        >> to(L.config, plane, "nulog_config", "Config")
-    )
-    return View.text.set(TEXT) >> links >> nu.ForeverDo(nu.Delay(3600.0))
-'''
+def intro(plane: nu.StrArg) -> nu.Nu:
+    """The ``intro`` cell on the root ``plane``: what this is, and a tile per child plane."""
+
+    def tile(i: int, spec: str, description: str) -> nu.Nu:
+        to = pages[i].to(ui.PageLinkRef.slot(variant="tile"))
+
+        def go(p: nu.Nu) -> nu.Nu:
+            there = nu.Str(p)
+            return nu.IfDo(
+                there != "", nuspace.atomic(web.link(to, there, description=description))
+            )
+
+        return nu.let(nuspace.atomic(child(plane, spec)), go)
+
+    tiles = (tile(i, p.name, p.description) for i, p in enumerate(PAGES))
+    return text.set(TEXT) >> nu.Sequential(*tiles) >> nu.ForeverDo(nu.Delay(3600.0))
 
 
-OVERVIEW = cell("""\
+# ---- overview: two cards side by side, one under the other on a narrow pane --
+
 STREAMS = [
-    {"key": "stream", "label": "Stream", "sortable": False},
-    {"key": "newest", "label": "Newest", "width": 110, "sortable": False},
-    {"key": "level", "label": "Level", "width": 90, "sortable": False},
-    {"key": "message", "label": "Message", "sortable": False},
+    {"key": "stream", "label": "Stream", "wrap": "nowrap", "sortable": False},
+    {
+        "key": "newest",
+        "label": "Newest",
+        "width": 110,
+        "cell": ui.RelativeTimeRef,
+        "sortable": False,
+    },
+    {
+        "key": "level",
+        "label": "Level",
+        "width": 90,
+        "cell": ui.BadgeRef.slot(size="sm"),
+        "sortable": False,
+    },
+    {"key": "message", "label": "Message", "wrap": "truncate", "sortable": False},
 ]
 SERIES = [
-    {"key": "series", "label": "Series", "sortable": False},
-    {"key": "latest", "label": "Latest", "kind": "number", "width": 120, "sortable": False},
-    {"key": "at", "label": "At", "width": 130, "sortable": False},
+    {"key": "series", "label": "Series", "wrap": "nowrap", "sortable": False},
+    {"key": "latest", "label": "Latest", "kind": "number", "align": "end", "sortable": False},
+    {"key": "at", "label": "At", "width": 110, "cell": ui.RelativeTimeRef, "sortable": False},
 ]
 
 
-class Streams(nustd.ui.Card):
-    table = nustd.ui.TableRef.slot(columns=STREAMS, row_key="stream", dense=True, label="Streams")
+class View(nu.Shape):
+    """The ``overview`` cell's root."""
+
+    overview = ui.ColumnRef.slot(gap=4)
 
 
-class Series(nustd.ui.Card):
-    table = nustd.ui.TableRef.slot(columns=SERIES, row_key="series", dense=True, label="Series")
+empty = View.overview[0].to(ui.EmptyStateRef)
+board = View.overview[1].to(ui.GridRef.slot(cols="3fr 2fr", gap=4, stack_below=900))
 
 
-class Lists(nustd.ui.Grid):
-    streams = Streams.slot(title="Streams", subtitle="Each with its newest entry")
-    series = Series.slot(title="Series", subtitle="Each with its latest point")
+def _card(r: int, c: int, title: str, subtitle: str) -> ui.CardRef:
+    return board[r, c].to(
+        ui.CardRef.slot(title=title, subtitle=subtitle, max_height=480, scroll="y")
+    )
 
 
-class View(nustd.ui.Column):
-    empty = nustd.ui.EmptyStateRef.slot()
-    lists = Lists.slot(columns=2, min_width=360, gap=3)
+streams = _card(0, 0, "Streams", "Each with its newest entry")[0].to(
+    ui.DataTableRef.slot(columns=STREAMS, row_key="stream", density="compact", label="Streams")
+)
+series = _card(0, 1, "Series", "Each with its latest point")[0].to(
+    ui.DataTableRef.slot(columns=SERIES, row_key="series", density="compact", label="Series")
+)
 
 
-def draw(said):
+class Shown(nu.Shape):
+    # This tab's: the rows last drawn, to draw again only on a change.
+    rows = nu.ObjectRef.slot()
+
+
+def draw(said: nu.Nu) -> nu.Nu:
     v = nu.Dict(said)
-    return View.lists.streams.table.set_rows(v["streams"]) >> View.lists.series.table.set_rows(v["series"])
+    both = streams.set_rows(v["streams"]) >> series.set_rows(v["series"])
+    return nu.IfDo(Shown.rows != said, both >> Shown.rows.set(said))
 
 
-def off(said):
-    seen = nu.Dict(said)
-    return View.lists.erase() >> View.empty.set(seen["title"], seen["note"])
+def off(seen: nu.Dict) -> nu.Nu:
+    return board.erase() >> Shown.rows.set(None) >> empty.set(seen["title"], seen["note"])
 
 
-def live(s):
+def live(s: nu.Dict) -> nu.Nu:
     cap = consts.OVERVIEW_CAP
 
-    def read():
-        both = nu.let(reads.streams(cap), lambda names: nu.let(reads.series(cap), lambda kinds: reads.newest(names, kinds)))
-        return nu.let(both, lambda b: fmt.overview(nu.List(b)[0], nu.List(b)[1], nustd.time.time()))
+    def read() -> nu.Nu:
+        both = nu.let(
+            reads.streams(cap),
+            lambda names: nu.let(reads.series(cap), lambda kinds: reads.newest(names, kinds)),
+        )
+        return nu.let(both, lambda b: fmt.overview(nu.List(b)[0], nu.List(b)[1]))
 
-    return View.empty.erase() >> nu.ForeverDo(nu.let(read(), draw) >> nu.Delay(s["every"]))
+    return empty.erase() >> nu.ForeverDo(nu.let(read(), draw) >> nu.Delay(s["every"]))
 
 
-def out(plane):
-    def follow(root):
-        return following(root, lambda s: with_store(s, lambda: live(s), off))
+def out(plane: nu.StrArg) -> nu.Nu:
+    """The ``overview`` cell on the root ``plane``: both tables, drawn again on a change."""
+
+    def follow(root: nu.Str) -> nu.Nu:
+        body = following(root, lambda s: with_store(s, lambda: live(s), off))
+        return nu.Frame(Shown, body, rows=None)
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
-""")
-
-
-ROOT = (("intro", INTRO), ("overview", OVERVIEW))

@@ -1,82 +1,36 @@
-"""What every Log cell imports, and the bar every Log plane opens with.
+"""Every Log cell's stored prog: a shim that names package code.
 
-Every cell is ``def out(plane)``: the plane it runs on comes in, and
+The code lives in the package (:mod:`.bar`, :mod:`.overview`,
+:mod:`.messages`, :mod:`.metrics`, :mod:`.config`) and a prog only names
+it, so a fix ships with the package and reaches every Log plane already
+made. This module imports none of them, so each can import its shims.
+
+Each prog is ``def out(plane)``: the plane it runs on comes in, and
 :func:`~.state.root_of` finds the Log root from there, where the config
-live. A cell that reads the store runs under :func:`~.state.following` and
-:func:`~.state.with_store`: it starts over on a save, opens the store the
-config names, and says why when it cannot.
-
-- :data:`BAR`: the store's state in one line: live or not, how many streams
-  and series, from where, how often; and a link to Config.
+lives.
 """
 
 from __future__ import annotations
 
 
-__all__ = ["BAR", "IMPORTS", "cell"]
+__all__ = ["ABOUT", "BAR", "CONFIG", "INTRO", "MESSAGES", "METRICS", "OVERVIEW", "shim"]
 
 
-#: What every cell imports.
-IMPORTS = """\
-import nu
-import nustd.time
-import nustd.ui
-import nuspace
-from nulog.planes.state import child, config, following, root_of, saved, with_store
-from nulog.planes import consts, fmt, reads
-"""
+def shim(module: str, fn: str = "out") -> str:
+    """A cell's prog: ``nulog.planes.<module>.<fn>(plane)`` on the running page."""
+    return (
+        f"from nulog.planes import {module}\n\n\ndef out(plane):\n    return {module}.{fn}(plane)\n"
+    )
 
 
-def cell(body: str) -> str:
-    """A cell's source: the shared imports, then ``body``."""
-    return IMPORTS + "\n\n" + body
-
-
-BAR = cell("""\
-class Bar(nustd.ui.Row):
-    dot = nustd.ui.StatusDotRef.slot(tone="neutral")
-    pill = nustd.ui.StatusPillRef.slot()
-    line = nustd.ui.TextRef.slot()
-    config = nustd.ui.LinkRef.slot()
-
-
-class View(nustd.ui.Column):
-    bar = Bar.slot(gap=3, align="center")
-
-
-B = View.bar
-
-
-def draw(said):
-    v = nu.Dict(said)
-    return B.dot.set(v["tone"], pulse=v["pulse"]) >> B.pill.set(v["pill"], tone=v["tone"]) >> B.line.set(v["line"])
-
-
-def off(seen):
-    return draw(fmt.status(seen, 0, 0, 0.0))
-
-
-def live(s):
-    def read():
-        counts = nu.List(reads.streams()).len(), nu.List(reads.series()).len()
-        return fmt.status(fmt.look(s["path"]), *counts, s["every"])
-
-    return nu.ForeverDo(nu.let(read(), draw) >> nu.Delay(s["every"]))
-
-
-def link(plane, root):
-    # To Config, from every plane but Config itself.
-    def to(p):
-        go = B.config.set(href=nu.Str("/") + nu.Str(p), label="Config")
-        return nu.IfDo((nu.Str(p) != "").and_(nu.Str(p) != plane), go)
-
-    return nu.let(nuspace.atomic(child(root, "nulog_config")), to)
-
-
-def out(plane):
-    def follow(root):
-        placed = draw(fmt.status(fmt.look(""), 0, 0, 0.0))
-        return placed >> link(plane, root) >> following(root, lambda s: with_store(s, lambda: live(s), off))
-
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
-""")
+#: The store's state in one line, on every Log plane.
+BAR = shim("bar")
+#: The root's what this is, with a tile per child plane.
+INTRO = shim("overview", "intro")
+#: The root's streams and series at a glance.
+OVERVIEW = shim("overview")
+MESSAGES = shim("messages")
+METRICS = shim("metrics")
+CONFIG = shim("config")
+#: How the viewer reads a store, under the Config form.
+ABOUT = shim("config", "about")

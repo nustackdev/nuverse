@@ -18,6 +18,7 @@ __all__ = [
     "DEFAULT_WINDOW",
     "KEYS_CAP",
     "LEVEL_OPTIONS",
+    "LEVEL_VARIANTS",
     "MAX_COUNT",
     "MAX_EVERY",
     "MIN_COUNT",
@@ -27,16 +28,24 @@ __all__ = [
     "MODE_TAKE",
     "OVERVIEW_CAP",
     "SAMPLE_LIMIT",
-    "TABLE_COLUMNS",
     "WINDOW_OPTIONS",
 ]
 
 
 # ---- messages -------------------------------------------------------------
 
-TABLE_COLUMNS: tuple[str, ...] = ("time", "level", "message", "fields")
 DEFAULT_LEVEL = "all"
 LEVEL_OPTIONS: tuple[str, ...] = (DEFAULT_LEVEL, *LEVELS)
+
+# The badge each level draws as: info is the quiet default, warnings and
+# errors stand out.
+LEVEL_VARIANTS: dict[str, str] = {
+    "debug": "neutral",
+    "info": "secondary",
+    "warning": "warn",
+    "error": "danger",
+    "critical": "danger",
+}
 
 MODE_TAIL = "tail"
 MODE_TAKE = "take"
@@ -58,13 +67,13 @@ DEFAULT_COUNT = 200
 
 # Seconds as strings, so a select round-trips them. "0" is the whole series.
 WINDOW_OPTIONS: tuple[dict[str, str], ...] = (
-    {"value": "60", "label": "1 minute"},
-    {"value": "300", "label": "5 minutes"},
-    {"value": "900", "label": "15 minutes"},
-    {"value": "3600", "label": "1 hour"},
-    {"value": "21600", "label": "6 hours"},
-    {"value": "86400", "label": "24 hours"},
-    {"value": "0", "label": "All of it"},
+    {"value": "60", "label": "1 min"},
+    {"value": "300", "label": "5 min"},
+    {"value": "900", "label": "15 min"},
+    {"value": "3600", "label": "1 h"},
+    {"value": "21600", "label": "6 h"},
+    {"value": "86400", "label": "24 h"},
+    {"value": "0", "label": "All"},
 )
 DEFAULT_WINDOW = "300"
 

@@ -10,8 +10,9 @@ One root and three children, all reading the store the root's config names
 
 - :mod:`.state`: the config, how a plane finds its root, how a cell
   follows the config and opens the store it names.
-- :mod:`.cells`, :mod:`.overview`, :mod:`.messages`, :mod:`.metrics`,
-  :mod:`.config`: the planes, as cell sources.
+- :mod:`.bar`, :mod:`.overview`, :mod:`.messages`, :mod:`.metrics`,
+  :mod:`.config`: the planes, as package code behind shim cells
+  (:mod:`.cells`), so a fix reaches every Log plane already made.
 - :mod:`.store`, :mod:`.reads`, :mod:`.fmt`, :mod:`.consts`: what the cells
   open, read and show: the store at the saved path, the bounded reads, the
   rows and tiles shaped from them, the knobs.
@@ -23,8 +24,8 @@ from __future__ import annotations
 
 from nuspace.specs import PlaneSpec, WebOptions
 
-from . import config, messages, metrics, overview
-from .cells import BAR
+from . import config, messages, metrics
+from .cells import BAR, INTRO, OVERVIEW
 from .state import ROOT
 
 
@@ -40,7 +41,7 @@ PLANE = PlaneSpec(
     icon="database",
     description="A nulog store read live: log streams, metric series, and its config.",
     web=WebOptions(editable=True, full_width=True),
-    cells=(("intro", overview.INTRO), ("bar", BAR), ("overview", overview.OVERVIEW)),
+    cells=(("intro", INTRO), ("bar", BAR), ("overview", OVERVIEW)),
     children=CHILDREN,
     group="Observe",
     backend="async",

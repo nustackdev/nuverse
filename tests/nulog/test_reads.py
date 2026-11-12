@@ -67,6 +67,7 @@ def test_the_messages_view_filters_one_read_only():
     v = fmt.messages_of(read, "all", "LOST", 0.0)
     assert [r["message"] for r in v["rows"]] == ["Lost it"]
     assert v["rows"][0]["fields"] == "db=main"
+    assert v["rows"][0]["level"] == {"label": "error", "variant": "danger"}
     assert v["tiles"]["shown"]["delta"] == "of 3 read"
     assert v["tiles"]["errors"]["value"] == "1"
     assert fmt.messages_of(read, "debug", "", 0.0)["empty"].startswith("None of the 3")
@@ -76,8 +77,30 @@ def test_the_messages_view_filters_one_read_only():
 def test_the_chart_reads_a_sample_in_time_order():
     v = fmt.chart_of([{"ts_us": 2_000_000, "value": 4.0}, {"ts_us": 1_000_000, "value": 1.0}], 3.0)
     assert v["points"] == [[1000, 1.0], [2000, 4.0]]
-    assert v["tiles"]["latest"] == {"value": "4", "delta": "1s ago", "trend": "up"}
+    assert v["tiles"]["latest"] == {"value": "4", "delta": fmt.clock(2_000_000, 3.0), "trend": "up"}
     assert fmt.chart_of([], 0.0)["empty"]
+
+
+def test_the_overview_sends_real_times_and_values():
+    newest = [["app", [{"ts_us": 5_000_000, "level": "info", "msg": "hi"}]], ["quiet", []]]
+    series = [
+        ["cpu", [{"ts_us": 1_000_000, "value": 0.1}, {"ts_us": 2_000_000, "value": 0.1 + 0.2}]],
+        ["idle", []],
+    ]
+    v = fmt.overview_of(newest, series)
+    assert v["streams"] == [
+        {
+            "stream": "app",
+            "newest": 5000,
+            "level": {"label": "info", "variant": "secondary"},
+            "message": "hi",
+        },
+        {"stream": "quiet", "newest": None, "level": "", "message": ""},
+    ]
+    assert v["series"] == [
+        {"series": "cpu", "latest": 0.3, "at": 2000},
+        {"series": "idle", "latest": None, "at": None},
+    ]
 
 
 def test_a_read_takes_count_off_either_end(tmp_path):

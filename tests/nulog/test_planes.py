@@ -16,6 +16,7 @@ import pytest
 import nu
 import nulog
 import nuspace
+import nuspace.web as web
 import nustd.kv
 from nulog import planes
 from nulog.planes import state
@@ -34,34 +35,75 @@ if TYPE_CHECKING:
 
 ROOT = "log"
 
+#: Where each part a test reads sits: the tail of its address, from the cell's root.
+TAILS = {
+    # bar, on every plane
+    "dot": ("bar", "0"),
+    "pill": ("bar", "1"),
+    "line": ("bar", "2"),
+    "to_config": ("bar", "3"),
+    # intro
+    "pages": ("intro", "1"),
+    # overview
+    "streams": ("overview", "1", "0,0", "0"),
+    "series": ("overview", "1", "0,1", "0"),
+    # messages
+    "stream": ("messages", "0", "0", "control"),
+    "mode": ("messages", "0", "1", "control"),
+    "count": ("messages", "0", "2", "control"),
+    "level": ("messages", "0", "3", "control"),
+    "text": ("messages", "0", "4", "control"),
+    "empty": ("messages", "1"),
+    "shown": ("messages", "2", "0", "0", "0"),
+    "warnings": ("messages", "2", "0", "1", "0"),
+    "table": ("messages", "2", "1", "0"),
+    "entry": ("messages", "2", "2"),
+    "json": ("messages", "2", "2", "0"),
+    # metrics
+    "chart": ("metrics", "2", "0,0", "0"),
+    "latest": ("metrics", "2", "0,1", "0", "0"),
+    "drawn": ("metrics", "2", "0,1", "4", "0"),
+    # config
+    "check": ("config", "0"),
+    "path": ("config", "1", "0", "control"),
+    "every": ("config", "1", "1", "0,0", "control"),
+    "per_read": ("config", "1", "1", "0,1", "control"),
+    "window": ("config", "1", "1", "0,2", "control"),
+    "save": ("config", "1", "footer", "0"),
+}
+
 
 class _Browser(WsSession):
-    """A session with no socket. Keeps the frames it is sent, answers reads from ``values``."""
+    """A session with no socket. Keeps the frames it is sent, answers reads from ``values``.
+
+    Parts are named as in :data:`TAILS`; ``values`` maps those names to what the browser holds.
+    """
 
     def __init__(self, values: dict | None = None) -> None:
         super().__init__(ws=None)
         self.frames: list[Frame] = []
-        self.values = values or {}
+        self.values = {TAILS[k]: v for k, v in (values or {}).items()}
 
     async def send(self, frame: Frame) -> None:
         self.frames.append(frame)
 
     def drawn(self, name: str) -> list:
-        """Every payload sent to the ref ``name``, in order."""
-        return [f.payload for f in self.frames if f.ref and f.ref[-1] == name]
+        """Every payload sent to the part ``name``, in order."""
+        tail = TAILS[name]
+        return [f.payload for f in self.frames if f.ref and f.ref[-len(tail) :] == tail]
 
     async def aread(self, path: tuple[str, ...]) -> object:
-        for n in (2, 1):
-            if path[-n:] in self.values:
-                return self.values[path[-n:]]
-        return self.values.get(path[-1], "")
+        for tail, v in self.values.items():
+            if path[-len(tail) :] == tail:
+                return v
+        return ""
 
-    def notify(self, name: str | tuple[str, ...], payload: object, value: object = None) -> bool:
-        """The person acts on the ref whose address ends ``name``: it reads ``value`` from now on, and it notifies.
+    def notify(self, name: str, payload: object, value: object = None) -> bool:
+        """The person acts on the part ``name``: it reads ``value`` from now on, and it notifies.
 
         False while nothing listens on it yet.
         """
-        tail = (name,) if isinstance(name, str) else tuple(name)
+        tail = TAILS[name]
         paths = [p for p in self._subs if p[-len(tail) :] == tail]
         if not paths:
             return False
@@ -76,6 +118,16 @@ class _Browser(WsSession):
         sets = [p for p in self.drawn(name) if isinstance(p, dict) and "rows" in p]
         sets += [{"rows": p} for p in self.drawn(name) if isinstance(p, list)]
         return sets[-1]["rows"] if sets else []
+
+    def pages(self) -> list:
+        """The intro's page tiles, as last drawn, in order."""
+        tail = TAILS["pages"]
+        tiles = {
+            f.ref[-1]: f.payload
+            for f in self.frames
+            if f.ref and f.ref[-len(tail) - 1 : -1] == tail
+        }
+        return [tiles[k] for k in sorted(tiles, key=int)]
 
 
 def _write(path: Path, n: int = 5) -> str:
@@ -156,6 +208,17 @@ def test_every_plane_opens_with_the_bar():
         assert dict(spec.cells)["bar"] == planes.BAR, spec.name
 
 
+def test_every_cell_is_a_shim_over_package_code():
+    for spec in (planes.PLANE, *planes.PLANE.children):
+        for name, prog in spec.cells:
+            scope: dict = {}
+            exec(prog, scope)  # noqa: S102 (the package's own prog)
+            module = next(v for k, v in scope.items() if k != "out" and not k.startswith("__"))
+            called = prog.rsplit("return ", 1)[1].split("(", 1)[0].split(".")[1]
+            assert callable(getattr(module, called)), f"{spec.name}.{name}"
+            assert len(prog.splitlines()) == 5, f"{spec.name}.{name} holds code, not a shim"
+
+
 # ---- the cells, on a store --------------------------------------------------
 
 
@@ -175,8 +238,9 @@ async def test_every_cell_runs_and_draws(store, tmp_path):
         )
         await _until(drawn["nulog_messages.messages"], lambda b: len(b.rows()) == 6)
         await _until(drawn["nulog_metrics.metrics"], lambda b: b.drawn("chart"))
-        await _until(drawn["log.overview"], lambda b: b.drawn("table"))
+        await _until(drawn["log.overview"], lambda b: b.drawn("streams") and b.drawn("series"))
         await _until(drawn["nulog_config.config"], lambda b: b.drawn("check"))
+        await _until(drawn["log.intro"], lambda b: len(b.pages()) == 3)
     finally:
         for t in tasks:
             await _stop(t)
@@ -184,22 +248,31 @@ async def test_every_cell_runs_and_draws(store, tmp_path):
         assert browser.frames, f"{name} drew nothing"
 
     # The bar says where it reads from, and links Config from every plane but Config.
-    line = drawn["log.bar"].drawn("line")[-1]
+    line = drawn["log.bar"].drawn("line")[-1]["value"]
     assert "2 streams, 1 series" in line and "logs.db" in line
-    assert drawn["log.bar"].drawn("config")
-    assert not drawn["nulog_config.bar"].drawn("config")
+    assert drawn["log.bar"].drawn("to_config")[-1] == {
+        "href": web.url(ids["nulog_config"]),
+        "label": "Config",
+    }
+    assert not drawn["nulog_config.bar"].drawn("to_config")
+
+    # The intro: a tile per child plane, linked to it, titled off it.
+    pages = drawn["log.intro"].pages()
+    assert [p["href"] for p in pages] == [web.url(ids[c.name]) for c in planes.PLANE.children]
+    assert [p["title"] for p in pages] == ["Messages", "Metrics", "Config"]
 
     # Messages: the first stream picked, its newest entry first, the tiles over it.
     m = drawn["nulog_messages.messages"]
-    assert "app" in m.drawn("choice")
+    assert "app" in m.drawn("stream")
     rows = m.rows()
-    assert rows[0]["message"] == "slow: 210 ms" and rows[0]["level"] == "warning"
+    assert rows[0]["message"] == "slow: 210 ms"
+    assert rows[0]["level"] == {"label": "warning", "variant": "warn"}
     assert rows[-1]["fields"] == "i=0"
     assert m.drawn("warnings")[-1]["value"] == "1"
 
     assert any(
         [x["value"] for x in o["options"]] == ["app", "db"]
-        for o in m.drawn("choice")
+        for o in m.drawn("stream")
         if isinstance(o, dict) and o.get("options")
     )
 
@@ -208,12 +281,13 @@ async def test_every_cell_runs_and_draws(store, tmp_path):
     assert c.drawn("latest")[-1]["value"] == "0.3"
     assert c.drawn("drawn")[-1]["value"] == "3"
 
-    # The overview lists both streams and the series.
+    # The overview lists both streams and the series, with real times.
     o = drawn["log.overview"]
-    tables = {f.ref[-2]: f.payload["rows"] for f in o.frames if f.ref[-1] == "table"}
-    assert [r["stream"] for r in tables["streams"]] == ["app", "db"]
-    assert tables["streams"][1]["level"] == "error"
-    assert [(r["series"], r["latest"]) for r in tables["series"]] == [("cpu", "0.3")]
+    streams, series = o.rows("streams"), o.rows("series")
+    assert [r["stream"] for r in streams] == ["app", "db"]
+    assert streams[1]["level"] == {"label": "error", "variant": "danger"}
+    assert all(isinstance(r["newest"], int) for r in streams)
+    assert [(r["series"], r["latest"]) for r in series] == [("cpu", 0.3)]
 
     # Config shows the saved path and says the store opens.
     s = drawn["nulog_config.config"]
@@ -229,17 +303,17 @@ async def test_messages_filter_the_read_and_open_an_entry(store, tmp_path):
     try:
         await _until(b, lambda b: len(b.rows()) == 6)
         # Level: warnings only, of the same read.
-        await _act(b, ("level", "choice"), "warning", value="warning")
-        await _until(b, lambda b: [r["level"] for r in b.rows()] == ["warning"])
+        await _act(b, "level", "warning", value="warning")
+        await _until(b, lambda b: [r["level"]["label"] for r in b.rows()] == ["warning"])
         assert b.drawn("shown")[-1] == {"value": "1", "delta": "of 6 read"}
         # Back to all, then text: any case, in the message.
-        await _act(b, ("level", "choice"), "all", value="all")
-        await _act(b, ("text", "choice"), "TICK 3", value="TICK 3")
+        await _act(b, "level", "all", value="all")
+        await _act(b, "text", "TICK 3", value="TICK 3")
         await _until(b, lambda b: [r["message"] for r in b.rows()] == ["tick 3"])
         # Oldest first, two of them.
-        await _act(b, ("text", "choice"), "", value="")
-        await _act(b, ("mode", "choice"), "take", value="take")
-        await _act(b, ("count", "choice"), 2.0, value=2.0)
+        await _act(b, "text", "", value="")
+        await _act(b, "mode", "take", value="take")
+        await _act(b, "count", 2.0, value=2.0)
         await _until(b, lambda b: [r["message"] for r in b.rows()] == ["tick 0", "tick 1"])
         # A row clicked: the entry whole, its fields as JSON.
         key = b.rows()[1]["key"]
@@ -281,7 +355,7 @@ async def test_a_saved_path_moves_every_cell_without_a_restart(store, tmp_path):
     form = await _cells(store, ids["nulog_config"])
     reading = _Browser()
     # The form as a person filled it in: the second store, a faster pace, a smaller read.
-    filled = _Browser({"path": f"  {second}  ", "every": 0.3, "count": 4, "choice": "60"})
+    filled = _Browser({"path": f"  {second}  ", "every": 0.3, "per_read": 4, "window": "60"})
     tasks = [
         _run(store, ids["nulog_messages"], msgs["messages"], reading),
         _run(store, ids["nulog_config"], form["config"], filled),

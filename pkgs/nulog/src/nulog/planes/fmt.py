@@ -23,7 +23,6 @@ from . import consts
 
 
 __all__ = [
-    "ago",
     "bounded",
     "bounded_of",
     "chart",
@@ -32,10 +31,12 @@ __all__ = [
     "entry",
     "entry_of",
     "fields_text",
+    "level_of",
     "look",
     "look_of",
     "messages",
     "messages_of",
+    "ms",
     "options",
     "options_of",
     "overview",
@@ -61,20 +62,16 @@ def clock(ts_us: int | None, now: float | None = None) -> str:
     return shown if moment.date() == today else moment.strftime("%b %d ") + shown
 
 
-def ago(ts_us: int | None, now: float) -> str:
-    """How long before ``now`` (seconds) ``ts_us`` was: ``just now``, ``12s ago``, ``3m ago``."""
-    if not ts_us or ts_us <= 0:
-        return "-"
-    s = max(0.0, now - ts_us / 1_000_000)
-    if s < 1:
-        return "just now"
-    if s < 60:
-        return f"{int(s)}s ago"
-    if s < 3600:
-        return f"{int(s // 60)}m ago"
-    if s < 86400:
-        return f"{int(s // 3600)}h {int(s % 3600 // 60)}m ago"
-    return f"{int(s // 86400)}d ago"
+def ms(ts_us: int | None) -> int | None:
+    """``ts_us`` in epoch ms, for a time the browser draws; None when there is none."""
+    return ts_us // 1000 if ts_us and ts_us > 0 else None
+
+
+def level_of(level: str | None) -> dict[str, str] | str:
+    """A level as a badge: ``{label, variant}``; ``""`` (a blank cell) when there is none."""
+    if not level:
+        return ""
+    return {"label": level, "variant": consts.LEVEL_VARIANTS.get(level, "neutral")}
 
 
 def fields_text(fields: dict | None) -> str:
@@ -147,13 +144,17 @@ def status_of(seen: dict, streams: int, series: int, every: float) -> dict[str, 
     return {"tone": "ok", "pill": "reading", "line": line, "pulse": True}
 
 
-def overview_of(newest: list, series: list, now: float) -> dict[str, Any]:
+def overview_of(newest: list, series: list) -> dict[str, Any]:
     """The root's two tables: each stream with its newest entry, each series with its latest point.
 
     ``newest`` is ``[[stream, [entry]], ...]`` (the entry list empty for an
     empty stream), ``series`` is ``[[name, [point, ...]], ...]``, a small
     sample of the recent past: its latest point is the series' latest, or
     close to it on a series written many times a second.
+
+    Stream rows are ``{stream, newest, level, message}``, series rows
+    ``{series, latest, at}``: times in epoch ms and values as numbers, None
+    where there is nothing, so the browser draws and ticks them.
     """
     streams = []
     for name, got in newest or ():
@@ -161,19 +162,20 @@ def overview_of(newest: list, series: list, now: float) -> dict[str, Any]:
         streams.append(
             {
                 "stream": str(name),
-                "newest": ago(e.get("ts_us"), now),
-                "level": e.get("level", ""),
+                "newest": ms(e.get("ts_us")),
+                "level": level_of(e.get("level")),
                 "message": e.get("msg", ""),
             }
         )
     points = []
     for name, got in series or ():
         p = max(got or (), key=lambda q: q.get("ts_us") or 0, default={})
+        value = p.get("value")
         points.append(
             {
                 "series": str(name),
-                "latest": _number(float(p["value"])) if p.get("value") is not None else "-",
-                "at": ago(p.get("ts_us"), now) if p else "nothing recent",
+                "latest": float(f"{float(value):.6g}") if value is not None else None,
+                "at": ms(p.get("ts_us")),
             }
         )
     return {"streams": streams, "series": points}
@@ -213,7 +215,7 @@ def _row(e: dict, now: float) -> dict[str, Any]:
     return {
         "key": str(e.get("ts_us", "")),
         "time": clock(e.get("ts_us"), now),
-        "level": e.get("level", ""),
+        "level": level_of(e.get("level")),
         "message": e.get("msg", ""),
         "fields": fields_text(e.get("fields")),
     }
@@ -248,7 +250,7 @@ def messages_of(entries: list | None, level: str, text: str, now: float) -> dict
             "shown": {"value": f"{len(kept):,}", "delta": f"of {len(read):,} read"},
             "warnings": {"value": f"{warnings:,}", "delta": "in this read"},
             "errors": {"value": f"{errors:,}", "delta": "in this read"},
-            "newest": {"value": ago(newest, now), "delta": clock(newest, now)},
+            "newest": {"value": clock(newest, now) or "-", "delta": "newest entry"},
         },
         "empty": empty,
     }
@@ -301,7 +303,7 @@ def chart_of(points: list | None, now: float) -> dict[str, Any]:
     return {
         "points": [[ts // 1000, v] for ts, v in drawn],
         "tiles": {
-            "latest": _tile(_number(last), ago(last_ts, now), trend),
+            "latest": _tile(_number(last), clock(last_ts, now), trend),
             "low": _tile(_number(min(values))),
             "high": _tile(_number(max(values))),
             "mean": _tile(_number(sum(values) / len(values))),
@@ -327,9 +329,9 @@ def status(seen: dict, streams: int, series: int, every: float) -> dict[str, Any
 
 
 @nu.host
-def overview(newest: list, series: list, now: float) -> dict[str, Any]:
+def overview(newest: list, series: list) -> dict[str, Any]:
     """:func:`overview_of`, as a term."""
-    return overview_of(newest, series, now)
+    return overview_of(newest, series)
 
 
 @nu.host

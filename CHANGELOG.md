@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Log planes pick up fixes in existing spaces and show live times and levels
 - System planes and editors load again, with linked tables and shared editor layout
 - Demos rebuilt on the new layout: real links, live times, cards and tables
 - Planes and demos import the web device from its new home, nuspace.web
