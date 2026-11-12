@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nudemos"
-version = "0.1.7"
+version = "0.1.8"
 description = "The Nu demos as nuspace Planes: a counter, a sampled series, a film base and MNIST trained live."
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "Gor Arakelyan", email = "gorarkln@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
-    "nuspace>=0.7.0",
+    "nuspace>=0.7.2",
 ]
 
 [project.optional-dependencies]
