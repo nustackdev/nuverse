@@ -123,14 +123,14 @@ class Page(nu.Shape):
 PAGE = nuspace.at.plane.state(Page)         # this plane's state, shared by its cells
 
 
-class Turn(nustd.ui.PageSection):
+class Turn(nustd.ui.Card):
     actions = nustd.ui.ButtonRef.slot(label="Put the meter back", variant="ghost", size="sm", icon="undo-2")
     level = nustd.ui.SliderRef.slot(min=0, max=100, step=1)
 
 
-class View(nustd.ui.Column):
-    turn = Turn.slot(title="Your first cell", bordered=True,
-                     description="Drag the slider and let go, the meter below follows. It stays where you leave it.")
+class View(nu.Shape):
+    turn = Turn.slot(title="Your first cell",
+                     subtitle="Drag the slider and let go, the meter below follows. It stays where you leave it.")
 
 
 slider = View.turn.level
@@ -176,7 +176,7 @@ class Reading(nustd.ui.Row):
     note = nustd.ui.TextRef.slot(size="lg", weight="medium")
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     reading = Reading.slot(gap=4, align="center")
 
 
@@ -205,16 +205,16 @@ import nuspace
 from nuverse.planes import quickstart
 
 
-class Ask(nustd.ui.PageSection):
+class Ask(nustd.ui.Card):
     asks = nustd.ui.Column.slot(gap=2)
     none = nustd.ui.TextRef.slot(tone="muted")
-    setup = nustd.ui.LinkRef.slot(href="https://nustack.dev/#start-agent", target="_blank",
+    footer = nustd.ui.LinkRef.slot(href="https://nustack.dev/#start-agent", target="_blank",
         label="Agent not set up yet? Add nustack to Claude Code or Codex, then come back and paste a prompt above.")
 
 
-class View(nustd.ui.Column):
-    ask = Ask.slot(title="Build with your agent", bordered=True,
-        description="Your agent can build here too. What it makes shows up in the sidebar on the left, as it builds.")
+class View(nu.Shape):
+    ask = Ask.slot(title="Build with your agent",
+        subtitle="Your agent can build here too. What it makes shows up in the sidebar on the left, as it builds.")
 
 
 A = View.ask
@@ -222,13 +222,12 @@ ASKS = (
     "build a live monitor of this machine: CPU, memory and disk, on a page of its own.",
     "make a reading list page: a form to add a book, and a table of what I have read.",
 )
-PROMPT = dict(nustd.ui.CodeRef.slot(wrap=True, show_copy=True).props)
+PROMPT = nustd.ui.CodeRef.slot(wrap=True, show_copy=True)
 
 
 def show(raw):
     lead = nu.Str("In my nuspace space at ") + quickstart.where(raw) + ", "
-    asks = nu.Sequential(*(nustd.ui.CodeRef(f"ask{i}", parent_ref=A.asks, props=PROMPT).set(lead + a)
-                           for i, a in enumerate(ASKS))) >> A.none.hide()
+    asks = nu.Sequential(*(A.asks[i].to(PROMPT).set(lead + a) for i, a in enumerate(ASKS))) >> A.none.hide()
     gone = A.asks.hide() >> A.none.set("Your agent finds a space by its folder, and this one has none. "
                                        "Stop it and run nuspace run --with quickstart to get one.")
     return nu.IfDo(quickstart.throwaway(raw), gone, asks)
@@ -241,6 +240,7 @@ def out():
 
 
 NEXT = """\
+import importlib
 import importlib.util
 import shutil
 import nu
@@ -253,13 +253,6 @@ from nuverse.planes import quickstart
 
 HAS_DEMOS = importlib.util.find_spec("nudemos") is not None
 HAS_CC = shutil.which("claude") is not None
-
-
-class Demo(nustd.ui.Row):
-    icon = nustd.ui.IconRef.slot(framed=True)
-    words = nustd.ui.HeadingRef.slot(level=4)
-    room = nustd.ui.SpacerRef.slot()
-    go = nustd.ui.ButtonRef.slot(label="Open", variant="outline", size="sm")
 
 
 class Missing(nustd.ui.Column):
@@ -276,48 +269,58 @@ class Bye(nustd.ui.Line):
     rest = nustd.ui.TextRef.slot(tone="muted", value="for a new cell. Deleted it? The same line brings a fresh one back.")
 
 
-class Where(nustd.ui.PageSection):
-    actions = nustd.ui.ButtonRef.slot(label="Make a page", icon="file-plus")
-    movies = Demo.slot(align="center", gap=3)
-    agents = Demo.slot(align="center", gap=3)
-    recipes = Demo.slot(align="center", gap=3)
+class Where(nustd.ui.Card):
+    actions = nustd.ui.ButtonRef.slot(label="Make a page", icon="file-plus", size="sm")
+    demos = nustd.ui.GridRef.slot(max_columns=3, min_cell_width=150, gap=3)
     install = Missing.slot(gap=2)       # the install lines, only when nudemos is missing
-    docs = nustd.ui.PageLinkRef.slot(variant="row", href="https://nustack.dev/docs/nuspace", target="_blank",
-                                     icon="book-open", title="Docs", description="How spaces, cells and nu fit together.")
-    discord = nustd.ui.PageLinkRef.slot(variant="row", href="https://discord.gg/tCa8YE7XVr", target="_blank",
-                                        icon="messages-square", title="Discord", description="Ask, show what you built.")
+    links = nustd.ui.GridRef.slot(max_columns=2, min_cell_width=240, gap=3)
     bye = Bye.slot()
 
 
-class View(nustd.ui.Column):
+class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    where = Where.slot(title="Where next", bordered=True)
+    where = Where.slot(title="Where next", gap=4)
 
 
 W = View.where
+# Each demo: its nudemos module, icon, title, what it is.
 DEMOS = (
-    (W.movies, "film", "Your personal movie tracker.",
+    ("movies", "film", "Your personal movie tracker.",
      "A film base you run yourself. Films, people and timelines, all linked."),
-    (W.agents, "bot", "A team of agents, run from one space.",
+    ("agents", "bot", "A team of agents, run from one space.",
      "Brief, watch and steer Claude Code sessions."),
-    (W.recipes, "layout-dashboard", "Pages to poke at",
+    ("recipes", "layout-dashboard", "Pages to poke at",
      "A dashboard, a catalog, a settings page. Whole pages built from the kit, each one live."),
+)
+DEMO = nustd.ui.CardRef.slot(size="sm", variant="outline")
+OPEN = nustd.ui.ButtonRef.slot(label="Open", variant="outline", size="sm")
+LINKS = (
+    nustd.ui.PageLinkRef.slot(variant="tile", href="https://nustack.dev/docs/nuspace", target="_blank",
+                              icon="book-open", title="Docs", description="How spaces, cells and nu fit together."),
+    nustd.ui.PageLinkRef.slot(variant="tile", href="https://discord.gg/tCa8YE7XVr", target="_blank",
+                              icon="messages-square", title="Discord", description="Ask, show what you built."),
 )
 
 
-def fill_rows(raw):
-    rows = [row.icon.set(icon) >> row.words.set(title) >> row.words.set_subtitle(line)
-            for row, icon, title, line in DEMOS]
-    if HAS_DEMOS:
-        rows.append(W.install.hide())
-        if not HAS_CC:
-            rows.append(W.agents.words.set_eyebrow("Needs Claude Code"))
-    else:
-        rows += [row.go.hide() for row, *_ in DEMOS]
-        rows.append(W.agents.words.set_subtitle(
-            'Brief, watch and steer Claude Code sessions. Also needs pip install "nudemos[agents]".'))
-        rows.append(W.install.again.set(quickstart.again(raw)))
-    return nu.Sequential(*rows)
+def demo(i):
+    return W.demos[i].to(DEMO)
+
+
+def fill(raw):
+    drawn = []
+    for i, (name, icon, title, line) in enumerate(DEMOS):
+        card = demo(i)
+        if name == "agents" and not HAS_DEMOS:
+            line += ' Also needs pip install "nudemos[agents]".'
+        drawn.append(card.set_title(title) >> card.set_subtitle(line)
+                     >> card.media[0].to(nustd.ui.IconRef.slot(framed=True)).set(icon))
+        if HAS_DEMOS:
+            drawn.append(card.footer[0].to(OPEN).init())
+        if name == "agents" and HAS_DEMOS and not HAS_CC:
+            drawn.append(card.set_caption("Needs Claude Code"))
+    drawn.append(W.install.hide() if HAS_DEMOS else W.install.again.set(quickstart.again(raw)))
+    drawn += [W.links[i].to(link).init() for i, link in enumerate(LINKS)]
+    return nu.Sequential(*drawn)
 
 
 def open_made(spec):
@@ -342,14 +345,11 @@ def make_page(plane):
 def out(plane):
     arms = [nu.ReactEvery(W.actions.on_click(), make_page(plane))]
     if HAS_DEMOS:
-        from nudemos import agents, movies, recipes
-        arms += [
-            nu.ReactEvery(W.movies.go.on_click(), open_made(movies.PLANE)),
-            nu.ReactEvery(W.agents.go.on_click(), open_made(agents.PLANE)),
-            nu.ReactEvery(W.recipes.go.on_click(), open_made(recipes.PLANE)),
-        ]
+        arms += [nu.ReactEvery(demo(i).footer[0].to(OPEN).on_click(),
+                               open_made(importlib.import_module("nudemos." + name).PLANE))
+                 for i, (name, *_) in enumerate(DEMOS)]
     raw = nuspace.atomic(nuspace.Space.info.path.fallback(""))
-    return W.init() >> nu.let(raw, fill_rows) >> nu.ParallelAsync(*arms)
+    return W.init() >> nu.let(raw, fill) >> nu.ParallelAsync(*arms)
 """
 
 
@@ -457,14 +457,14 @@ def put_back(plane: nu.StrArg, button: nustd.ui.Ref) -> nu.Nu:
     return nu.let(nuspace.atomic(named.fallback("")), found)
 
 
-def welcome_back(section: nustd.ui.Ref, level: nu.Nu) -> nu.Nu:
+def welcome_back(card: nustd.ui.CardRef, level: nu.Nu) -> nu.Nu:
     """Say where the slider was left, when it was moved off :data:`START` on an earlier run."""
     said = (
         nu.Str("Still at ")
         + nu.str(nu.int(nu.Round(nu.Float(level))))
         + ", where you left it. Drag it again, the meter below follows."
     )
-    return nu.IfDo(nu.Float(level) != START, section.set_description(said))
+    return nu.IfDo(nu.Float(level) != START, card.set_subtitle(said))
 
 
 class _Told(nu.Shape):

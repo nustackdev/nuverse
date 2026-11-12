@@ -220,10 +220,10 @@ async def test_each_kind_draws_a_hit_on_one_line(store):
         (DateContent, "2026-10-06"),
     ]
     for kind, shown in texts:
-        assert (await _drawn(store, kind.render_hit(_at(kind)))).last("text") == shown
+        assert (await _drawn(store, kind.render_hit(_at(kind)))).last("hit") == {"value": shown}
     drawn = await _drawn(store, RowContent.render_hit(row))
-    assert drawn.last("text") in ("Mint · spreads", "spreads · Mint")
-    badge = (await _drawn(store, FlagContent.render_hit(_at(FlagContent)))).last("badge")
+    assert drawn.last("hit")["value"] in ("Mint · spreads", "spreads · Mint")
+    badge = (await _drawn(store, FlagContent.render_hit(_at(FlagContent)))).last("hit")
     assert badge == {"label": "on", "variant": "ok"}
 
 
@@ -234,23 +234,24 @@ async def test_each_kind_draws_in_full(store):
         _at(NumberContent).value.set(7.5),
         _at(FlagContent).value.set(False),
     )
-    assert (await _drawn(store, TextContent.render(_at(TextContent)))).last("body") == "# Basil"
-    stat = (await _drawn(store, NumberContent.render(_at(NumberContent)))).last("stat")
+    assert (await _drawn(store, TextContent.render(_at(TextContent)))).last("view") == "# Basil"
+    stat = (await _drawn(store, NumberContent.render(_at(NumberContent)))).last("view")
     assert stat == {"value": "7.5"}
-    badge = (await _drawn(store, FlagContent.render(_at(FlagContent)))).last("badge")
+    badge = (await _drawn(store, FlagContent.render(_at(FlagContent)))).last("view")
     assert badge == {"label": "off", "variant": "neutral"}
 
 
 async def test_a_long_text_hit_is_cut(store):
     await _put(store, _at(TextContent).value.set("word " * 40))
-    shown = (await _drawn(store, TextContent.render_hit(_at(TextContent)))).last("text")
+    shown = (await _drawn(store, TextContent.render_hit(_at(TextContent)))).last("hit")["value"]
     assert len(shown) == 81
     assert shown.endswith("…")
 
 
 async def test_a_hit_on_an_item_never_written_draws_blank(store):
     for kind, shown in [(TextContent, ""), (NumberContent, "0"), (DateContent, "")]:
-        assert (await _drawn(store, kind.render_hit(_at(kind, "never")))).last("text") == shown
+        drawn = await _drawn(store, kind.render_hit(_at(kind, "never")))
+        assert drawn.last("hit") == {"value": shown}
 
 
 # --- Cells keep their data in items -----------------------------------------------------

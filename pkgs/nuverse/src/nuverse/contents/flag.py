@@ -13,25 +13,13 @@ from nuspace.shapes.content import Content
 from nuspace.specs import ContentSpec
 
 
-__all__ = ["CONTENT", "Flag", "FlagContent", "FlagHit", "FlagView"]
+__all__ = ["CONTENT", "Flag", "FlagContent"]
 
 
 class Flag(nu.Shape):
     """A flag item: whether it is on."""
 
     value = nustd.kv.BoolRef.slot()
-
-
-class FlagView(nustd.ui.Row):
-    """A flag drawn whole, as a badge."""
-
-    badge = nustd.ui.BadgeRef.slot()
-
-
-class FlagHit(nustd.ui.Row):
-    """A flag in search results, as a badge."""
-
-    badge = nustd.ui.BadgeRef.slot()
 
 
 def _badge(item: Flag) -> tuple[nu.Nu, nu.Nu]:
@@ -59,13 +47,13 @@ class FlagContent(Content[Flag], name="Flag"):
     def render(cls, item: Flag) -> nu.Nu:
         """``on`` or ``off``, as a badge. Off before one is set."""
         label, variant = _badge(item)
-        return FlagView.badge.set(label, variant=variant)
+        return nustd.ui.BadgeRef("view").set(label, variant=variant)
 
     @classmethod
     def render_hit(cls, item: Flag) -> nu.Nu:
         """``on`` or ``off``, as a badge."""
         label, variant = _badge(item)
-        return FlagHit.badge.set(label, variant=variant)
+        return nustd.ui.BadgeRef("hit").set(label, variant=variant)
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Flag``.

@@ -334,12 +334,12 @@ async def test_cell_content_lens_browses_a_cells_items_by_kind(store):
         assert browser.column(1) == {"value": ""}
         await browser.nav([TEXT, "value"])
         assert browser.column(2) == {"value": "# Basil"}
-        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["# Basil"])
+        await _until(lambda: browser.shown("drawn", "view")[-1:] == ["# Basil"])
 
         # A write repaints both, the cursor kept.
         await _write(store, _item(TextContent, CELL, "me", "value").set("# Thyme"))
         await _until(lambda: browser.column(2) == {"value": "# Thyme"})
-        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["# Thyme"])
+        await _until(lambda: browser.shown("drawn", "view")[-1:] == ["# Thyme"])
 
         # Another cell picked: its items, from the root.
         browser.pick("c1")
@@ -377,7 +377,7 @@ async def test_plane_content_lens_browses_a_planes_own_items(store):
         assert browser.column(0) == {TEXT: "Text"}
         await browser.nav([TEXT, "title"])
         assert browser.column(2) == {"value": "Garden"}
-        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["Garden"])
+        await _until(lambda: browser.shown("drawn", "view")[-1:] == ["Garden"])
 
         browser.pick("q")
         await _until(lambda: browser.column(0) == {FLAG: "Flag"})
@@ -408,7 +408,7 @@ async def test_space_content_lens_browses_the_spaces_own_items(store):
         await browser.nav([TEXT, "readme"])
         assert browser.column(1) == {"readme": ""}
         assert browser.column(2) == {"value": "Hello"}
-        await _until(lambda: browser.shown("drawn", "body")[-1:] == ["Hello"])
+        await _until(lambda: browser.shown("drawn", "view")[-1:] == ["Hello"])
 
         # A kind written later shows up.
         await _write(store, _item(NumberContent, SPACE, "", "n").set(3.0))
@@ -607,7 +607,7 @@ async def _input(store, module: object, cell: str = "c") -> tuple[_Inputs, async
     await _spec_cell(store, module.CELL, cell)
     browser = _Inputs()
     task = await _running(store, "p", cell, browser)
-    await _until(lambda: browser.shown("entry") and browser.shown("entry", "input"))
+    await _until(lambda: browser.shown("entry") and browser.shown("entry", "control"))
     await _listening()
     return browser, task
 
@@ -617,20 +617,20 @@ async def test_number_input_stores_what_is_typed_and_shows_what_is_set(store):
     try:
         # Labelled with the cell's name, bounded 0 to 100, a step of 1.
         assert {"label": "number_input"} in browser.shown("entry")
-        assert {"min": 0.0} in browser.shown("entry", "input")
-        assert {"max": 100.0} in browser.shown("entry", "input")
-        assert {"step": 1.0} in browser.shown("entry", "input")
+        assert {"min": 0.0} in browser.shown("entry", "control")
+        assert {"max": 100.0} in browser.shown("entry", "control")
+        assert {"step": 1.0} in browser.shown("entry", "control")
 
-        browser.type("entry", "input", value=42)
+        browser.type("entry", "control", value=42)
         await _settles(store, _value(NumberContent), lambda v: v == 42.0)
 
         # Set by a program: the running cell shows it.
         await _write(store, _value(NumberContent).set(7.5))
-        await _until(lambda: {"value": 7.5} in browser.shown("entry", "input"))
+        await _until(lambda: {"value": 7.5} in browser.shown("entry", "control"))
 
         # Config: a bound typed is stored in the cell's own state and applied.
         browser.type("settings", "min", value=-3)
-        await _until(lambda: {"min": -3.0} in browser.shown("entry", "input"))
+        await _until(lambda: {"min": -3.0} in browser.shown("entry", "control"))
         assert await store.read(_state("c", number_input.Bounds).min) == -3.0
 
         # Renamed under Config: the cell is renamed.
@@ -665,10 +665,10 @@ async def test_an_input_stores_what_is_typed_and_shows_what_is_set(
 ):
     browser, task = await _input(store, module)
     try:
-        browser.type("entry", "input", value=typed)
+        browser.type("entry", "control", value=typed)
         await _settles(store, _value(kind), lambda v: v == stored)
         await _write(store, _value(kind).set(set_to))
-        await _until(lambda: browser.shown("entry", "input")[-1] == shown)
+        await _until(lambda: browser.shown("entry", "control")[-1] == shown)
         # Labelled by the cell's name, renamed from Config.
         browser.type("settings", "name", value="mine")
         await _until(lambda: {"label": "mine"} in browser.shown("entry"))
@@ -680,10 +680,10 @@ async def test_an_input_stores_what_is_typed_and_shows_what_is_set(
 async def test_a_cleared_date_is_gone(store):
     browser, task = await _input(store, date_picker)
     try:
-        assert browser.shown("entry", "input")[0] == ""
-        browser.type("entry", "input", value="2026-10-06")
+        assert browser.shown("entry", "control")[0] == ""
+        browser.type("entry", "control", value="2026-10-06")
         await _settles(store, _value(DateContent), lambda v: v == datetime.date(2026, 10, 6))
-        browser.type("entry", "input", value="")
+        browser.type("entry", "control", value="")
         await _settles(store, _value(DateContent).exists(), lambda v: not v)
     finally:
         task.cancel()
@@ -692,9 +692,9 @@ async def test_a_cleared_date_is_gone(store):
 async def test_select_options_come_from_config(store):
     browser, task = await _input(store, select)
     try:
-        assert {"options": select.OPTIONS} in browser.shown("entry", "input")
+        assert {"options": select.OPTIONS} in browser.shown("entry", "control")
         browser.type("settings", "options", value=["Red", "Blue"])
-        await _until(lambda: browser.shown("entry", "input")[-1] == {"options": ["Red", "Blue"]})
+        await _until(lambda: browser.shown("entry", "control")[-1] == {"options": ["Red", "Blue"]})
         assert browser.shown("settings", "options")[-1] == ["Red", "Blue"]
         assert await store.read(nu.ToList(_state("c", select.Choice).options)) == ["Red", "Blue"]
     finally:
@@ -704,9 +704,9 @@ async def test_select_options_come_from_config(store):
 async def test_slider_range_comes_from_config(store):
     browser, task = await _input(store, slider)
     try:
-        assert {"max": 100.0} in browser.shown("entry", "input")
+        assert {"max": 100.0} in browser.shown("entry", "control")
         browser.type("settings", "max", value=10)
-        await _until(lambda: {"max": 10.0} in browser.shown("entry", "input"))
+        await _until(lambda: {"max": 10.0} in browser.shown("entry", "control"))
         assert {"value": 10.0} in browser.shown("settings", "max")
     finally:
         task.cancel()
@@ -720,21 +720,21 @@ async def test_config_points_an_editor_at_another_cells_item(store):
     theirs, second = await _input(store, text_input, "b")
     try:
         # Its Config shows where its item is: this cell's value, the scope by id.
-        assert theirs.shown("item", "level", "input")[-1] == CELL
+        assert theirs.shown("item", "level", "control")[-1] == CELL
         assert theirs.shown("item", "key")[-1] == ""
         assert theirs.shown("scope", "by")[-1] == BY_ID
 
-        mine.type("entry", "input", value="Basil")
+        mine.type("entry", "control", value="Basil")
         await _settles(store, _value(TextContent, "a"), lambda v: v == "Basil")
 
         # Pointed at a's item, b shows it and edits it.
-        theirs.type("scope", "value", "input", value="a")
+        theirs.type("scope", "value", value="a")
         target = _state("b", Target).target
         await _settles(store, target, lambda v: (v or {}).get("scope") == "a")
-        await _until(lambda: theirs.shown("entry", "input")[-1] == "Basil")
-        theirs.type("entry", "input", value="Thyme")
+        await _until(lambda: theirs.shown("entry", "control")[-1] == "Basil")
+        theirs.type("entry", "control", value="Thyme")
         await _settles(store, _value(TextContent, "a"), lambda v: v == "Thyme")
-        await _until(lambda: mine.shown("entry", "input")[-1] == "Thyme")
+        await _until(lambda: mine.shown("entry", "control")[-1] == "Thyme")
         # b's own item was never written.
         assert await store.read(_value(TextContent, "b").exists()) is False
     finally:
@@ -752,9 +752,9 @@ async def test_a_program_points_an_editor_at_any_scope(store, level, scope, key)
     browser = _Inputs()
     task = await _running(store, "p", "c", browser)
     try:
-        await _until(lambda: browser.shown("entry", "input"))
+        await _until(lambda: browser.shown("entry", "control"))
         await _listening()
-        browser.type("entry", "input", value=12)
+        browser.type("entry", "control", value=12)
         owner = {PLANE: "p", SPACE: "", CELL: scope}[level]
         await _settles(store, _item(NumberContent, level, owner, key), lambda v: v == 12.0)
     finally:
@@ -766,17 +766,17 @@ async def test_config_points_an_editor_at_a_cell_by_its_key(store):
     theirs, second = await _input(store, text_input, "b")
     try:
         await store.do(nuspace.cell.set_key("a", "herbs"))
-        mine.type("entry", "input", value="Basil")
+        mine.type("entry", "control", value="Basil")
         await _settles(store, _value(TextContent, "a"), lambda v: v == "Basil")
 
         # Switched to key, the input holds a's key: b edits a's item.
         theirs.type("scope", "by", value=BY_KEY)
-        theirs.type("scope", "value", "input", value="herbs")
+        theirs.type("scope", "value", value="herbs")
         target = _state("b", Target).target
         await _settles(store, target, lambda v: (v or {}).get("scope") == "herbs")
         assert (await store.read(target))["by"] == BY_KEY
-        await _until(lambda: theirs.shown("entry", "input")[-1] == "Basil")
-        theirs.type("entry", "input", value="Thyme")
+        await _until(lambda: theirs.shown("entry", "control")[-1] == "Basil")
+        theirs.type("entry", "control", value="Thyme")
         await _settles(store, _value(TextContent, "a"), lambda v: v == "Thyme")
         assert await store.read(_value(TextContent, "b").exists()) is False
     finally:
@@ -798,10 +798,10 @@ async def test_an_editor_by_a_key_no_row_holds_says_so_and_follows_it_when_set(s
 
         # The key set on a: resolved, the error cleared, a's item edited.
         await store.do(nuspace.cell.set_key("a", "herbs"))
-        await _until(lambda: browser.shown("entry", "input")[-1:] == ["Basil"])
+        await _until(lambda: browser.shown("entry", "control")[-1:] == ["Basil"])
         assert browser.shown("entry")[-1] == {"error": ""}
         await _listening()
-        browser.type("entry", "input", value="Thyme")
+        browser.type("entry", "control", value="Thyme")
         await _settles(store, _value(TextContent, "a"), lambda v: v == "Thyme")
     finally:
         task.cancel()
@@ -817,20 +817,20 @@ async def test_item_draws_any_item_in_full_and_again_when_it_changes(store):
     task = await _running(store, "p", "c", browser)
     try:
         # Left as it is: its own cell's text, drawn by the kind's render.
-        await _until(lambda: browser.shown("body") and browser.shown("body")[-1] == "# Basil")
+        await _until(lambda: browser.shown("view") and browser.shown("view")[-1] == "# Basil")
         await _write(store, _value(TextContent).set("# Thyme"))
-        await _until(lambda: browser.shown("body")[-1] == "# Thyme")
+        await _until(lambda: browser.shown("view")[-1] == "# Thyme")
 
         # Pointed at a number on the plane.
         await _write(store, _item(NumberContent, PLANE, "p", "n").set(42.0))
         number = kind_name(NumberContent)
         pointed = {"kind": number, "level": PLANE, "scope": "", "key": "n"}
         await _write(store, _state("c", Target).target.set(pointed))
-        await _until(lambda: {"value": "42"} in browser.shown("stat"))
-        assert browser.shown("which", "kind", "input")[-1] == number
+        await _until(lambda: {"value": "42"} in browser.shown("view"))
+        assert browser.shown("which", "kind", "control")[-1] == number
         # The number written again: drawn again.
         await _write(store, _item(NumberContent, PLANE, "p", "n").set(7.0))
-        await _until(lambda: {"value": "7"} in browser.shown("stat"))
+        await _until(lambda: {"value": "7"} in browser.shown("view"))
     finally:
         task.cancel()
 
@@ -844,11 +844,11 @@ async def test_item_draws_a_plane_item_by_the_planes_key(store):
     browser = _Inputs()
     task = await _running(store, "p", "c", browser)
     try:
-        await _until(lambda: {"value": "42"} in browser.shown("stat"))
+        await _until(lambda: {"value": "42"} in browser.shown("view"))
         assert browser.shown("which", "scope", "by")[-1] == BY_KEY
         # The key dropped: nothing left to draw, and why.
         await store.do(nuspace.plane.remove_key("q"))
-        await _until(lambda: "No plane has the key pantry" in browser.shown("note"))
+        await _until(lambda: {"value": "No plane has the key pantry"} in browser.shown("note"))
     finally:
         task.cancel()
 
@@ -873,21 +873,21 @@ async def test_items_lists_adds_opens_and_removes(store):
     opened = _state("c", items.Open).opened
     try:
         # Each item a line drawn by its kind's render_hit.
-        await _until(lambda: "Basil" in browser.shown("i_one", "hit", "text"))
+        await _until(lambda: {"value": "Basil"} in browser.shown("one", "hit", "hit"))
 
         # Add: a new item under a fresh key, opened. Written by its address, as an
         # editor does, its line follows.
-        browser.notify((*browser.path("lines")[:-1], "head", "add"), None)
+        browser.notify((*browser.path("lines")[:-1], "actions"), None)
         made = await _settles(store, opened, lambda v: bool(v))
         assert made.startswith("i_")
         assert sorted(await store.read(nu.list(held.keys()))) == sorted(["one", made])
         await _write(store, held[made].value.set("Thyme"))
-        await _until(lambda: "Thyme" in browser.shown(f"i_{made}", "hit", "text"))
+        await _until(lambda: {"value": "Thyme"} in browser.shown(made, "hit", "hit"))
 
         # Open another, then remove it.
-        browser.notify((*browser.path("lines"), "i_one", "open"), None)
+        browser.notify((*browser.path("lines"), "one", "open"), None)
         await _settles(store, opened, lambda v: v == "one")
-        browser.notify((*browser.path("lines"), "i_one", "remove"), None)
+        browser.notify((*browser.path("lines"), "one", "delete"), None)
         await _settles(store, nu.list(held.keys()), lambda v: v == [made])
         await _settles(store, opened, lambda v: v == "")
     finally:
@@ -906,21 +906,21 @@ async def test_item_picker_keeps_the_picked_items_address(store):
     link = _state("c", item_picker.Link).address
     try:
         # Every text, cells first, then planes.
-        await _until(lambda: "Garden" in browser.shown("c1", "hit", "text"))
-        assert "Basil" in browser.shown("c0", "hit", "text")
-        assert "Nothing picked." in browser.shown("none")
+        await _until(lambda: {"value": "Garden"} in browser.shown("1", "about", "hit", "hit"))
+        assert {"value": "Basil"} in browser.shown("0", "about", "hit", "hit")
+        assert {"value": "Nothing picked."} in browser.shown("none")
         await _listening()
 
-        browser.notify((*browser.path("rows"), "c1", "pick"), None)
+        browser.notify((*browser.path("rows"), "1", "pick"), None)
         picked = await _settles(store, link, lambda v: bool(v))
         assert picked == {"kind": kind_name(TextContent), "scope": [PLANE, "p"], "key": "title"}
-        await _until(lambda: "Garden" in browser.shown("picked", "hit", "text"))
+        await _until(lambda: {"value": "Garden"} in browser.shown("picked", "hit", "hit"))
 
         # A text written anywhere lists again.
         await _write(store, _item(TextContent, SPACE, "", "readme").set("Mint"))
-        await _until(lambda: "Mint" in browser.shown("c2", "hit", "text"))
+        await _until(lambda: {"value": "Mint"} in browser.shown("2", "about", "hit", "hit"))
 
-        browser.notify((*browser.path("hit")[:-1], "unpick"), None)
+        browser.notify((*browser.path("none")[:-1], "picked", "unpick"), None)
         await _settles(store, link.exists(), lambda v: not v)
     finally:
         task.cancel()

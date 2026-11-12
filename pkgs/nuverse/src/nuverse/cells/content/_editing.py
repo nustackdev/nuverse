@@ -10,6 +10,10 @@ says which the input holds, id by default) and the item's content key
 a program can point one by writing it
 (``nuspace.at.cell(id=c).state(Target).target.set(...)``).
 
+Every editor draws on one surface, :class:`Editor`: its control in a Field
+labelled with the cell's name, then Config. An editor names only its
+control's kind and its own settings; :func:`editor` runs the rest.
+
 The viewers of any kind (:mod:`.item`, :mod:`.items`, :mod:`.item_picker`)
 pick the kind too, by name, from the installed kinds
 (:func:`kind_options`, read off the registry where the cell is built), and
@@ -41,19 +45,24 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "BOUNDS",
     "BY_ID",
     "BY_KEY",
     "BY_OPTIONS",
     "DEFAULT_KIND",
+    "ENTRY",
     "ITEM",
+    "KIND",
+    "LEVEL",
     "LEVEL_OPTIONS",
+    "NAME",
     "SECTIONS",
+    "SETTINGS",
     "TARGET",
+    "Editing",
+    "Editor",
     "ForKind",
-    "KindField",
-    "LevelField",
     "Scope",
-    "ScopeField",
     "Target",
     "Where",
     "bounded",
@@ -67,6 +76,7 @@ __all__ = [
     "pointed",
     "render",
     "render_hit",
+    "scoped",
     "where",
 ]
 
@@ -100,7 +110,7 @@ class Target(nu.Shape):
     """Where the cell's item is, plain data: ``level``, ``scope``, ``by``, ``key``, and ``kind`` for a viewer.
 
     ``by`` says what ``scope`` holds: :data:`BY_ID` or :data:`BY_KEY`. A
-    field missing or blank takes its default: a cell, this cell or this
+    part missing or blank takes its default: a cell, this cell or this
     plane, by id, :data:`ITEM`. Kept in the cell's own state (:data:`TARGET`).
     """
 
@@ -111,45 +121,70 @@ class Target(nu.Shape):
 TARGET = nuspace.here(Target).target
 
 
-class LevelField(nustd.ui.Field):
-    input = nustd.ui.SelectRef.slot(options=LEVEL_OPTIONS)
+#: The select a Config picks the scope level with, the control of a "Scope" Field.
+LEVEL = nustd.ui.SelectRef.slot(options=LEVEL_OPTIONS)
 
-
-class KindField(nustd.ui.Field):
-    input = nustd.ui.SelectRef.slot(placeholder="No content kinds registered")
-
-
-class ScopeField(nustd.ui.Field):
-    input = nustd.ui.InputRef.slot(placeholder="This cell or plane")
+#: The select a viewer's Config picks the kind with, the control of a "Kind" Field.
+KIND = nustd.ui.SelectRef.slot(placeholder="No content kinds registered")
 
 
 class Scope(nustd.ui.Row):
     """The scope's id or key, with the switch saying which, inline."""
 
-    value = ScopeField.slot(label="Scope identity")
+    value = nustd.ui.InputRef.slot(label="Scope identity", placeholder="This cell or plane")
     by = nustd.ui.RadioGroupRef.slot(options=BY_OPTIONS, selected=BY_ID, orientation="horizontal")
 
 
 class Where(nustd.ui.Column):
     """An editor's Item section: where the item it edits is."""
 
-    level = LevelField.slot(label="Scope")
-    scope = Scope.slot(gap=3, align="end")
+    level = nustd.ui.FieldRef.slot(label="Scope")
+    scope = Scope.slot(gap=3, align="end", grow={"value": 1})
     key = nustd.ui.InputRef.slot(label="Item key", placeholder=ITEM)
 
 
-def _field(ui: nu.Nu, name: str) -> nu.Nu:
-    """The input of ``ui``'s field ``name``: a select sits in a Field, the scope in a :class:`Scope`."""
-    if name == "scope":
-        return ui.scope.value.input
-    if name == "by":
-        return ui.scope.by
-    held = getattr(ui, name)
-    return held.input if name in ("level", "kind") else held
+class Config(nustd.ui.Accordion):
+    """An editor's Config: its own settings, then where its item is (:data:`SECTIONS`)."""
+
+    settings = nustd.ui.ColumnRef.slot(gap=3)
+    item = Where.slot(gap=3)
+
+
+class Editor(nustd.ui.Column):
+    """Every single item editor's surface: the control in a Field labelled with the cell's name, then Config.
+
+    An editor names its control's kind at the use site,
+    ``ENTRY.control.to(nustd.ui.SliderRef.slot())``, and adds its
+    own settings under :data:`SETTINGS` by name, after the cell's name.
+    """
+
+    entry = nustd.ui.FieldRef.slot()
+    config = Config.slot(sections=SECTIONS)
+
+
+class Editing(nu.Shape):
+    """An editor cell's root: the :class:`Editor`, its parts spaced apart."""
+
+    editor = Editor.slot(gap=3)
+
+
+#: The Field an editor's control sits in: its label is the cell's name, its error why nothing is edited.
+ENTRY = Editing.editor.entry
+
+#: An editor's own settings, by name: ``SETTINGS["min"].to(nustd.ui.NumberInputRef.slot(...))``.
+SETTINGS = Editing.editor.config.settings
+
+#: The cell's name, the first of an editor's settings.
+NAME = SETTINGS["name"].to(nustd.ui.InputRef.slot(label="Name"))
+
+
+def scoped(level: nustd.ui.FieldRef, scope: nu.Nu) -> dict[str, nu.Nu]:
+    """The scope's controls for :func:`where`: the level select in ``level``, the identity and its switch in a :class:`Scope`."""
+    return {"level": level.control.to(LEVEL), "scope": scope.value, "by": scope.by}
 
 
 def _given(held: nu.Nu, name: str) -> nu.Str:
-    """One field of a target, ``""`` when missing."""
+    """One part of a target, ``""`` when missing."""
     return nu.Str(nu.str(nu.Dict(held).get_item(name, "")))
 
 
@@ -231,20 +266,19 @@ def editing(
 
 
 def where(
-    ui: nu.Nu,
-    fields: Sequence[str] = ("level", "scope", "by", "key"),
+    controls: Mapping[str, nu.Nu],
     *,
     shown: Mapping[str, str] | None = None,
 ) -> tuple[nu.Nu, list[nu.Nu]]:
     """A Config section showing the cell's :class:`Target` and writing it, both ways.
 
     Args:
-        ui: The section: a :class:`Where`, or a Column with ``fields`` of
-            the same names (``kind`` and ``level`` in a Field, as selects;
-            ``scope`` and ``by`` in a :class:`Scope` named ``scope``).
-        fields: The target's fields the section asks.
-        shown: What a select shows for a field the target leaves blank, by
-            field. ``level`` shows :data:`~nuspace.shapes.content.CELL`,
+        controls: The control asking each part of the target it asks, by
+            name, in the order they draw: ``kind`` and ``level`` selects
+            (:data:`KIND`, :data:`LEVEL`), ``scope`` and ``by`` from
+            :func:`scoped`, ``key`` an input.
+        shown: What a select shows for a part the target leaves blank, by
+            name. ``level`` shows :data:`~nuspace.shapes.content.CELL`,
             ``by`` :data:`BY_ID`.
 
     Returns:
@@ -257,62 +291,70 @@ def where(
         value = _given(held, name)
         return nu.If(value == "", blanks[name], value) if name in blanks else value
 
-    show = nu.Sequential(*(_field(ui, f).set(given(f)) for f in fields))
-    asked = nu.Dict.of(**{f: nu.Str(nu.ToStr(_field(ui, f))).strip() for f in fields})
+    show = nu.Sequential(*(control.set(given(f)) for f, control in controls.items()))
+    asked = nu.Dict.of(**{f: nu.Str(nu.ToStr(control)).strip() for f, control in controls.items()})
     keep = TARGET.set(asked)
-    reactions = [nu.ReactEvery(_field(ui, f).on_change(), keep) for f in fields]
+    reactions = [nu.ReactEvery(control.on_change(), keep) for control in controls.values()]
     return show, [*reactions, nu.ReactEvery(TARGET.on_change(), show)]
 
 
-def named(entry: nu.Nu, name: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
-    """The cell's name as ``entry``'s label and in Config's ``name`` input, renamed from there.
+def named() -> tuple[nu.Nu, list[nu.Nu]]:
+    """The cell's name as the :data:`ENTRY` label and in the :data:`NAME` setting, renamed from there.
 
     Returns:
         What draws it, and the reactions keeping it live.
     """
     called = nuspace.Space.cells[Here.cell].name
-    show = entry.set_label(called.fallback("")) >> name.set(called.fallback(""))
-    renamed = nuspace.atomic(nuspace.cell.rename(Here.cell, nu.Str(name)))
+    show = ENTRY.set_label(called.fallback("")) >> NAME.set(called.fallback(""))
+    renamed = nuspace.atomic(nuspace.cell.rename(Here.cell, nu.Str(NAME)))
     return show, [
-        nu.ReactEvery(name.on_change(), renamed),
+        nu.ReactEvery(NAME.on_change(), renamed),
         nu.ReactEvery(called.on_change(), show),
     ]
 
 
 def editor(
     kind: type[Content[Any]],
-    box: nu.Nu,
     body: Callable[[Any], nu.Nu],
     *,
     first: nu.Nu | None = None,
     also: Sequence[nu.Nu] = (),
 ) -> nu.Nu:
-    """A whole single item editor: ``body`` over its item, its name and Config, for as long as the cell runs.
+    """A whole single item editor on :class:`Editor`: ``body`` over its item, its name and Config, for as long as the cell runs.
 
     Args:
         kind: The kind it edits.
-        box: The cell's surface: ``entry``, a Field, and ``config``, an
-            Accordion with ``settings`` (a Column with a ``name`` input) and
-            ``item`` (a :class:`Where`), drawn with :data:`SECTIONS`.
-        body: The item drawn and edited, both ways. Started again whenever
-            the cell is pointed at another item.
-        first: Drawn before anything else, eg a seed of the cell's settings.
+        body: The item drawn and edited, both ways, on the editor's control.
+            Started again whenever the cell is pointed at another item.
+        first: Drawn right after the cell's name, eg a seed of the cell's
+            settings: what it writes under :data:`SETTINGS` draws after the name.
         also: More reactions, eg the editor's own settings kept live.
     """
-    show_name, renames = named(box.entry, box.config.settings.name)
-    show_where, points = where(box.config.item)
-    head = show_name >> show_where if first is None else first >> show_name >> show_where
+    item = Editing.editor.config.item
+    show_name, renames = named()
+    show_where, points = where({**scoped(item.level, item.scope), "key": item.key})
+    head = nu.Sequential(show_name, *([] if first is None else [first]), show_where)
 
-    def found(item: nu.Nu) -> nu.Nu:
-        return box.entry.set_error("") >> body(item)
+    def found(held: nu.Nu) -> nu.Nu:
+        return ENTRY.set_error("") >> body(held)
 
     # A key that finds no row: said on the entry, nothing edited until it does.
-    edits = editing(kind, found, missing=box.entry.set_error)
+    edits = editing(kind, found, missing=ENTRY.set_error)
     return nuspace.bracketed(head >> nu.ParallelAsync(edits, *renames, *points, *also))
 
 
-def bounded(state: nu.Shape, entry: nu.Nu, settings: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
-    """``state``'s min, max and step on ``entry`` and in Config, both ways.
+#: The settings a number input and a slider share: min, max and step, under :data:`SETTINGS`.
+BOUNDS = {
+    "min": SETTINGS["min"].to(nustd.ui.NumberInputRef.slot(label="Min")),
+    "max": SETTINGS["max"].to(nustd.ui.NumberInputRef.slot(label="Max", default=100)),
+    "step": SETTINGS["step"].to(
+        nustd.ui.NumberInputRef.slot(label="Step", min=0, step=0.1, default=1)
+    ),
+}
+
+
+def bounded(state: nu.Shape, control: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
+    """``state``'s min, max and step on ``control`` and in :data:`BOUNDS`, both ways.
 
     What a number input and a slider configure: their bounds or range, and step.
     ``state`` is the cell's own, eg ``nuspace.here(Range)``.
@@ -321,15 +363,15 @@ def bounded(state: nu.Shape, entry: nu.Nu, settings: nu.Nu) -> tuple[nu.Nu, list
         What draws them, and the reactions keeping them live.
     """
     held = {"min": 0.0, "max": 100.0, "step": 1.0}
-    setters = {"min": entry.set_min, "max": entry.set_max, "step": entry.set_step}
+    setters = {"min": control.set_min, "max": control.set_max, "step": control.set_step}
 
     def show(name: str) -> nu.Nu:
         value = getattr(state, name).fallback(held[name])
-        return setters[name](value) >> getattr(settings, name).set_value(value)
+        return setters[name](value) >> BOUNDS[name].set_value(value)
 
     reactions = []
     for name in held:
-        typed = getattr(settings, name)
+        typed = BOUNDS[name]
         reactions += [
             nu.ReactEvery(typed.on_change(), getattr(state, name).set(nu.ToFloat(typed))),
             nu.ReactEvery(getattr(state, name).on_change(), show(name)),

@@ -231,7 +231,7 @@ async def test_meter_under_the_limit_draws_neutral_and_no_done_line(store):
     gauge = _payloads(frames, ("reading", "gauge"))[-1]
     assert gauge["value"] == pytest.approx(0.62)
     assert gauge["variant"] == "neutral"
-    assert "Under the limit of 70." in _payloads(frames, ("reading", "note"))
+    assert {"value": "Under the limit of 70."} in _payloads(frames, ("reading", "note"))
     assert [f["op"] for f in frames if _path(f) == ("done",)] == ["hide"]
 
 
@@ -242,7 +242,7 @@ async def test_meter_with_limit_40_draws_warn_and_the_done_line(store):
     frames = _dicts(await _run(store, "s", cells["meter"]))
     gauge = _payloads(frames, ("reading", "gauge"))[-1]
     assert gauge["variant"] == "warn"
-    assert "Over the limit of 40." in _payloads(frames, ("reading", "note"))
+    assert {"value": "Over the limit of 40."} in _payloads(frames, ("reading", "note"))
     done = [f for f in frames if _path(f) == ("done",)]
     assert [f["op"] for f in done] == [OP_INIT]
 
@@ -388,9 +388,16 @@ def _pushed(browser: _Browser) -> list[str]:
     ]
 
 
-async def test_where_next_draws_its_rows_and_links(store):
+async def test_where_next_draws_a_card_per_demo_and_two_link_tiles(store):
     cells = await _plane(store)
-    labels = _texts(_dicts(await _run(store, "s", cells["next"])))
+    frames = _dicts(await _run(store, "s", cells["next"]))
+    seen = _first_seen(frames)
+    places = {
+        name: [p[2] for p in seen if p[:2] == ("where", name) and len(p) == 3]
+        for name in ("demos", "links")
+    }
+    assert places == {"demos": ["0", "1", "2"], "links": ["0", "1"]}
+    labels = _texts(frames)
     for words in (
         "Where next",
         "Make a page",

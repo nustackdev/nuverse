@@ -13,42 +13,28 @@ from nuspace.specs import CellSpec
 
 from ...contents.flag import Flag, FlagContent
 from .. import source
-from ._editing import SECTIONS, Where, editor
+from ._editing import ENTRY, editor
 
 
-__all__ = ["CELL", "out"]
+__all__ = ["CELL", "CONTROL", "out"]
 
 
-class Entry(nustd.ui.Field):
-    input = nustd.ui.SwitchRef.slot()
-
-
-class Settings(nustd.ui.Column):
-    name = nustd.ui.InputRef.slot(label="Name")
-
-
-class Config(nustd.ui.Accordion):
-    settings = Settings.slot(gap=3)
-    item = Where.slot(gap=3)
-
-
-class Box(nustd.ui.Column):
-    entry = Entry.slot()
-    config = Config.slot(sections=SECTIONS)
+#: The control, in the editor's Field.
+CONTROL = ENTRY.control.to(nustd.ui.SwitchRef.slot())
 
 
 def _edit(item: Flag) -> nu.Nu:
     """The item's on or off in the switch, both ways."""
-    value, entry = item.value, Box.entry.input
-    return entry.set(value.fallback(False)) >> nu.ParallelAsync(
-        nu.ReactEvery(entry.on_change(), value.set(nu.ToBool(entry))),
-        nu.ReactEvery(value.on_change(), entry.set(value)),
+    value = item.value
+    return CONTROL.set(value.fallback(False)) >> nu.ParallelAsync(
+        nu.ReactEvery(CONTROL.on_change(), value.set(nu.ToBool(CONTROL))),
+        nu.ReactEvery(value.on_change(), CONTROL.set(value)),
     )
 
 
 def out() -> nu.Nu:
     """The switch and its Config, for as long as the cell runs."""
-    return editor(FlagContent, Box, _edit)
+    return editor(FlagContent, _edit)
 
 
 CELL = CellSpec(

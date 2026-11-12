@@ -13,25 +13,13 @@ from nuspace.shapes.content import Content
 from nuspace.specs import ContentSpec
 
 
-__all__ = ["CONTENT", "Date", "DateContent", "DateHit", "DateView", "iso"]
+__all__ = ["CONTENT", "Date", "DateContent", "iso"]
 
 
 class Date(nu.Shape):
     """A date item: the day, stored ISO ``YYYY-MM-DD``."""
 
     value = nustd.datetime.kv.DateRef.slot()
-
-
-class DateView(nustd.ui.Column):
-    """A date drawn whole."""
-
-    text = nustd.ui.TextRef.slot()
-
-
-class DateHit(nustd.ui.Row):
-    """A date in search results."""
-
-    text = nustd.ui.TextRef.slot()
 
 
 def iso(item: Date) -> nu.Str:
@@ -66,12 +54,12 @@ class DateContent(Content[Date], name="Date"):
     @classmethod
     def render(cls, item: Date) -> nu.Nu:
         """The date, ISO."""
-        return DateView.text.set(iso(item))
+        return nustd.ui.TextRef("view").set(iso(item))
 
     @classmethod
     def render_hit(cls, item: Date) -> nu.Nu:
         """The date, ISO, on one line."""
-        return DateHit.text.set(iso(item))
+        return nustd.ui.TextRef("hit").set(iso(item))
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Date``.

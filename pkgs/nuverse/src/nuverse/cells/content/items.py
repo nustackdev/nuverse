@@ -1,12 +1,14 @@
 """An items cell: every item of one kind in one scope, listed, opened, added and removed.
 
 Its Config says which: the kind, by name, from the installed kinds, and
-the scope, by id or key (:mod:`._editing`). Left as it is, it lists its own cell's text
-items. Each item is a line drawn with its kind's ``render_hit``, with Open
-and Remove. Add makes one under a fresh, time ordered content key
-(``nuspace.utils.MintId``) and opens it. The item open is drawn in full with ``render``. Editing is an
-editor cell's, pointed at the item by its address. Which item is open is
-the cell's own state; the items are everyone's.
+the scope, by id or key (:mod:`._editing`). Left as it is, it lists its
+own cell's text items, in an Items card. Each item is a line drawn with its
+kind's ``render_hit``, with Open and Remove, keyed by its content key. Add
+makes one under a fresh, time ordered content key
+(``nuspace.utils.MintId``) and opens it. The item open is drawn in full
+with ``render``, in a card of its own. Editing is an editor cell's, pointed
+at the item by its address. Which item is open is the cell's own state;
+the items are everyone's.
 
 What it draws is built for the kind when it runs (:class:`._editing.ForKind`),
 so it reads the kind's items as a place holds them
@@ -24,20 +26,19 @@ import nustd.ui
 from nuspace.shapes.content import entries
 from nuspace.specs import CellSpec
 from nuspace.utils import MintId
-from nustd.ui.core import SectionRef
 
 from .. import source
 from ._editing import (
     DEFAULT_KIND,
+    KIND,
     TARGET,
     ForKind,
-    KindField,
-    LevelField,
     Scope,
     kind_of,
     kind_options,
     landed,
     pointed,
+    scoped,
     where,
 )
 
@@ -47,10 +48,6 @@ if TYPE_CHECKING:
 
 
 __all__ = ["CELL", "OPENED", "Open", "out"]
-
-
-#: What the Config asks: the kind, then the scope, by id or key.
-FIELDS = ("kind", "level", "scope", "by")
 
 
 class Open(nu.Shape):
@@ -64,48 +61,57 @@ OPENED = nuspace.here(Open).opened
 
 
 class Which(nustd.ui.Column):
-    """Config: whose items it lists."""
+    """Config: whose items it lists, the kind, then the scope by id or key."""
 
-    kind = KindField.slot(label="Kind")
-    level = LevelField.slot(label="Scope")
-    scope = Scope.slot(gap=3, align="end")
-
-
-class Config(nustd.ui.Accordion):
-    which = Which.slot(gap=3)
+    kind = nustd.ui.FieldRef.slot(label="Kind")
+    level = nustd.ui.FieldRef.slot(label="Scope")
+    scope = Scope.slot(gap=3, align="end", grow={"value": 1})
 
 
-class View(nustd.ui.Column):
-    # Where the listing built for the kind lands.
-    listing = nustd.ui.Column.slot(gap=3)
+class Body(nustd.ui.Column):
+    # The Items card: the listing built for the kind lands in it.
+    listing = nustd.ui.CardRef.slot(title="Items")
     note = nustd.ui.TextRef.slot()
-    config = Config.slot(sections=[{"id": "which", "label": "Config"}])
+    config = nustd.ui.AccordionRef.slot(sections=[{"id": "which", "label": "Config"}])
 
 
-class Head(nustd.ui.Row):
-    add = nustd.ui.ButtonRef.slot(label="Add", icon="plus", variant="secondary")
+class View(nu.Shape):
+    """The cell's root: its :class:`Body`, the parts spaced apart."""
+
+    body = Body.slot(gap=3)
+
+
+#: The running cell's surface.
+BODY = View.body
+
+
+#: The body's parts in the order they draw, whichever is written first.
+ORDER = nu.Sequential(*(BODY.insert(part) for part in ("listing", "note", "config")))
+
+#: The Config's one section.
+WHICH = BODY.config["which"].to(Which.slot(gap=3))
+
+#: The kind select, in the Config.
+KINDS = WHICH.kind.control.to(KIND)
 
 
 class Line(nustd.ui.Row):
     """One item: its hit, then what can be done with it."""
 
-    hit = nustd.ui.Column.slot()
-    open = nustd.ui.ButtonRef.slot(label="Open", variant="ghost")
-    remove = nustd.ui.ButtonRef.slot(label="Remove", icon="trash-2", variant="ghost")
+    # Where the item's hit lands.
+    hit = nustd.ui.ColumnRef.slot()
+    open = nustd.ui.ButtonRef.slot(label="Open", variant="ghost", size="sm")
+    delete = nustd.ui.ButtonRef.slot(label="Remove", icon="trash-2", variant="ghost", size="sm")
 
 
-class Opened(nustd.ui.Column):
-    """The item open, drawn in full."""
+class Listing(nu.Shape):
+    """What the listing draws in the Items card: Add on its header, then the lines and the item open."""
 
-    title = nustd.ui.HeadingRef.slot(level=4)
-    view = nustd.ui.Column.slot()
-
-
-class Listing(nustd.ui.Column):
-    head = Head.slot(gap=2)
+    actions = nustd.ui.ButtonRef.slot(label="Add", icon="plus", variant="secondary", size="sm")
     empty = nustd.ui.EmptyStateRef.slot()
-    lines = nustd.ui.Column.slot(gap=1)
-    opened = Opened.slot(gap=3)
+    # One line per item, keyed by its content key.
+    lines = nustd.ui.ColumnRef.slot(Line.slot(gap=2, align="center", grow={"hit": 1}), gap=1)
+    opened = nustd.ui.CardRef.slot(variant="outline")
 
 
 def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
@@ -113,33 +119,35 @@ def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
     items = entries(kind, level, scope_id)
     # A scope no item landed in yet has no mapping: it lists none.
     keys = nuspace.atomic(nu.list(nu.If(items.exists(), nu.list(items.keys()), [])))
-    opened = Listing.opened
-
-    def line(found: nu.Nu) -> nu.Nu:
-        return SectionRef(nu.Str("i_") + nu.str(found), section_cls=Line, parent_ref=Listing.lines)
+    lines, opened = Listing.lines, Listing.opened
 
     def hit(found: nu.Nu) -> nu.Nu:
-        row = line(found)
-        return row.hit.erase() >> landed(kind.render_hit(items[nu.Str(found)]), row.hit)
+        key = nu.Str(found)
+        line = lines[key]
+        drawn = landed(kind.render_hit(items[key]), line.hit)
+        return drawn >> line.open.init() >> line.delete.init()
 
     def hits(got: nu.Nu) -> nu.Nu:
         return nu.ForEachDo(nu.List(got), hit)
 
     def drawn(got: nu.Nu) -> nu.Nu:
         none = Listing.empty.set(label="No items yet", description="Add one.")
+        # Lines of items gone dropped, new ones drawn, all in the order the keys sort.
         return (
-            Listing.lines.erase()
-            >> Listing.empty.erase()
+            Listing.actions.init()
+            >> lines.keep(got)
             >> hits(got)
-            >> nu.IfDo(nu.List(got).len() == 0, none)
+            >> lines.set_order(got)
+            >> nu.IfDo(nu.List(got).len() == 0, none, Listing.empty.erase())
         )
 
     def acts(found: nu.Nu) -> nu.Nu:
-        row, key = line(found), nu.Str(found)
+        key = nu.Str(found)
+        line = lines[key]
         shut = nu.IfDo(OPENED.fallback("") == key, OPENED.set(""))
         return nu.ParallelAsync(
-            nu.ReactEvery(row.open.on_click(), OPENED.set(key)),
-            nu.ReactEvery(row.remove.on_click(), nuspace.atomic(items[key].erase() >> shut)),
+            nu.ReactEvery(line.open.on_click(), OPENED.set(key)),
+            nu.ReactEvery(line.delete.on_click(), nuspace.atomic(items[key].erase() >> shut)),
         )
 
     def listed(got: nu.Nu) -> nu.Nu:
@@ -148,23 +156,23 @@ def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
     def detail(at: nu.Nu) -> nu.Nu:
         key = nu.Str(at)
         item = items[key]
-        view = opened.view.erase() >> landed(kind.render(item), opened.view)
+        view = landed(kind.render(item), opened)
         there = nuspace.atomic(items.contains(key))
-        shown = opened.title.set(key) >> view >> nu.ReactEvery(item.on_change(), view)
+        shown = opened.set_title(key) >> view >> nu.ReactEvery(item.on_change(), view)
         return opened.erase() >> nu.IfDo((key != "").and_(there), shown)
 
     def add(minted: nu.Nu) -> nu.Nu:
-        # Written empty, the item is there at once: listed before any field is set.
+        # Written empty, the item is there at once: listed before any of it is set.
         key = nu.Str(minted)
         return nuspace.atomic(items[key].set({}) >> OPENED.set(key))
 
     return nu.ParallelAsync(
-        # Items made or removed: the lines again, each with its buttons.
+        # Items made or removed: the lines kept in step, each with its buttons.
         nu.ReactLatest(items.on_children_change(), nu.let(keys, listed), initial=True),
-        # An item edited: its hit again, the lines kept.
+        # An item edited: the hits again, the lines kept.
         nu.ReactEvery(items.on_change(), nu.let(keys, hits)),
         # A time ordered key: a scope's keys sort the way its items were added.
-        nu.ReactEvery(Listing.head.add.on_click(), nu.let(MintId("i"), add)),
+        nu.ReactEvery(Listing.actions.on_click(), nu.let(MintId("i"), add)),
         nu.ReactLatest(
             OPENED.on_change(), nu.let(nuspace.atomic(OPENED.fallback("")), detail), initial=True
         ),
@@ -176,27 +184,28 @@ def _shown(held: nu.Nu) -> nu.Nu:
     kind = kind_of(held)
 
     def listed(level: str, scope_id: nu.Str, _: nu.Str) -> nu.Nu:
-        built = nu.Eval(ForKind(kind, View.listing, level, scope_id, build=_listing))
+        built = nu.Eval(ForKind(kind, BODY.listing, level, scope_id, build=_listing))
 
         def failed(err: nu.Nu) -> nu.Nu:
-            return View.note.set(nu.Str("Cannot list these items: ") + nu.str(err))
+            return BODY.note.set(nu.Str("Cannot list these items: ") + nu.str(err))
 
-        return View.listing.erase() >> View.note.erase() >> nu.TryCatch(built, catch=failed)
+        return BODY.listing.erase() >> BODY.note.erase() >> nu.TryCatch(built, catch=failed)
 
     def missing(why: nu.Str) -> nu.Nu:
-        return View.listing.erase() >> View.note.set(why)
+        return BODY.listing.erase() >> BODY.note.set(why)
 
     return pointed(held, listed, missing=missing)
 
 
 def out() -> nu.Nu:
     """The items and their Config, for as long as the cell runs."""
-    which = View.config.which
-    show, reactions = where(which, FIELDS, shown={"kind": DEFAULT_KIND})
-    kinds = which.kind.input.set_options(kind_options())
+    show, reactions = where(
+        {"kind": KINDS, **scoped(WHICH.level, WHICH.scope)}, shown={"kind": DEFAULT_KIND}
+    )
+    kinds = KINDS.set_options(kind_options())
     held = nuspace.atomic(TARGET.fallback({}))
     shown = nu.ReactLatest(TARGET.on_change(), nu.let(held, _shown), initial=True)
-    return nuspace.bracketed(kinds >> show >> nu.ParallelAsync(shown, *reactions))
+    return nuspace.bracketed(ORDER >> kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 
 CELL = CellSpec(

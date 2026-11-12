@@ -17,10 +17,10 @@ from nuspace.specs import CellSpec
 
 from ...contents.number import Number, NumberContent
 from .. import source
-from ._editing import SECTIONS, Where, bounded, editor
+from ._editing import ENTRY, bounded, editor
 
 
-__all__ = ["CELL", "Bounds", "out"]
+__all__ = ["CELL", "CONTROL", "Bounds", "out"]
 
 
 class Bounds(nu.Shape):
@@ -31,40 +31,23 @@ class Bounds(nu.Shape):
     step = nustd.kv.FloatRef.slot()
 
 
-class Entry(nustd.ui.Field):
-    input = nustd.ui.NumberInputRef.slot()
-
-
-class Settings(nustd.ui.Column):
-    name = nustd.ui.InputRef.slot(label="Name")
-    min = nustd.ui.NumberInputRef.slot(label="Min")
-    max = nustd.ui.NumberInputRef.slot(label="Max", default=100)
-    step = nustd.ui.NumberInputRef.slot(label="Step", min=0, step=0.1, default=1)
-
-
-class Config(nustd.ui.Accordion):
-    settings = Settings.slot(gap=3)
-    item = Where.slot(gap=3)
-
-
-class Box(nustd.ui.Column):
-    entry = Entry.slot()
-    config = Config.slot(sections=SECTIONS)
+#: The control, in the editor's Field.
+CONTROL = ENTRY.control.to(nustd.ui.NumberInputRef.slot())
 
 
 def _edit(item: Number) -> nu.Nu:
     """The item's number in the input, both ways."""
-    value, entry = item.value, Box.entry.input
-    return entry.set_value(value.fallback(0.0)) >> nu.ParallelAsync(
-        nu.ReactEvery(entry.on_change(), value.set(nu.ToFloat(entry))),
-        nu.ReactEvery(value.on_change(), entry.set_value(value)),
+    value = item.value
+    return CONTROL.set_value(value.fallback(0.0)) >> nu.ParallelAsync(
+        nu.ReactEvery(CONTROL.on_change(), value.set(nu.ToFloat(CONTROL))),
+        nu.ReactEvery(value.on_change(), CONTROL.set_value(value)),
     )
 
 
 def out() -> nu.Nu:
     """The number input and its Config, for as long as the cell runs."""
-    show, reactions = bounded(nuspace.here(Bounds), Box.entry.input, Box.config.settings)
-    return editor(NumberContent, Box, _edit, first=show, also=reactions)
+    show, reactions = bounded(nuspace.here(Bounds), CONTROL)
+    return editor(NumberContent, _edit, first=show, also=reactions)
 
 
 CELL = CellSpec(

@@ -23,14 +23,14 @@ from .. import source
 from ._editing import (
     DEFAULT_KIND,
     ITEM,
+    KIND,
     TARGET,
     ForKind,
-    KindField,
-    LevelField,
     Scope,
     kind_of,
     kind_options,
     pointed,
+    scoped,
     where,
 )
 
@@ -42,27 +42,40 @@ if TYPE_CHECKING:
 __all__ = ["CELL", "out"]
 
 
-#: What the Config asks: the kind, then where the item is, the scope by id or key.
-FIELDS = ("kind", "level", "scope", "by", "key")
-
-
 class Which(nustd.ui.Column):
-    """Config: which item it shows."""
+    """Config: which item it shows, the kind, then where the item is, the scope by id or key."""
 
-    kind = KindField.slot(label="Kind")
-    level = LevelField.slot(label="Scope")
-    scope = Scope.slot(gap=3, align="end")
+    kind = nustd.ui.FieldRef.slot(label="Kind")
+    level = nustd.ui.FieldRef.slot(label="Scope")
+    scope = Scope.slot(gap=3, align="end", grow={"value": 1})
     key = nustd.ui.InputRef.slot(label="Item key", placeholder=ITEM)
 
 
-class Config(nustd.ui.Accordion):
-    which = Which.slot(gap=3)
-
-
-class View(nustd.ui.Column):
-    item = nustd.ui.Column.slot()
+class Body(nustd.ui.Column):
+    # Where the item drawn for its kind lands.
+    item = nustd.ui.ColumnRef.slot()
     note = nustd.ui.TextRef.slot()
-    config = Config.slot(sections=[{"id": "which", "label": "Config"}])
+    config = nustd.ui.AccordionRef.slot(sections=[{"id": "which", "label": "Config"}])
+
+
+class View(nu.Shape):
+    """The cell's root: its :class:`Body`, the parts spaced apart."""
+
+    body = Body.slot(gap=3)
+
+
+#: The running cell's surface.
+BODY = View.body
+
+
+#: The body's parts in the order they draw, whichever is written first.
+ORDER = nu.Sequential(*(BODY.insert(part) for part in ("item", "note", "config")))
+
+#: The Config's one section.
+WHICH = BODY.config["which"].to(Which.slot(gap=3))
+
+#: The kind select, in the Config.
+KINDS = WHICH.kind.control.to(KIND)
 
 
 def _drawn(kind: type[Content[Any]], level: str, scope_id: str, key: str) -> nu.Nu:
@@ -78,27 +91,27 @@ def _shown(held: nu.Nu) -> nu.Nu:
     kind = kind_of(held)
 
     def draw(level: str, scope_id: nu.Str, key: nu.Str) -> nu.Nu:
-        built = nu.Eval(ForKind(kind, View.item, level, scope_id, key, build=_drawn))
+        built = nu.Eval(ForKind(kind, BODY.item, level, scope_id, key, build=_drawn))
 
         def failed(err: nu.Nu) -> nu.Nu:
-            return View.note.set(nu.Str("Cannot draw this item: ") + nu.str(err))
+            return BODY.note.set(nu.Str("Cannot draw this item: ") + nu.str(err))
 
-        return View.item.erase() >> View.note.erase() >> nu.TryCatch(built, catch=failed)
+        return BODY.item.erase() >> BODY.note.erase() >> nu.TryCatch(built, catch=failed)
 
     def missing(why: nu.Str) -> nu.Nu:
-        return View.item.erase() >> View.note.set(why)
+        return BODY.item.erase() >> BODY.note.set(why)
 
     return pointed(held, draw, missing=missing)
 
 
 def out() -> nu.Nu:
     """The item and its Config, for as long as the cell runs."""
-    which = View.config.which
-    show, reactions = where(which, FIELDS, shown={"kind": DEFAULT_KIND})
-    kinds = which.kind.input.set_options(kind_options())
+    asks = {"kind": KINDS, **scoped(WHICH.level, WHICH.scope), "key": WHICH.key}
+    show, reactions = where(asks, shown={"kind": DEFAULT_KIND})
+    kinds = KINDS.set_options(kind_options())
     held = nuspace.atomic(TARGET.fallback({}))
     shown = nu.ReactLatest(TARGET.on_change(), nu.let(held, _shown), initial=True)
-    return nuspace.bracketed(kinds >> show >> nu.ParallelAsync(shown, *reactions))
+    return nuspace.bracketed(ORDER >> kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 
 CELL = CellSpec(

@@ -13,7 +13,7 @@ from nuspace.shapes.content import Content
 from nuspace.specs import ContentSpec
 
 
-__all__ = ["CONTENT", "Number", "NumberContent", "NumberHit", "NumberView", "Shown"]
+__all__ = ["CONTENT", "Number", "NumberContent", "Shown"]
 
 
 def _shown(value: float) -> str:
@@ -28,18 +28,6 @@ class Number(nu.Shape):
     """A number item: the value."""
 
     value = nustd.kv.FloatRef.slot()
-
-
-class NumberView(nustd.ui.Column):
-    """A number drawn whole, as a stat."""
-
-    stat = nustd.ui.StatRef.slot()
-
-
-class NumberHit(nustd.ui.Row):
-    """A number in search results."""
-
-    text = nustd.ui.TextRef.slot()
 
 
 class NumberContent(Content[Number], name="Number"):
@@ -68,12 +56,12 @@ class NumberContent(Content[Number], name="Number"):
     @classmethod
     def render(cls, item: Number) -> nu.Nu:
         """The value as a stat, ``0`` before one is set."""
-        return NumberView.stat.set_value(Shown(item.value.fallback(0.0)))
+        return nustd.ui.StatRef("view").set_value(Shown(item.value.fallback(0.0)))
 
     @classmethod
     def render_hit(cls, item: Number) -> nu.Nu:
         """The value on one line."""
-        return NumberHit.text.set(Shown(item.value.fallback(0.0)))
+        return nustd.ui.TextRef("hit").set(Shown(item.value.fallback(0.0)))
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Number``.

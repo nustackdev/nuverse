@@ -13,44 +13,29 @@ from nuspace.specs import CellSpec
 
 from ...contents.date import Date, DateContent, iso
 from .. import source
-from ._editing import SECTIONS, Where, editor
+from ._editing import ENTRY, editor
 
 
-__all__ = ["CELL", "out"]
+__all__ = ["CELL", "CONTROL", "out"]
 
 
-class Entry(nustd.ui.Field):
-    input = nustd.ui.DatePickerRef.slot()
-
-
-class Settings(nustd.ui.Column):
-    name = nustd.ui.InputRef.slot(label="Name")
-
-
-class Config(nustd.ui.Accordion):
-    settings = Settings.slot(gap=3)
-    item = Where.slot(gap=3)
-
-
-class Box(nustd.ui.Column):
-    entry = Entry.slot()
-    config = Config.slot(sections=SECTIONS)
+#: The control, in the editor's Field.
+CONTROL = ENTRY.control.to(nustd.ui.DatePickerRef.slot())
 
 
 def _edit(item: Date) -> nu.Nu:
     """The item's day in the picker, both ways: cleared, the date is gone."""
-    entry = Box.entry.input
-    day = nu.Str(entry)
+    day = nu.Str(CONTROL)
     keep = nu.IfDo(day == "", item.value.erase(), item.value.set(day))
-    return entry.set(iso(item)) >> nu.ParallelAsync(
-        nu.ReactEvery(entry.on_change(), keep),
-        nu.ReactEvery(item.value.on_change(), entry.set(iso(item))),
+    return CONTROL.set(iso(item)) >> nu.ParallelAsync(
+        nu.ReactEvery(CONTROL.on_change(), keep),
+        nu.ReactEvery(item.value.on_change(), CONTROL.set(iso(item))),
     )
 
 
 def out() -> nu.Nu:
     """The date picker and its Config, for as long as the cell runs."""
-    return editor(DateContent, Box, _edit)
+    return editor(DateContent, _edit)
 
 
 CELL = CellSpec(

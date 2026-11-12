@@ -25,7 +25,7 @@ from ...contents.row import Row, RowContent
 from .. import source
 
 
-__all__ = ["CELL", "COLUMNS", "SEED", "Grid", "Rows", "Sheet", "out", "rows"]
+__all__ = ["CELL", "COLUMNS", "SEED", "Rows", "Sheet", "View", "out", "rows"]
 
 
 #: The columns a new table starts with. Stored on first run, edited from then on.
@@ -67,10 +67,10 @@ def rows(cell: nu.StrArg) -> nustd.kv.DictRef:
     return Rows.entries.with_parent(nuspace.State.content_cells[kind_name(RowContent)].cells[cell])
 
 
-class Grid(nustd.ui.Column):
+class View(nu.Shape):
     """The cell's surface: one table with every request turned on."""
 
-    table = nustd.ui.TableRef.slot(
+    table = nustd.ui.DataTableRef.slot(
         columns=COLUMNS,
         label="Table",
         selection="multi",
@@ -92,7 +92,7 @@ def out() -> nu.Nu:
         >> sheet.seeded.set(True),
     )
     # sync places its own brackets, on the store its rows root at: State.
-    grid = nustd.ui.table.sync(Grid.table, held, sheet.order, sheet.columns, sort=sheet.sort)
+    grid = nustd.ui.table.sync(View.table, held, sheet.order, sheet.columns, sort=sheet.sort)
     return nuspace.atomic(seed) >> grid
 
 

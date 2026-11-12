@@ -15,7 +15,7 @@ from nuspace.specs import ContentSpec
 from .text import matches
 
 
-__all__ = ["CONTENT", "SEPARATOR", "Line", "Row", "RowContent", "RowHit", "RowView", "line"]
+__all__ = ["CONTENT", "SEPARATOR", "Line", "Row", "RowContent", "line"]
 
 
 #: What stands between two cells of a row drawn on one line.
@@ -28,18 +28,6 @@ class Row(nustd.ui.table.Row):
     The table preset's row as is, so the items a table keeps are the rows
     its grid syncs.
     """
-
-
-class RowView(nustd.ui.Column):
-    """A row drawn whole: its cells on one line."""
-
-    text = nustd.ui.TextRef.slot()
-
-
-class RowHit(nustd.ui.Row):
-    """A row in search results: its cells on one line."""
-
-    text = nustd.ui.TextRef.slot()
 
 
 def _cells(item: Row) -> nu.Dict:
@@ -80,12 +68,12 @@ class RowContent(Content[Row], name="Row"):
     @classmethod
     def render(cls, item: Row) -> nu.Nu:
         """The row's cells on one line."""
-        return RowView.text.set(line(item))
+        return nustd.ui.TextRef("view").set(line(item))
 
     @classmethod
     def render_hit(cls, item: Row) -> nu.Nu:
         """The row's cells on one line."""
-        return RowHit.text.set(line(item))
+        return nustd.ui.TextRef("hit").set(line(item))
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Row``.

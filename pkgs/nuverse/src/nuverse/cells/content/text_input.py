@@ -14,42 +14,28 @@ from nuspace.specs import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
-from ._editing import SECTIONS, Where, editor
+from ._editing import ENTRY, editor
 
 
-__all__ = ["CELL", "out"]
+__all__ = ["CELL", "CONTROL", "out"]
 
 
-class Entry(nustd.ui.Field):
-    input = nustd.ui.InputRef.slot()
-
-
-class Settings(nustd.ui.Column):
-    name = nustd.ui.InputRef.slot(label="Name")
-
-
-class Config(nustd.ui.Accordion):
-    settings = Settings.slot(gap=3)
-    item = Where.slot(gap=3)
-
-
-class Box(nustd.ui.Column):
-    entry = Entry.slot()
-    config = Config.slot(sections=SECTIONS)
+#: The control, in the editor's Field.
+CONTROL = ENTRY.control.to(nustd.ui.InputRef.slot())
 
 
 def _edit(item: Text) -> nu.Nu:
     """The item's text in the input, both ways."""
-    value, entry = item.value, Box.entry.input
-    return entry.set(value.fallback("")) >> nu.ParallelAsync(
-        nu.ReactEvery(entry.on_change(), value.set(nu.ToStr(entry))),
-        nu.ReactEvery(value.on_change(), entry.set(nu.str(value))),
+    value = item.value
+    return CONTROL.set(value.fallback("")) >> nu.ParallelAsync(
+        nu.ReactEvery(CONTROL.on_change(), value.set(nu.ToStr(CONTROL))),
+        nu.ReactEvery(value.on_change(), CONTROL.set(nu.str(value))),
     )
 
 
 def out() -> nu.Nu:
     """The text input and its Config, for as long as the cell runs."""
-    return editor(TextContent, Box, _edit)
+    return editor(TextContent, _edit)
 
 
 CELL = CellSpec(

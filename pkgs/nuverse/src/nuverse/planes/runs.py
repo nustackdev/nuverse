@@ -3,31 +3,54 @@
 Three cells, each drawn again when what is live changes, and only when what
 it shows did: the counts, the live plane runs, and their live cell runs.
 Everything is read off ``Space.exec.indexes.live`` and the run records it
-names, so it costs what is running, never history. Ages move with the
-clock, so the tables are read again every minute too.
+names, so it costs what is running, never history. Times are drawn by the
+browser from when each run started, so nothing redraws as the clock moves.
+
+The cells are shims (:func:`~nuverse.planes.shim`): :func:`counts`,
+:func:`live` and :func:`cells` here are their code.
 """
 
 from __future__ import annotations
 
 import nu
 import nuspace
+import nuspace.web as web
+import nustd.ui
 from nuspace.specs import PlaneSpec, WebOptions
+from nuverse.planes import shim
 
 
-__all__ = ["CELLS", "COUNTS", "LIVE", "PLANE", "age", "ids", "lives"]
-
-
-def age(now: nu.Nu, t: nu.Nu, unknown: str = "") -> nu.Nu:
-    """How long since ``t`` in minutes, eg ``12m``, ``unknown`` while ``t`` reads NULL. For cell sources to import."""
-    m = nu.int(nu.Float(now) - t) // 60
-    spelled = nu.If(
-        m < 1, "<1m", nu.If(m < 60, nu.str(m) + "m", nu.str(m // 60) + "h " + nu.str(m % 60) + "m")
-    )
-    return nu.If(nu.IsNull(t), unknown, spelled)
+__all__ = [
+    "BACKEND_COLUMN",
+    "CELLS",
+    "CELLS_TABLE",
+    "COUNTS",
+    "LIVE",
+    "LIVE_INDEX",
+    "PLANE",
+    "PLANE_COLUMN",
+    "RUNS_TABLE",
+    "STARTED_COLUMN",
+    "Cells",
+    "Counts",
+    "Live",
+    "cells",
+    "count_column",
+    "counts",
+    "draw_cells",
+    "draw_counts",
+    "draw_live",
+    "id_column",
+    "ids",
+    "live",
+    "lives",
+    "ms",
+    "tile",
+]
 
 
 def ids(held: nu.Nu) -> nu.List:
-    """The keys of a live set, ``[]`` when it is not there. A read. For cell sources to import.
+    """The keys of a live set, ``[]`` when it is not there. A read.
 
     A plane run's live sets are made when it is added and dropped once it
     is over, so a read racing its end finds none.
@@ -38,7 +61,7 @@ def ids(held: nu.Nu) -> nu.List:
 def lives() -> list[nu.Nu]:
     """What says what is live moved: a plane run, a cell run, either starting, a worker.
 
-    Fresh subscriptions on every call. For cell sources to import.
+    Fresh subscriptions on every call.
     """
     live = nuspace.Space.exec.indexes.live
     runs = nuspace.Space.exec
@@ -51,126 +74,199 @@ def lives() -> list[nu.Nu]:
     ]
 
 
-COUNTS = """\
-import nu
-import nustd.ui
-import nuspace
-from nuverse.planes.runs import ids, lives
-
-LIVE = nuspace.Space.exec.indexes.live
+def ms(t: nu.Nu) -> nu.Nu:
+    """Epoch seconds ``t`` as the epoch ms a ``RelativeTime`` cell draws, blank while ``t`` reads NULL."""
+    return nu.If(nu.IsNull(t), "", nu.int(nu.Float(t) * 1000))
 
 
-def tile(name, label, value):
-    return nustd.ui.StatRef(name).set(nu.str(value), label=label)
+def tile(grid: nustd.ui.GridRef, name: str, label: str, value: nu.Nu) -> nu.Nu:
+    """One count in a tile grid: a small Card holding a Stat, at ``grid[name]``."""
+    card = grid[name].to(nustd.ui.CardRef.slot(size="sm"))
+    return card[0].to(nustd.ui.StatRef).set(nu.str(value), label=label)
 
 
-def counts():
-    runs = ids(LIVE.plane_runs)
-    cells = nu.Sum(runs.iter().map(lambda r: ids(LIVE.plane_run_to_cell_runs[nu.Str(r)].ids).len()))
-    return nu.List.of(runs.len(), cells, ids(LIVE.workers).len())
+def _column(key: str, label: str, cell: object = None, **more: object) -> dict:
+    # Nothing sorts: the rows keep the order they are read in.
+    column: dict = {"key": key, "label": label, "sortable": False, **more}
+    if cell is not None:
+        column["cell"] = cell
+    return column
 
 
-def tiles(n):
-    return (
-        tile("runs", "Live runs", n[0])
-        >> tile("cells", "Live cells", n[1])
-        >> tile("workers", "Workers up", n[2])
+#: Columns the system tables share.
+PLANE_COLUMN = _column("plane", "Plane", nustd.ui.PageLinkRef.slot(variant="inline"), wrap="nowrap")
+BACKEND_COLUMN = _column("backend", "Backend", nustd.ui.BadgeRef.slot(size="sm"))
+STARTED_COLUMN = _column("started", "Started", nustd.ui.RelativeTimeRef, wrap="nowrap")
+
+
+def id_column(key: str, label: str) -> dict:
+    """An id column: cut short, and left out on a narrow pane."""
+    return _column(key, label, wrap="truncate", max_width=160, hide_below=720)
+
+
+def count_column(key: str, label: str) -> dict:
+    """A count column, set to the end."""
+    return _column(key, label, align="end")
+
+
+LIVE_INDEX = nuspace.Space.exec.indexes.live
+
+
+# --- counts ------------------------------------------------------------------------------
+
+
+class Counts(nu.Shape):
+    """The ``counts`` cell's root: a grid of count tiles."""
+
+    tiles = nustd.ui.GridRef.slot(max_columns=4, min_cell_width=160, gap=3)
+
+
+def _counts() -> nu.List:
+    runs = ids(LIVE_INDEX.plane_runs)
+    held = runs.iter().map(lambda r: ids(LIVE_INDEX.plane_run_to_cell_runs[nu.Str(r)].ids).len())
+    return nu.List.of(runs.len(), nu.Sum(held), ids(LIVE_INDEX.workers).len())
+
+
+def draw_counts() -> nu.Nu:
+    """Read the counts once and draw the tiles."""
+
+    def tiles(n: nu.ObjectRef) -> nu.Nu:
+        got = nu.List(n)
+        return (
+            tile(Counts.tiles, "runs", "Live runs", got[0])
+            >> tile(Counts.tiles, "cells", "Live cells", got[1])
+            >> tile(Counts.tiles, "workers", "Workers up", got[2])
+        )
+
+    return nu.let(nuspace.atomic(_counts()), tiles)
+
+
+def counts(plane: nu.StrArg) -> nu.Nu:
+    """The ``counts`` cell: live runs, live cells, workers up, drawn again when one moves."""
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw_counts())
+
+
+# --- live plane runs ---------------------------------------------------------------------
+
+
+class Live(nu.Shape):
+    """The ``live`` cell's root: a titled Card holding the table."""
+
+    runs = nustd.ui.CardRef.slot(title="Live runs", subtitle="Plane runs going now")
+
+
+RUNS_TABLE = Live.runs[0].to(
+    nustd.ui.DataTableRef.slot(
+        columns=[
+            PLANE_COLUMN,
+            BACKEND_COLUMN,
+            _column("by", "By"),
+            count_column("cells", "Cells"),
+            count_column("workers", "Workers"),
+            STARTED_COLUMN,
+            id_column("run", "Run"),
+        ],
+        row_key="run",
+        label="Live runs",
     )
+)
 
 
-def draw():
-    return nu.let(nuspace.atomic(counts()), tiles)
-
-
-out = nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw())
-"""
-
-
-LIVE = """\
-import nu
-import nustd.time
-import nustd.ui
-import nuspace
-from nuverse.planes.runs import age, ids, lives
-
-LIVE = nuspace.Space.exec.indexes.live
-
-
-def rows():
-    now = nustd.time.time()
-
-    def row(at):
+def _live_rows() -> nu.List:
+    def row(at: nu.ObjectRef) -> nu.Dict:
         r = nu.Str(at)
         run = nuspace.Space.exec.plane_runs[r]
-        return nu.List.of(
-            nuspace.plane.title(run.plane),
-            run.backend.fallback(""),
-            run.by.fallback(""),
-            ids(LIVE.plane_run_to_cell_runs[r].ids).len(),
-            ids(LIVE.plane_run_to_workers[r].ids).len(),
-            age(now, run.started_at),
+        return nu.Dict.of(
+            plane=web.page(nu.Str(run.plane)),
+            backend=run.backend.fallback(""),
+            by=run.by.fallback(""),
+            cells=ids(LIVE_INDEX.plane_run_to_cell_runs[r].ids).len(),
+            workers=ids(LIVE_INDEX.plane_run_to_workers[r].ids).len(),
+            started=ms(run.started_at),
+            run=r,
         )
 
-    return ids(LIVE.plane_runs).iter().map(row).to_list()
+    return ids(LIVE_INDEX.plane_runs).iter().map(row).to_list()
 
 
-def table(shown):
-    columns = ["Plane", "Backend", "By", "Cells", "Workers", "Age"]
-    return nustd.ui.TableRef("live runs").set(nu.Dict.of(columns=columns, rows=shown))
+def draw_live() -> nu.Nu:
+    """Read the live plane runs once and draw their table."""
+    return nu.let(nuspace.atomic(_live_rows()), RUNS_TABLE.set_rows)
 
 
-def draw():
-    return nu.let(nuspace.atomic(rows()), table)
+def live(plane: nu.StrArg) -> nu.Nu:
+    """The ``live`` cell: every live plane run, drawn again when what is live moves."""
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw_live())
 
 
-out = nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw(), every=60.0)
-"""
+# --- live cell runs ----------------------------------------------------------------------
 
 
-CELLS = """\
-import nu
-import nustd.time
-import nustd.ui
-import nuspace
-from nuverse.planes.runs import age, ids, lives
+class Cells(nu.Shape):
+    """The ``cells`` cell's root: a titled Card holding the table."""
 
-LIVE = nuspace.Space.exec.indexes.live
+    cells = nustd.ui.CardRef.slot(title="Live cells", subtitle="The cell runs of those plane runs")
 
 
-def rows():
-    now = nustd.time.time()
+CELLS_TABLE = Cells.cells[0].to(
+    nustd.ui.DataTableRef.slot(
+        columns=[
+            PLANE_COLUMN,
+            _column("cell", "Cell", wrap="truncate", max_width=180),
+            _column("state", "State", nustd.ui.StatusPillRef),
+            _column("by", "By", hide_below=640),
+            count_column("version", "Version"),
+            STARTED_COLUMN,
+            id_column("worker", "Worker"),
+            id_column("id", "ID"),
+        ],
+        row_key="id",
+        label="Live cells",
+    )
+)
 
-    def row(plane, at):
-        run = nuspace.Space.exec.cell_runs[nu.Str(at)]
-        return nu.List.of(
-            nuspace.plane.title(plane),
-            nuspace.cell.title(run.cell),
-            run.by.fallback(""),
-            run.version.fallback(0),
-            run.worker.fallback(""),
-            age(now, run.started_at, "starting"),
+
+def _cell_rows() -> nu.List:
+    def row(plane: nu.Str, at: nu.ObjectRef) -> nu.Dict:
+        c = nu.Str(at)
+        run = nuspace.Space.exec.cell_runs[c]
+        starting = nu.IsNull(run.started_at)
+        return nu.Dict.of(
+            plane=web.page(plane),
+            cell=nuspace.cell.title(run.cell),
+            state=nu.Dict.of(
+                label=nu.If(starting, "starting", "running"),
+                tone=nu.If(starting, "neutral", "ok"),
+            ),
+            by=run.by.fallback(""),
+            version=run.version.fallback(0),
+            started=ms(run.started_at),
+            worker=run.worker.fallback(""),
+            id=c,
         )
 
-    def cells(at):
+    def of_run(at: nu.ObjectRef) -> nu.List:
         r = nu.Str(at)
         plane = nu.Str(nuspace.Space.exec.plane_runs[r].plane)
-        live = ids(LIVE.plane_run_to_cell_runs[r].ids).iter()
-        return live.map(lambda c: row(plane, c)).to_list()
+        held = ids(LIVE_INDEX.plane_run_to_cell_runs[r].ids).iter()
+        return held.map(lambda c: row(plane, c)).to_list()
 
-    return nu.List(nu.Collect(nu.Flatten(ids(LIVE.plane_runs).iter().map(cells))))
-
-
-def table(shown):
-    columns = ["Plane", "Cell", "By", "Version", "Worker", "Age"]
-    return nustd.ui.TableRef("live cells").set(nu.Dict.of(columns=columns, rows=shown))
+    return nu.List(nu.Collect(nu.Flatten(ids(LIVE_INDEX.plane_runs).iter().map(of_run))))
 
 
-def draw():
-    return nu.let(nuspace.atomic(rows()), table)
+def draw_cells() -> nu.Nu:
+    """Read the live cell runs once and draw their table."""
+    return nu.let(nuspace.atomic(_cell_rows()), CELLS_TABLE.set_rows)
 
 
-out = nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw(), every=60.0)
-"""
+def cells(plane: nu.StrArg) -> nu.Nu:
+    """The ``cells`` cell: every live cell run, drawn again when what is live moves."""
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*lives())), draw_cells())
+
+
+COUNTS = shim("runs", "counts")
+LIVE = shim("runs", "live")
+CELLS = shim("runs", "cells")
 
 
 PLANE = PlaneSpec(

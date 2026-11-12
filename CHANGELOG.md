@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- System planes and editors load again, with linked tables and shared editor layout
 - Demos rebuilt on the new layout: real links, live times, cards and tables
 - Planes and demos import the web device from its new home, nuspace.web
 - Release nuagent 0.2.5 on nuspace 0.6.4

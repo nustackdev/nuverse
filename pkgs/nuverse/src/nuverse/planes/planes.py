@@ -12,121 +12,176 @@ or one level of the tree, a page at a time.
   alone when that plane's own row changes, so its wakes follow what it
   shows, not the whole space.
 
-A count reads at most :data:`PAGE` ids and says ``100+`` past that.
+A count reads at most :data:`PAGE` ids and says ``100+`` past that. The
+cells are shims (:func:`~nuverse.planes.shim`): :func:`by_spec` and
+:func:`listing` here are their code.
 """
 
 from __future__ import annotations
 
+import nu
+import nuspace
+import nuspace.web as web
+import nustd.ui
+from nuspace.shapes import ROOT
 from nuspace.specs import PlaneSpec, WebOptions
+from nuverse.planes import shim
+from nuverse.planes.runs import count_column, id_column, ids
 
 
-__all__ = ["BY_SPEC", "PAGE", "PLANE", "TABLE"]
+__all__ = [
+    "BY_SPEC",
+    "PAGE",
+    "PLANE",
+    "SPEC_TABLE",
+    "TABLE",
+    "TABLE_REF",
+    "BySpec",
+    "Listing",
+    "by_spec",
+    "draw_by_spec",
+    "draw_listing",
+    "listing",
+    "row",
+]
 
 
 #: The most ids one read takes: rows in a table, ids behind a count.
 PAGE = 100
 
-
-BY_SPEC = """\
-import nu
-import nustd.ui
-import nuspace
-from nuverse.planes.planes import PAGE
-from nuverse.planes.runs import ids
-
 SPECS = nuspace.Space.indexes.spec_planes
 
+LINK = nustd.ui.PageLinkRef.slot(variant="inline")
 
-def row(at):
+
+# --- by spec -----------------------------------------------------------------------------
+
+
+class BySpec(nu.Shape):
+    """The ``by_spec`` cell's root: a titled Card holding the table."""
+
+    specs = nustd.ui.CardRef.slot(title="By spec", subtitle="How many planes each spec made")
+
+
+SPEC_TABLE = BySpec.specs[0].to(
+    nustd.ui.DataTableRef.slot(
+        columns=[
+            {"key": "spec", "label": "Spec", "sortable": False},
+            count_column("planes", "Planes"),
+            {"key": "newest", "label": "Newest", "cell": LINK, "sortable": False},
+        ],
+        row_key="spec",
+        label="Planes by spec",
+    )
+)
+
+
+def _spec_row(at: nu.ObjectRef) -> nu.Dict:
     spec = nu.Str(at)
     # Newest first, one page: the planes still in the space, removed ones skipped.
     newest = nu.List(SPECS[spec].ids.reversed_keys(limit=PAGE + 1))
     there = newest.iter().filter(lambda p: nuspace.plane.exists(nu.Str(p))).to_list()
+    # A capped count is a label, not a number.
     count = nu.If(newest.len() > PAGE, nu.str(PAGE) + "+", nu.str(there.len()))
-    last = nu.If(there.len() > 0, nuspace.plane.title(nu.Str(there[0])), "-")
-    return nu.List.of(spec, count, last)
+    last = nu.If(there.len() > 0, web.page(nu.Str(there[0])), "")
+    return nu.Dict.of(spec=spec, planes=count, newest=last)
 
 
-def rows():
-    return ids(SPECS).iter().map(row).to_list()
+def draw_by_spec() -> nu.Nu:
+    """Read the specs once and draw the table."""
+    rows = ids(SPECS).iter().map(_spec_row).to_list()
+    return nu.let(nuspace.atomic(rows), SPEC_TABLE.set_rows)
 
 
-def table(shown):
-    columns = ["Spec", "Planes", "Newest"]
-    return nustd.ui.TableRef("by spec").set(nu.Dict.of(columns=columns, rows=shown))
+def by_spec(plane: nu.StrArg) -> nu.Nu:
+    """The ``by_spec`` cell: drawn again when a plane is made from a spec, or one is removed."""
+    changes = [
+        SPECS.on_descendants_change("*", "ids", "*"),
+        nuspace.Space.indexes.removed.on_children_change(),
+    ]
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*changes)), draw_by_spec())
 
 
-def draw():
-    return nu.let(nuspace.atomic(rows()), table)
+# --- the top planes ----------------------------------------------------------------------
 
 
-# A plane made from a spec, or one removed.
-changes = [
-    SPECS.on_descendants_change("*", "ids", "*"),
-    nuspace.Space.indexes.removed.on_children_change(),
-]
-out = nu.Reconcile(nuspace.atomic(nu.OnAny(*changes)), draw())
-"""
+class Listing(nu.Shape):
+    """The ``planes`` cell's root: a titled Card holding the table."""
+
+    planes = nustd.ui.CardRef.slot(
+        title="Top planes", subtitle=f"Right under the root, {PAGE} at most"
+    )
 
 
-TABLE = """\
-import nu
-import nustd.ui
-import nuspace
-from nuspace.shapes import ROOT
-from nuverse.planes.planes import PAGE
+TABLE_REF = Listing.planes[0].to(
+    nustd.ui.DataTableRef.slot(
+        columns=[
+            {"key": "name", "label": "Name", "cell": LINK, "wrap": "nowrap", "sortable": False},
+            {"key": "spec", "label": "Spec", "sortable": False},
+            {
+                "key": "system",
+                "label": "System",
+                "cell": nustd.ui.BadgeRef.slot(variant="secondary", size="sm"),
+                "sortable": False,
+            },
+            count_column("cells", "Cells"),
+            count_column("planes", "Planes"),
+            id_column("id", "ID"),
+        ],
+        row_key="id",
+        label="Top planes",
+    )
+)
 
-COLUMNS = ["Name", "Spec", "System", "Cells", "Planes", "ID"]
-PLANES = nustd.ui.TableRef("planes")
 
-
-def counted(held):
+def _counted(held: nu.Nu) -> nu.Nu:
     # How many ids a plane's list holds, one page read at most.
     page = nu.List(held.keys(limit=PAGE + 1))
     return nu.If(page.len() > PAGE, nu.str(PAGE) + "+", nu.str(page.len()))
 
 
-def row(p):
+def row(p: nu.Str) -> nu.Dict:
+    """Plane ``p``'s row in the top planes table. A read."""
     plane = nuspace.Space.planes[p]
-    spec = nu.Str(plane.spec.fallback(""))
-    return nu.List.of(
-        nuspace.plane.title(p),
-        nu.If(spec == "", "-", spec),
-        nu.If(plane.system.fallback(False), "yes", "no"),
-        counted(plane.cells),
-        counted(plane.children),
-        p,
+    return nu.Dict.of(
+        name=web.page(p),
+        spec=plane.spec.fallback(""),
+        system=nu.If(plane.system.fallback(False), "system", ""),
+        cells=_counted(plane.cells),
+        planes=_counted(plane.children),
+        id=p,
     )
 
 
-def top():
+def _top() -> nu.Nu:
     # What the table shows: the planes right under root, the first PAGE.
     return nu.list(nuspace.Space.planes[ROOT].children.keys(limit=PAGE))
 
 
-def rows():
-    return top().iter().map(lambda at: row(nu.Str(at))).to_list()
+def draw_listing() -> nu.Nu:
+    """Read the top planes once and draw the table."""
+    rows = nu.List(_top()).iter().map(lambda at: row(nu.Str(at))).to_list()
+    return nu.let(nuspace.atomic(rows), TABLE_REF.set_rows)
 
 
-def draw():
-    shown = lambda r: PLANES.set(nu.Dict.of(columns=COLUMNS, rows=r, row_key="ID"))
-    return nu.let(nuspace.atomic(rows()), shown)
-
-
-def follow(at):
+def _follow(at: nu.ObjectRef) -> nu.Nu:
     # One shown plane's row again, in place, when its own row changes: one watch per shown plane.
     p = nu.Str(at)
-    again = nu.let(nuspace.atomic(row(p)), lambda r: PLANES.set_row(p, r))
+    again = nu.let(nuspace.atomic(row(p)), lambda r: TABLE_REF.set_row(p, r))
     return nu.ReactEvery(nuspace.atomic(nuspace.plane.on_change(p)), lambda _: again)
 
 
-# Which planes show: root's children made, moved or removed. Nothing else wakes the whole table.
-listed = nuspace.atomic(nuspace.plane.on_children_change(ROOT))
-out = nu.ParallelAsync(
-    nu.Reconcile(listed, draw()),
-    nu.ReconcileLatestEach(nuspace.atomic(top()), listed, follow),
-)
-"""
+def listing(plane: nu.StrArg) -> nu.Nu:
+    """The ``planes`` cell: the top planes, whole when root's children move, a row when its plane does."""
+    listed = nuspace.atomic(nuspace.plane.on_children_change(ROOT))
+    return nu.ParallelAsync(
+        nu.Reconcile(listed, draw_listing()),
+        nu.ReconcileLatestEach(nuspace.atomic(_top()), listed, _follow),
+    )
+
+
+BY_SPEC = shim("planes", "by_spec")
+TABLE = shim("planes", "listing")
 
 
 PLANE = PlaneSpec(

@@ -20,8 +20,6 @@ __all__ = [
     "HIT_WIDTH",
     "Text",
     "TextContent",
-    "TextHit",
-    "TextView",
     "WordAt",
     "matches",
 ]
@@ -56,18 +54,6 @@ class Text(nu.Shape):
     value = nustd.kv.StrRef.slot()
 
 
-class TextView(nustd.ui.Column):
-    """A text drawn whole, as markdown."""
-
-    body = nustd.ui.MarkdownRef.slot()
-
-
-class TextHit(nustd.ui.Row):
-    """A text in search results: its start, on one line."""
-
-    text = nustd.ui.TextRef.slot()
-
-
 class TextContent(Content[Text], name="Text"):
     """The text kind: matched by whole words, drawn as markdown."""
 
@@ -86,14 +72,14 @@ class TextContent(Content[Text], name="Text"):
     @classmethod
     def render(cls, item: Text) -> nu.Nu:
         """The text whole, as markdown."""
-        return TextView.body.set(nu.str(item.value.fallback("")))
+        return nustd.ui.MarkdownRef("view").set(nu.str(item.value.fallback("")))
 
     @classmethod
     def render_hit(cls, item: Text) -> nu.Nu:
         """The text's first :data:`HIT_WIDTH` characters on one line, an ellipsis where cut."""
         body = nu.Str(nu.str(item.value.fallback(""))).replace("\n", " ").strip()
         cut = body[:HIT_WIDTH] + nu.If(body.len() > HIT_WIDTH, "…", "")
-        return TextHit.text.set(cut)
+        return nustd.ui.TextRef("hit").set(cut)
 
 
 #: The spec nuverse registers the kind with, as ``nuverse.Text``.
