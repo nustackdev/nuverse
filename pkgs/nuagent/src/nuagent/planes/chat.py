@@ -6,8 +6,8 @@ the page open. The page's own state holds only its engine's ids
 (:class:`~.state.Engine`). The page starts as one cell, the composer, and
 the conversation grows above it, a cell at a time:
 
-- ``composer``: a box, Send and Stop, and the status by them (thinking,
-  running, stopped or error, nothing while idle). Its first run makes sure
+- ``composer``: a box, Send and Stop, and the status by them (idle,
+  thinking, running, stopped or error). Its first run makes sure
   the engine, its reaction and the agent settings are there (:func:`ensure`).
 - ``said``: one per message the person sends (:func:`tell`). What they said,
   and under it the trace of the agent's work on it: each turn's program,
@@ -314,34 +314,42 @@ def answer(source: nu.StrArg, *, into: nu.Ref | None = None) -> nu.Nu:
 # --- said --------------------------------------------------------------------
 
 
-class Bubble(nustd.ui.Box):
-    text = nustd.ui.MarkdownRef.slot()
-
-
-class Said(nustd.ui.Row):
-    bubble = Bubble.slot(padding="sm", border="none", background="muted")
-
-
 class Ran(nustd.ui.Collapsible):
+    """One turn of the agent's work: how it went, its program and what came back, folded."""
+
     kind = nustd.ui.BadgeRef.slot()
     program = nustd.ui.CodeRef.slot(language="python", max_height=360)
     observation = nustd.ui.CodeRef.slot(wrap=True, max_height=240)
 
 
-class Trace(nustd.ui.Collapsible):
-    steps = nustd.ui.ColumnRef.slot(Ran, gap=2)
-
-
 class Message(nustd.ui.Column):
-    said = Said.slot(justify="end")
-    trace = Trace.slot(title="working...")
+    """A message: what the person said, at the right, and the trace of the agent's work under it."""
+
+    said = nustd.ui.CardRef.slot(variant="sunken", padding=3, max_width=560)
+    trace = nustd.ui.CollapsibleRef.slot(title="working...")
+
+
+class Said(nu.Shape):
+    """The said cell's root."""
+
+    message = Message.slot(gap=2, align_self={"said": "end"})
+
+
+#: What the person said, in their bubble.
+_text = Said.message.said[0].to(nustd.ui.MarkdownRef)
+
+#: The fold of the agent's work on it.
+_trace_fold = Said.message.trace
+
+#: The turns in the fold, one per turn, keyed by their place in this message. Long runs scroll.
+_steps = _trace_fold[0].to(nustd.ui.ColumnRef.slot(Ran, gap=2, max_height=480, scroll="y"))
 
 
 def _step(pair: nu.Nu) -> nu.Nu:
-    """One turn, keyed by its place among all turns."""
+    """One turn of a message, keyed by its place among that message's turns."""
     at, kept = nu.Tuple(pair)[0], nu.Dict(nu.Tuple(pair)[1])
     return nu.Dict.of(
-        key="t" + nu.str(at),
+        key=at,
         title=nu.Dict(TITLES).get_item(kept["kind"], "Program"),
         program=kept["program"],
         observation=kept["observation"],
@@ -356,7 +364,7 @@ def _trace(c: Chat, at: nu.IntArg) -> nu.Nu:
     The text is ``""`` until it lands: the cell is on the page before the
     message is in the inbox.
     """
-    mine = c.turns.iter().enumerate().filter(lambda p: nu.Dict(nu.Tuple(p)[1])["at"] == at)
+    mine = c.turns.iter().filter(lambda t: nu.Dict(t)["at"] == at).enumerate()
     return nu.Dict.of(
         text=nu.If(c.inbox.len() > at, c.inbox[at], ""),
         steps=mine.map(_step).to_list(),
@@ -380,11 +388,10 @@ def said(page: nu.StrArg, at: nu.IntArg) -> nu.Nu:
     A level flow with re-checks: a missed notification redraws late, never
     leaves the trace stale.
     """
-    trace = Message.trace
 
     def turn(t: nu.Nu) -> nu.Nu:
         s = nu.Dict(t)
-        ran = trace.steps[s["key"]]
+        ran = _steps[nu.Int(s["key"])]
         return (
             ran.set(title=s["title"])
             >> ran.kind.set(s["kind"], variant=s["variant"])
@@ -395,8 +402,8 @@ def said(page: nu.StrArg, at: nu.IntArg) -> nu.Nu:
     def draw(seen: nu.Nu) -> nu.Nu:
         s = nu.Dict(seen)
         steps = nu.List(s["steps"])
-        text = Message.said.bubble.text.set(s["text"])
-        return text >> trace.set(title=_title(steps, s["done"])) >> nu.ForEachDo(steps, turn)
+        title = _trace_fold.set(title=_title(steps, s["done"]))
+        return _text.set(s["text"]) >> title >> nu.ForEachDo(steps, turn)
 
     def follow(engine: nu.ObjectRef) -> nu.Nu:
         c = conversation(nu.Str(engine))
@@ -435,27 +442,40 @@ def _shown(c: Chat) -> nu.Nu:
 
 
 class Actions(nustd.ui.Row):
+    """The status at the start, Send and Stop pushed to the end by the spacer."""
+
     pill = nustd.ui.StatusPillRef.slot()
+    push = nustd.ui.SpacerRef.slot()
     send = nustd.ui.ButtonRef.slot(label="Send", icon="send")
     stop = nustd.ui.ButtonRef.slot(label="Stop", variant="secondary", icon="square")
 
 
 class Composer(nustd.ui.Column):
+    """A failure on top, then the box, then the actions."""
+
     error = nustd.ui.AlertRef.slot(variant="danger")
     text = nustd.ui.TextAreaRef.slot(placeholder="Message the agent", rows=3, auto_resize=True)
-    actions = Actions.slot(gap=2, justify="end", align="center")
+    actions = Actions.slot(gap=2, align="center")
+
+
+class Composing(nu.Shape):
+    """The composer cell's root."""
+
+    composer = Composer.slot(gap=3)
 
 
 def composer(page: nu.StrArg) -> nu.Nu:
     """The composer cell: the engine made sure of, then Send and Stop, and the status by them.
 
     Send puts the message on the page and in the inbox (:func:`tell`). The
-    status pill shows while the engine works and is gone while idle, Stop
-    is live only while it thinks, and a failure shows above the box. The
-    status is a level flow re-checked every few seconds, so a missed
-    notification shows late, never not at all.
+    status pill is always drawn at the start and Send and Stop sit at the
+    end, so nothing moves as the status changes. Stop is live only while
+    the engine thinks, and a failure shows above the box. The status is a
+    level flow re-checked every few seconds, so a missed notification shows
+    late, never not at all.
     """
-    box, actions = Composer.text, Composer.actions
+    composer = Composing.composer
+    box, actions = composer.text, composer.actions
 
     def sent(typed: nu.Nu) -> nu.Nu:
         text = nu.Str(typed)
@@ -464,9 +484,9 @@ def composer(page: nu.StrArg) -> nu.Nu:
     def draw(seen: nu.Nu) -> nu.Nu:
         s = nu.Dict(seen)
         shown = nu.Str(s["status"])
-        pill = nu.IfDo(shown == IDLE, actions.pill.erase(), actions.pill.set(shown, tone=s["tone"]))
-        failed = Composer.error.set("The last message failed", body=s["error"])
-        error = nu.IfDo(nu.Str(s["error"]) != "", failed, Composer.error.erase())
+        pill = actions.pill.set(shown, tone=s["tone"])
+        failed = composer.error.set("The last message failed", body=s["error"])
+        error = nu.IfDo(nu.Str(s["error"]) != "", failed, composer.error.erase())
         idle = (shown != THINKING).and_(shown != RUNNING)
         return pill >> error >> actions.stop.set_disabled(idle)
 
@@ -485,5 +505,14 @@ def composer(page: nu.StrArg) -> nu.Nu:
             nu.ReactEvery(actions.stop.on_click(), stop(engine)),
         )
 
-    placed = box.set("") >> actions.send.set("Send") >> actions.stop.set("Stop", disabled=True)
+    # Children draw where first written: the failure keeps its place on top
+    # while it is not there, and the actions go in as they read.
+    placed = (
+        composer.insert("error", at=0)
+        >> box.set("")
+        >> actions.pill.set(IDLE, tone=TONES[IDLE])
+        >> actions.push.init()
+        >> actions.send.set("Send")
+        >> actions.stop.set("Stop", disabled=True)
+    )
     return ensure(page) >> placed >> nu.let(nuspace.atomic(engine_of(page)), follow)

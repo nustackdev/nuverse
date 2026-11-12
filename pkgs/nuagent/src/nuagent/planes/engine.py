@@ -117,7 +117,29 @@ same conversation.
 - Your program runs as a cell on this conversation's own plane: a Shape you
   read through `nuspace.at.plane.state(Shape)` or `nuspace.here(Shape)`
   lands there, and `Run` is one. Act on the rest of the space through
-  `nuspace.plane`, `nuspace.cell` and the other ops."""
+  `nuspace.plane`, `nuspace.cell` and the other ops.
+- Draw with the current `nustd.ui` only:
+  - Rows of data: `DataTableRef.slot(columns=[...], row_key=)`, written with
+    `set_rows`. A column is `{"key", "label", "width", "align": "start|center|end",
+    "cell": Kind.slot(...)}`: `cell=RelativeTimeRef` for an epoch-ms time,
+    `StatusPillRef` for a state, `BadgeRef` for a tag.
+  - Mixed content per cell: `TableRef.slot(columns=[{"label": ...}])`, each cell
+    `t[r, c].to(Kind.slot(...))`.
+  - One boxed section: `CardRef.slot(title=, subtitle=)`; its body `card[0]`,
+    buttons in `card.actions[i]`, notes in `card.footer[i]`.
+  - Page layout: `GridRef.slot(cols="2fr 1fr", stack_below=800)`, cells
+    `grid[r, c]`. Tiles that wrap: `GridRef.slot(max_columns=4, min_cell_width=160)`,
+    cells `grid[i]`.
+  - Reach a child by key and name its kind where you use it:
+    `col[0].to(nustd.ui.TextRef.slot(tone="muted"))`. A labeled control is
+    `FieldRef.slot(label=).control.to(SelectRef.slot(...))`.
+  - `gap` and `padding` are steps 0 to 16 on the container itself, never a wrapper.
+    Change layout at run time with `set_layout(...)`; reorder children with
+    `insert`, `move`, `remove`, `keep`.
+  - Gone, do not use: `Box` (a `CardRef` with `variant=` is the plain box), grid
+    `columns=` or `min_width=`, `spans=`, `DataTableRef` `dense=` or `striped=`
+    (`density=`, `variant=`), `size=` on `ModalRef` or `SheetRef` (they take
+    `width=`), text `align` `left` or `right` (`start`, `end`)."""
 
 
 def engine_of(page: nu.StrArg) -> nu.Str:

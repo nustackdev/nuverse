@@ -1,9 +1,10 @@
-"""The agent every conversation runs on: one cell in the space's Settings plane.
+"""The agent every conversation runs on: one cell on the space's Settings plane.
 
 The cell is ``agent``, keyed :data:`KEY`, so the engines find it with one
 index read: one per space, the key prefixed with the package. Its prog is a
 shim over :func:`out`, and what it keeps is :class:`Config`, in its own
-state: a small form, saved by a button.
+state. It draws as one more group of the plane: a card of four labelled
+controls, saved by a button.
 
 A chat page makes the cell when no cell has the key (:func:`ensure`), and
 leaves it alone when one does: after that it is the owner's to edit. An
@@ -24,6 +25,7 @@ import nuspace
 import nustd.kv
 import nustd.ui
 from nuspace import Space
+from nuspace.web.planes import role_plane
 
 
 if TYPE_CHECKING:
@@ -38,9 +40,9 @@ __all__ = [
     "KEY",
     "LLM",
     "NAME",
-    "PLANE",
     "SOURCE",
     "Config",
+    "View",
     "backend_of",
     "config",
     "ensure",
@@ -48,9 +50,6 @@ __all__ = [
     "out",
 ]
 
-
-#: The space's Settings plane, where the cell lives.
-PLANE = "settings"
 
 #: The cell's key, one per space.
 KEY = "nuagent_agent"
@@ -88,33 +87,46 @@ class Config(nu.Shape):
     key_env = nustd.kv.StrRef.slot()  #: the environment variable holding the key, :data:`LLM` only
 
 
-class BackendField(nustd.ui.Field):
-    input = nustd.ui.SelectRef.slot(options=list(BACKENDS))
+class Agent(nustd.ui.Column):
+    """The cell's view: a hairline, as between the Settings plane's own groups, then the group."""
 
-
-class ModelField(nustd.ui.Field):
-    input = nustd.ui.InputRef.slot(placeholder="The backend's default")
-
-
-class EndpointField(nustd.ui.Field):
-    input = nustd.ui.InputRef.slot(placeholder="http://localhost:11434/v1", mono=True)
-
-
-class KeyField(nustd.ui.Field):
-    input = nustd.ui.InputRef.slot(placeholder="OPENAI_API_KEY", mono=True)
-
-
-class Form(nustd.ui.Form):
-    backend = BackendField.slot(
-        label="Backend",
-        help="cc: Claude Code on this machine's login. llm: an OpenAI-compatible endpoint.",
+    rule = nustd.ui.DividerRef.slot()
+    section = nustd.ui.PageSectionRef.slot(
+        title="Agent", description="The model every chat runs on"
     )
-    model = ModelField.slot(label="Model", help="Empty for the backend's default.")
-    endpoint = EndpointField.slot(label="Endpoint", help="llm only: the base url.")
-    key_env = KeyField.slot(
-        label="Key variable", help="llm only: the environment variable that holds the key."
-    )
-    save = nustd.ui.ButtonRef.slot(label="Save", icon="check")
+
+
+class View(nu.Shape):
+    """The cell's root."""
+
+    agent = Agent.slot(gap=2)
+
+
+#: The group's card, as the Settings plane's own: a two column board, Save in the footer.
+_card = View.agent.section[0].to(nustd.ui.CardRef.slot(size="sm"))
+_board = _card[0].to(nustd.ui.GridRef.slot(cols=2, gap=5, stack_below=480))
+_save = _card.footer[0].to(nustd.ui.ButtonRef.slot(label="Save", icon="check", size="sm"))
+
+
+def _field(at: tuple[int, int], label: str, help: str) -> nu.Ref:
+    """The control of the board's labelled cell ``at``."""
+    return _board[at].to(nustd.ui.FieldRef.slot(label=label, help=help)).control
+
+
+_backend = _field(
+    (0, 0),
+    "Backend",
+    "cc: Claude Code on this machine's login. llm: an OpenAI-compatible endpoint.",
+).to(nustd.ui.SelectRef.slot(options=list(BACKENDS)))
+_model = _field((0, 1), "Model", "Empty for the backend's default.").to(
+    nustd.ui.InputRef.slot(placeholder="The backend's default")
+)
+_endpoint = _field((1, 0), "Endpoint", "llm only: the base url.").to(
+    nustd.ui.InputRef.slot(placeholder="http://localhost:11434/v1", mono=True)
+)
+_key_env = _field(
+    (1, 1), "Key variable", "llm only: the environment variable that holds the key."
+).to(nustd.ui.InputRef.slot(placeholder="OPENAI_API_KEY", mono=True))
 
 
 def kept() -> Config:
@@ -133,51 +145,65 @@ def _values(c: Config) -> nu.Nu:
 
 
 def config() -> nu.Nu:
-    """The agent's settings as a dict, the defaults filled in. Bare read, from anywhere."""
-    return _values(kept())
+    """The agent's settings as a dict, the defaults filled in. Bare read, from anywhere.
+
+    The defaults alone while no cell has :data:`KEY` (a space with no web).
+    """
+    defaults = nu.Dict.of(backend=CC, model="", endpoint="", key_env="")
+    return nu.If(Space.indexes.cell_keys.contains(KEY), _values(kept()), defaults)
 
 
 def ensure() -> nu.Nu:
-    """The cell, made when the Settings plane is there and no cell has :data:`KEY`. One commit.
+    """The cell, made when the space has a Settings plane and no cell has :data:`KEY`.
 
-    Never rewrites one there. Safe from two pages at once: the check and the
-    add land in one commit, and the key is taken once.
+    The plane is the one the web's ``settings`` role names, read in its own
+    commit (the web keeps its roles apart from the space). Then the check
+    and the add land in one space commit, so two pages at once take the key
+    once. Never rewrites one there. A space with no web, so no role, gets
+    no cell, and :func:`config` reads the defaults.
     """
-    missing = nuspace.plane.exists(PLANE).and_(Space.indexes.cell_keys.contains(KEY).not_())
-    made = nuspace.cell.add(PLANE, SOURCE, name=NAME, key=KEY, fabrics=["ui"])
-    return nuspace.atomic(nu.IfDo(missing, made))
+
+    def made(found: nu.ObjectRef) -> nu.Nu:
+        plane = nu.Str(found)
+        missing = (plane != "").and_(nuspace.plane.exists(plane))
+        missing = missing.and_(Space.indexes.cell_keys.contains(KEY).not_())
+        add = nuspace.cell.add(plane, SOURCE, name=NAME, key=KEY, fabrics=["ui"])
+        return nuspace.atomic(nu.IfDo(missing, add))
+
+    return nu.let(nuspace.atomic(role_plane("settings")), made)
 
 
 def out() -> nu.Nu:
     """The cell's program: the form shows what is kept, and Save keeps what the form holds."""
-    form = Form
     mine = nuspace.here(Config)
 
     def show(kept: nu.Nu) -> nu.Nu:
         c = nu.Dict(kept)
         return (
-            form.backend.input.set(c["backend"])
-            >> form.model.input.set(c["model"])
-            >> form.endpoint.input.set(c["endpoint"])
-            >> form.key_env.input.set(c["key_env"])
+            _backend.set(c["backend"])
+            >> _model.set(c["model"])
+            >> _endpoint.set(c["endpoint"])
+            >> _key_env.set(c["key_env"])
         )
 
     typed = (
-        mine.backend.set(nu.Str(form.backend.input).fallback(CC))
-        >> mine.model.set(nu.Str(form.model.input).strip())
-        >> mine.endpoint.set(nu.Str(form.endpoint.input).strip())
-        >> mine.key_env.set(nu.Str(form.key_env.input).strip())
+        mine.backend.set(nu.Str(_backend).fallback(CC))
+        >> mine.model.set(nu.Str(_model).strip())
+        >> mine.endpoint.set(nu.Str(_endpoint).strip())
+        >> mine.key_env.set(nu.Str(_key_env).strip())
     )
     slots = (mine.backend, mine.model, mine.endpoint, mine.key_env)
     changes = [slot.on_change() for slot in slots]
-    return form.save.set("Save") >> nu.ParallelAsync(
+    # The rule first: children draw where first written.
+    drawn = View.agent.rule.init() >> _save.set("Save")
+    return drawn >> nu.ParallelAsync(
         nu.Reconcile(
             nuspace.atomic(nu.OnAny(*changes)),
             nu.let(nuspace.atomic(_values(mine)), show),
             after=nu.RECHECK_AFTER,
             every=nu.RECHECK_EVERY,
         ),
-        nu.ReactEvery(form.save.on_click(), nuspace.atomic(typed)),
+        nu.ReactEvery(_save.on_click(), nuspace.atomic(typed)),
     )
 
 

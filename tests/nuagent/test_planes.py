@@ -40,6 +40,7 @@ from nuspace.web import Conn, Web
 from nuspace.web.env import session_env
 from nuspace.web.nav import BY as NAV_BY
 from nuspace.web.nav import nav
+from nuspace.web.planes import role_plane
 
 
 module_loop = pytest.mark.asyncio(loop_scope="module")
@@ -192,6 +193,19 @@ async def test_each_cell_loads_through_the_session_rewrite(store, name):
     nu.validate(nu.compile(inside(term, plane="p", cell="c")))
 
 
+async def test_a_space_with_no_settings_role_gets_no_agent_cell(store):
+    # The old fixed id is no Settings plane: only the web's role names one.
+    await store.do(nuspace.plane.add("settings", backend="async"))
+    await store.run(settings.ensure())
+    assert await store.read(Space.indexes.cell_keys.contains(settings.KEY)) is False
+    assert await store.read(settings.config()) == {
+        "backend": settings.CC,
+        "model": "",
+        "endpoint": "",
+        "key_env": "",
+    }
+
+
 # --- The space ----------------------------------------------------------------------
 
 
@@ -291,7 +305,8 @@ async def test_a_chat_makes_its_engine_reaction_and_settings_once(space):
     assert await space.read(nu.list(Space.planes[eid].cells.keys())) == [cid]
     assert (await space.read(Space.cells[cid].extract()))["prog"] == engine.SOURCE
     agent = await space.read(Space.indexes.cell_keys[settings.KEY])
-    assert (await space.read(Space.cells[agent].extract()))["plane"] == settings.PLANE
+    role = await space.read(role_plane("settings"))
+    assert (await space.read(Space.cells[agent].extract()))["plane"] == role
     assert (await space.read(Space.cells[agent].extract()))["prog"] == settings.SOURCE
     reaction = await space.read(linked(page).reaction)
     by_plane = nuspace.at.plane(id=reactions.PLANE).state(Registry).by_plane[eid].ids
@@ -309,7 +324,7 @@ async def test_two_tabs_making_sure_of_a_new_chat_agree_on_one_engine(space):
     eid = await space.read(engine_of(page))
     assert await space.read(nu.list(Space.planes[page].children.keys())) == [eid]
     # The agent settings stay one cell, under its key.
-    on_settings = await cells_of(space, settings.PLANE)
+    on_settings = await cells_of(space, await space.read(role_plane("settings")))
     assert [r["key"] for r in on_settings].count(settings.KEY) == 1
 
 
@@ -339,8 +354,8 @@ async def test_a_message_runs_the_engine_through_the_loop_and_ends(space):
     trace = await space.read(chat._trace(conversation(eid), 0))
     assert (trace["text"], trace["done"]) == ("hi", True)
     assert [(t["key"], t["kind"], t["variant"]) for t in trace["steps"]] == [
-        ("t0", OK, "ok"),
-        ("t1", OK, "ok"),
+        (0, OK, "ok"),
+        (1, OK, "ok"),
     ]
     title = chat._title(nu.List(trace["steps"]), trace["done"])
     assert nu.run(title)[0] == "2 steps · ok"
@@ -357,6 +372,9 @@ async def test_a_later_message_carries_the_conversation_on(space):
     assert k["messages"][5] == {"role": "user", "content": "  and again  "}
     assert len(k["messages"]) == 10
     assert [t["at"] for t in k["turns"]] == [0, 0, 1, 1]
+    # A said cell keys its steps by their place in its own message.
+    second = await space.read(chat._trace(conversation(eid), 1))
+    assert [t["key"] for t in second["steps"]] == [0, 1]
     assert k["sid"] == first["sid"]
     assert k["done"] is True
 
