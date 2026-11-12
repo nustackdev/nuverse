@@ -20,9 +20,9 @@ import nustd.kv
 from nulog import planes
 from nulog.planes import state
 from nuspace import Space
-from nuspace.devices.web.env import session_env
 from nuspace.places import inside
 from nuspace.specs import SpecCells, space_registry
+from nuspace.web.env import session_env
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_NOTIFY
 from nustd.ui.core.session import Session

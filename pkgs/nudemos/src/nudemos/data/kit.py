@@ -30,8 +30,7 @@ import nu
 import nuspace
 import nustd.kv
 import nustd.ui
-from nuspace import Space
-from nuspace.devices import web
+from nuspace import Space, web
 from nuspace.specs import PlaneSpec, WebOptions
 from nuspace.utils import MintId
 

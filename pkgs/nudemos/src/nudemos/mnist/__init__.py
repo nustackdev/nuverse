@@ -30,7 +30,7 @@ __all__ = ["INTRO", "PLANE"]
 INTRO = '''\
 import nu
 import nuspace
-import nuspace.devices.web
+import nuspace.web
 import nustd.ui
 
 TEXT = """\\
@@ -60,7 +60,7 @@ class View(nustd.ui.Column):
 def links(kids):
     # Launch, Compare and Read, the first three planes under this one.
     def to(i):
-        return nuspace.devices.web.href(nu.List(kids)[i])
+        return nuspace.web.href(nu.List(kids)[i])
 
     L = View.links
     return (

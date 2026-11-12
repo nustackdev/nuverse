@@ -16,9 +16,9 @@ import pytest
 
 import nu
 import nuspace
-import nuspace.devices.web
 import nuspace.places
 import nuspace.specs
+import nuspace.web
 import nustd.http
 import nustd.ui
 from nudemos.memes import PLANE, cells, control
@@ -27,8 +27,8 @@ from nudemos.memes.chain import decode_block
 from nudemos.memes.job import written
 from nudemos.memes.state import OVERVIEW, TOKEN, made_at, memes_at, overview_of, root_of
 from nuspace import Space
-from nuspace.devices.web.env import session_env
 from nuspace.specs import PlaneSpec, SpecCells
+from nuspace.web.env import session_env
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.session import Session
 
@@ -168,7 +168,7 @@ async def test_opening_a_token_makes_its_page_once_under_the_overview(store):
     assert await store.read(Space.planes[page].spec) == TOKEN
     assert await store.read(Space.planes[page].meta.extract()) == {"mint": CAP}
     assert await store.read(Space.planes[page].icon) == "lucide:coins"
-    assert await store.read(nuspace.devices.web.Web.planes[page].full_width) is True
+    assert await store.read(nuspace.web.Web.planes[page].full_width) is True
     assert await store.read(root_of(page)) == "m"
     await nu.arun(control.open_token("m", CAP, history), session)
     assert await _kids(store, overview) == [page]

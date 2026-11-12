@@ -16,10 +16,10 @@ import nuspace
 import nustd.kv
 from nudemos import agents, counter, data, movies, ops, recipes, research, sampled, tour
 from nuspace import Space
-from nuspace.devices.web import Web
-from nuspace.devices.web.env import session_env
 from nuspace.places import inside
 from nuspace.specs import PlaneSpec, SpecCells
+from nuspace.web import Web
+from nuspace.web.env import session_env
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.session import Session
 
@@ -292,7 +292,7 @@ async def test_sampled_feeds_in_batches_and_charts_a_sample(store):
 PUSHES = """\
 import nu
 import nu.prog
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 
 

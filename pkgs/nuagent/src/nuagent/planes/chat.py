@@ -35,13 +35,13 @@ import nustd.ui
 from nu.lang import ScalarQuery
 from nuagent.protocol import CONSTRUCT, NO_CODE, OK, RUNTIME
 from nuspace import Space
-from nuspace.devices.web.shell import Shell
-from nuspace.devices.web.utils import CellRoot
 from nuspace.ops.interactions import Fabrics
 from nuspace.places import Here
 from nuspace.specs import SpecCells
 from nuspace.system import reactions
 from nuspace.utils import MintId
+from nuspace.web.shell import Shell
+from nuspace.web.utils import CellRoot
 
 from . import settings
 from .engine import IMPORTS, SOURCE, SPEC, conversation, engine_of, inbox_change, pending

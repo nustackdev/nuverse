@@ -24,7 +24,7 @@ __all__ = ["ATLAS", "FILM", "PEOPLE", "PERSON", "ROOT", "TIMELINE"]
 WELCOME = '''\
 import nu
 import nuspace
-import nuspace.devices.web
+import nuspace.web
 import nustd.ui
 from nudemos.movies import kit
 
@@ -54,7 +54,7 @@ def out(plane):
 
     def build(base):
         folder = kit.catalog(base).planes.folder
-        link = lambda name: nuspace.devices.web.href(folder[name].fallback(base))
+        link = lambda name: nuspace.web.href(folder[name].fallback(base))
         draw = (
             ways.people.set(href=link("people"), label="people")
             >> ways.timeline.set(href=link("timeline"), label="timeline")

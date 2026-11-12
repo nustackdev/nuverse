@@ -38,7 +38,7 @@ __all__ = [
 WELCOME = r'''
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.research import kit
 
@@ -265,7 +265,7 @@ def out(plane):
 SHELF = r"""
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.research import kit, views
 from nudemos.research.kit import DESK
@@ -522,7 +522,7 @@ SOURCE = (
 CLAIM_TABLE = r"""
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.research import kit, views
 
@@ -913,7 +913,7 @@ def out(plane):
 LEADERBOARD = r"""
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.research import kit, views
 from nudemos.research.kit import DESK

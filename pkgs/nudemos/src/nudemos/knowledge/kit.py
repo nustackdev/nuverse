@@ -194,9 +194,9 @@ def folder_page(b: Base, name: nu.StrArg) -> nu.Str:
 
 def doc_href(b: Base, slug: nu.StrArg) -> nu.Str:
     """A link to a doc page, for a cell to push or draw. Reads the base in its own snapshot."""
-    import nuspace.devices.web
+    import nuspace.web
 
-    return nuspace.devices.web.href(nuspace.atomic(doc_page(b, slug)))
+    return nuspace.web.href(nuspace.atomic(doc_page(b, slug)))
 
 
 # --- writing --------------------------------------------------------------------------------

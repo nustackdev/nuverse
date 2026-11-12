@@ -11,10 +11,10 @@ import pytest
 import nu
 import nuspace
 import nuverse
-from nuspace.devices.web.env import session_env
 from nuspace.kernel.body import Rewrites
 from nuspace.places import inside
 from nuspace.shapes.content import CELL, PLANE, SPACE, kind_name
+from nuspace.web.env import session_env
 from nustd.ui.core import OP_NOTIFY, Frame, WsSession
 from nustd.ui.core.session import Session
 from nuverse.cells.content import (

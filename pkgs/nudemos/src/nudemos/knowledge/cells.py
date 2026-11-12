@@ -20,7 +20,7 @@ __all__ = ["COLLECTION", "DOC_CELLS", "IMPORTS", "ROOT", "VIEW_CELLS", "cell"]
 IMPORTS = """\
 import nu
 import nuspace
-import nuspace.devices.web
+import nuspace.web
 import nustd.ui
 from nudemos.knowledge import kit, text, views
 """

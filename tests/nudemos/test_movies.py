@@ -10,13 +10,13 @@ import pytest
 
 import nu
 import nuspace
-import nuspace.devices.web
 import nuspace.places
 import nuspace.specs
+import nuspace.web
 from nudemos.movies import PLANE, cells, kit
 from nudemos.movies.data import FILMS, slug
 from nuspace import Space
-from nuspace.devices.web.env import session_env
+from nuspace.web.env import session_env
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_NOTIFY
 from nustd.ui.core.session import Session
@@ -202,7 +202,7 @@ async def test_the_first_run_builds_the_tree(seeded):
     assert await store.read(kit.base_of("m")) == "m"
     assert await store.read(Space.planes[caine].meta["person"]) == "Michael Caine"
     assert await store.read(Space.planes[dune].icon) == "emoji:🚀"
-    assert await store.read(nuspace.devices.web.Web.planes[dune].full_width) is False
+    assert await store.read(nuspace.web.Web.planes[dune].full_width) is False
     for page, spec in ((dune, cells.FILM), (caine, cells.PERSON)):
         assert await _names(store, page) == [name for name, _ in spec]
         for c in (await _cells(store, page)).values():

@@ -178,8 +178,8 @@ async def test_the_first_open_makes_the_pages_and_the_jobs_once(store, tmp_path)
     from nudemos import headless, ops
     from nudemos.ops import jobs, kit, state
     from nuspace import Space
-    from nuspace.devices.web import Web
     from nuspace.system import supervisor
+    from nuspace.web import Web
 
     await store.run(nuspace.specs.add_plane(ops.PLANE, "o"))
     await store.do(Space.info.path.set(str(tmp_path)))

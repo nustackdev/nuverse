@@ -12,7 +12,7 @@ import nuspace.specs
 from nudemos.mnist import PLANE, compare, launch, read, run, views
 from nudemos.mnist.job import job_source
 from nuspace import Space
-from nuspace.devices.web.env import session_env
+from nuspace.web.env import session_env
 
 
 SPECS = [PLANE, launch.PLANE, compare.PLANE, read.PLANE, run.PAGE]

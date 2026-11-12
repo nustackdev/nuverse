@@ -39,7 +39,7 @@ __all__ = [
 HEAD = """\
 import nu
 import nuspace
-import nuspace.devices.web
+import nuspace.web
 import nustd.ui
 from nudemos.design import checks, draw, kit, logo, spec as specs
 """
@@ -970,7 +970,7 @@ def following(releases):
 def cut(base, S, export):
     def made(version):
         v = nu.Str(version)
-        return job.cut(base, export, v, nuspace.atomic(kit.spec(S))) >> View.history.push(nuspace.devices.web.href(nuspace.atomic(job.release_page(base, v))))
+        return job.cut(base, export, v, nuspace.atomic(kit.spec(S))) >> View.history.push(nuspace.web.href(nuspace.atomic(job.release_page(base, v))))
 
     typed = nu.Str(View.go.version).strip()
     return nu.IfDo(typed != "", nu.let(typed, made))
@@ -1016,7 +1016,7 @@ def out(plane):
     def build(base, S):
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change()])), nu.let(nuspace.atomic(rows(S.releases.fallback([]))), View.table.set_rows), every=30.0),
-            nu.ReactEvery(View.table.on_row_click(), lambda ev: View.history.push(nuspace.devices.web.href(ev["key"]))),
+            nu.ReactEvery(View.table.on_row_click(), lambda ev: View.history.push(nuspace.web.href(ev["key"]))),
         )
 
     return kit.on_system(plane, build)

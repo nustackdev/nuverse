@@ -26,7 +26,7 @@ way the research desk makes its own: the group's index cell makes each one
 once, under itself, at ``<index id>.<recipe>``, and a page's cell works its
 siblings' ids out of its own (``out(plane)`` gets it as a string). The
 index draws a tile per page, titled and marked off the store with
-``nuspace.devices.web.link``.
+``nuspace.web.link``.
 """
 
 from __future__ import annotations
@@ -150,7 +150,7 @@ def make_pages(base: nu.StrArg) -> nu.Nu:
 INDEX = f'''\
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos import recipes
 

@@ -19,9 +19,9 @@ from nu import Context
 from nudemos import recipes
 from nudemos.recipes import meridian
 from nuspace import Space
-from nuspace.devices.web.env import session_env
 from nuspace.places import inside
 from nuspace.specs import SpecCells
+from nuspace.web.env import session_env
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_INIT
 from nustd.ui.core.session import Session

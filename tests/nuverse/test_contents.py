@@ -10,12 +10,11 @@ from _support.made import MADE
 import nu
 import nuspace
 import nuverse
-from nuspace.devices.web import search
-from nuspace.devices.web.planes import ensure
 from nuspace.places import inside
 from nuspace.shapes import Space, State
 from nuspace.shapes.content import CELL, PLANE, entries
 from nuspace.specs import add_cell, content_spec, kind_name, space_registry
+from nuspace.web.planes import ensure, search
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.session import Session
 from nuverse.cells.content import (

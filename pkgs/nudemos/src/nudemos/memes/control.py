@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING
 
 import nu
 import nuspace
-import nuspace.devices.web
 import nuspace.specs
 import nuspace.system.supervisor
+import nuspace.web
 
 from .. import bases
 from .job import SYNC
@@ -116,7 +116,7 @@ def open_token(root: nu.StrArg, mint: nu.StrArg, history: nustd.ui.HistoryRef) -
     def opened(page: nu.ObjectRef) -> nu.Nu:
         new = nu.let(nuspace.atomic(overview_of(root)), lambda under: make(page, under))
         return nu.IfDo(nu.Str(page) == "", new) >> history.push(
-            nuspace.devices.web.href(nuspace.atomic(held))
+            nuspace.web.href(nuspace.atomic(held))
         )
 
     return nu.let(nuspace.atomic(held.fallback("")), opened)

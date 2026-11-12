@@ -23,7 +23,7 @@ __all__ = ["FOLDERS", "INCIDENT_CELLS", "JOB", "ROOT"]
 WELCOME = '''\
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.ops import kit
 from nudemos.ops.state import OPS
@@ -180,7 +180,7 @@ BOARD = """\
 import nu
 import nuspace
 import nustd.time
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import OPS, job_view
@@ -808,7 +808,7 @@ INCIDENT_BOARD = """\
 import nu
 import nuspace
 import nustd.time
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.ops import kit, shape, views
 from nudemos.ops.state import OPS, incident_view
@@ -886,7 +886,7 @@ INCIDENTS = (("board", INCIDENT_BOARD), ("pager", PAGER))
 INC_HEAD = """\
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.time
 import nustd.ui
 from nudemos.ops import kit, shape, views

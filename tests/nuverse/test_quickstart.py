@@ -16,12 +16,12 @@ import nuspace
 import nustd.kv
 import nustd.ui
 import nuverse
-from nuspace.devices.web import Web
-from nuspace.devices.web.shell import Shell
-from nuspace.devices.web.utils import CellRoot
 from nuspace.places import Here, inside
 from nuspace.shapes import Space
 from nuspace.specs import SpecCells, add_plane, registered_name
+from nuspace.web import Web
+from nuspace.web.shell import Shell
+from nuspace.web.utils import CellRoot
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.protocol import OP_INIT, OP_NOTIFY
 from nustd.ui.core.session import Session

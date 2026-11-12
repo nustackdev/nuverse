@@ -16,9 +16,9 @@ import pytest
 
 import nu
 import nuspace
-import nuspace.devices.web
 import nuspace.places
 import nuspace.specs
+import nuspace.web
 import nustd.http
 from nudemos.memes import PLANE, control
 from nudemos.memes import book as booklib
@@ -110,7 +110,7 @@ async def test_starting_makes_the_job_once_under_the_root(store):
     row = Space.planes[job]
     assert (await store.read(row.backend), await store.read(row.spec)) == ("mp", JOB)
     assert await store.read(root_of(job)) == "m"
-    assert await store.read(nuspace.devices.web.Web.planes.contains(job)) is False
+    assert await store.read(nuspace.web.Web.planes.contains(job)) is False
     (cell,) = await store.read(nu.list(row.cells.keys()))
     assert await store.read(Space.cells[cell].name) == "sync"
     assert await store.read(Space.cells[cell].fabrics) == []

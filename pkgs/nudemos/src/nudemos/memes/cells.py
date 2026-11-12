@@ -163,7 +163,7 @@ def out(plane):
 INTRO = '''\
 import nu
 import nuspace
-import nuspace.devices.web
+import nuspace.web
 import nustd.ui
 
 TEXT = """\\
@@ -193,7 +193,7 @@ class View(nustd.ui.Column):
 
 def links(kids):
     def to(i):
-        return nuspace.devices.web.href(nu.List(kids)[i])
+        return nuspace.web.href(nu.List(kids)[i])
 
     l = View.links
     return l.overview.set(href=to(0), label="Open the terminal") >> l.monitor.set(href=to(1), label="Monitor") >> l.sync.set(href=to(2), label="Sync settings")

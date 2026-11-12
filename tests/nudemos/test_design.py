@@ -200,8 +200,8 @@ async def test_the_first_open_seeds_once(store):
     import nuspace
     import nuspace.places
     from nuspace import Space
-    from nuspace.devices.web.env import session_env
     from nuspace.specs import SpecCells
+    from nuspace.web.env import session_env
     from nustd.ui.core import WsSession
     from nustd.ui.core.session import Session
 

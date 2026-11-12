@@ -17,7 +17,7 @@ __all__ = ["BOARD", "INTRO", "NEW"]
 INTRO = '''\
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 
 TEXT = """\\
@@ -65,7 +65,7 @@ def out(plane):
 NEW = """\
 import nu
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.ui
 from nudemos.agents import views
 from nudemos.agents.claude import READY

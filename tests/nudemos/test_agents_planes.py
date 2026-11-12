@@ -13,7 +13,7 @@ from nudemos.agents.flows import KINDS, flow_source
 from nudemos.agents.job import job_source
 from nudemos.agents.state import spec_of
 from nuspace import Space
-from nuspace.devices.web.env import session_env
+from nuspace.web.env import session_env
 
 
 SPECS = [

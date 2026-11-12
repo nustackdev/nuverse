@@ -43,7 +43,7 @@ async def test_a_job_is_a_plane_with_its_cells_and_no_web_row(store):
     from nu.lang import is_null
 
     assert is_null(await store.read(headless.cell_of("j", "nope")))
-    from nuspace.devices.web import Web
+    from nuspace.web import Web
 
     assert not await store.read(Web.planes.contains("j"))
 

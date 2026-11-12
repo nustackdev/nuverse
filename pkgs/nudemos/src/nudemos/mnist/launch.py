@@ -23,7 +23,7 @@ import importlib.util
 
 import nu
 import nuspace
-import nuspace.devices.web
+import nuspace.web
 import nuspace.specs
 import nuspace.system.supervisor
 import nustd.ui
@@ -109,7 +109,7 @@ def runs(root, how):
     def start(plan):
         each = nu.ForEachDo(nu.List(plan), lambda p: launch(root, nu.List(p)[0], nu.List(p)[1]))
         newest = nuspace.atomic(nu.List(runs_of(root))[-1][0])
-        opened = View.history.push(nuspace.devices.web.href(newest))
+        opened = View.history.push(nuspace.web.href(newest))
         return each >> View.go.name.set("") >> nu.IfDo(nu.Str(how) == "one", opened)
 
     typed = nu.Str(View.go.name).strip()
@@ -141,7 +141,7 @@ def out(plane):
 
 RUNS = """\
 import nu
-import nuspace.devices.web
+import nuspace.web
 import nuspace
 import nustd.ui
 from nudemos.mnist import views
@@ -159,7 +159,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def follow(root):
         runs = runs_change(nu.Str(root))
-        opened = nu.ReactEvery(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.devices.web.href(ev["key"])))
+        opened = nu.ReactEvery(View.runs.on_row_click(), lambda ev: View.history.push(nuspace.web.href(ev["key"])))
         return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.rows(views.board(nu.Str(root)))), View.runs.set_rows), every=2.0), opened)
 
     return View.head.set("Runs, newest first") >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)

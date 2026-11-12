@@ -21,7 +21,7 @@ __all__ = ["LEADER", "OVERLAY", "PLANE", "TABLE"]
 _IMPORTS = """\
 import nu
 import nuspace
-import nuspace.devices.web
+import nuspace.web
 import nustd.ui
 from nudemos.mnist import views
 from nudemos.mnist.state import Pick, runs_change
@@ -92,7 +92,7 @@ def out(plane):
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*runs)), nu.let(nuspace.atomic(read), t.set_rows), every=2.0),
             nu.ReactEvery(t.on_edit(), plot),
-            nu.ReactEvery(t.on_row_click(), lambda ev: View.history.push(nuspace.devices.web.href(ev["key"]))),
+            nu.ReactEvery(t.on_row_click(), lambda ev: View.history.push(nuspace.web.href(ev["key"]))),
         )
 
     return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)

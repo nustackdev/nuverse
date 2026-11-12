@@ -244,8 +244,8 @@ async def test_a_doc_page_links_the_pages_the_base_made(store) -> None:
     import nuspace.specs
     from nudemos.knowledge import PLANE, kit
     from nuspace import Space
-    from nuspace.devices.web.env import session_env
     from nuspace.specs import SpecCells
+    from nuspace.web.env import session_env
     from nustd.ui.core import WsSession
     from nustd.ui.core.session import Session
 

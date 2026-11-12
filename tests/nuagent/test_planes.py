@@ -23,7 +23,7 @@ from _support.made import MADE
 import nu
 import nuagent
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 import nustd.kv
 from nuagent.planes import PLANE, chat, engine, settings
 from nuagent.planes.chat import ANSWER_SPEC, SAID_SPEC
@@ -33,13 +33,13 @@ from nuagent.planes.state import ERROR, IDLE, RUNNING, STOPPED, Engine, Run
 from nuagent.prompt import TASK, opening, surface
 from nuagent.protocol import OK, RUNTIME
 from nuspace import Space
-from nuspace.devices.web import Conn, Web
-from nuspace.devices.web.env import session_env
-from nuspace.devices.web.nav import BY as NAV_BY
-from nuspace.devices.web.nav import nav
 from nuspace.places import inside
 from nuspace.system import reactions, reload
 from nuspace.system.reactions import Registry
+from nuspace.web import Conn, Web
+from nuspace.web.env import session_env
+from nuspace.web.nav import BY as NAV_BY
+from nuspace.web.nav import nav
 
 
 module_loop = pytest.mark.asyncio(loop_scope="module")

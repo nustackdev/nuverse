@@ -16,14 +16,14 @@ from _support.made import MADE
 import nu
 import nuspace
 import nuverse
-from nuspace.devices.web import Web
-from nuspace.devices.web.shell import Shell
-from nuspace.devices.web.utils import CellRoot
 from nuspace.kernel import BACKENDS
 from nuspace.places import Here, inside
 from nuspace.shapes import ROOT, Space, State
 from nuspace.specs import SpecCells, add_plane
 from nuspace.system import ensure, init, supervisor
+from nuspace.web import Web
+from nuspace.web.shell import Shell
+from nuspace.web.utils import CellRoot
 from nustd.ui import Session
 from nuverse.planes import jobs, planes, runs, workers
 

@@ -246,7 +246,7 @@ import shutil
 import nu
 import nustd.ui
 import nuspace
-import nuspace.devices.web as web
+import nuspace.web as web
 from nuspace._telemetry.usage import track
 from nuspace.specs import EMPTY_PLANE
 from nuverse.planes import quickstart
