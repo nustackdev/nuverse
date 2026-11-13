@@ -339,7 +339,7 @@ def _page(
         f"{ROOT}_{kind}",
         kind.title(),
         cells=tuple(cells),
-        web=nuspace.specs.WebOptions(editable=True, full_width=True, compact=True),
+        web=nuspace.specs.WebOptions(editable=True, width="board"),
         backend="async",
     )
     meta = nu.Dict.of(subject=subject)

@@ -136,7 +136,7 @@ PLANE = PlaneSpec(
     "Sampled",
     icon="chart-line",
     description="A series that grows forever, charted from a reservoir sample.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("feed", FEED), ("chart", CHART), ("about", ABOUT)),
     group="Demos",
     backend="async",

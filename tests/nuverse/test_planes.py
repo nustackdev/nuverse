@@ -81,8 +81,7 @@ async def test_each_plane_is_made_on_the_web_with_its_cells(store, module):
     assert await _cells_of(store, p) == CELLS[spec.name]
     assert await store.read(Web.planes[p].extract()) == {
         "editable": True,
-        "full_width": False,
-        "compact": False,
+        "width": "page",
     }
     # Each cell's id under its name, in the plane's state.
     ids = await store.read(nuspace.at.plane(id=p).state(SpecCells).ids.extract())

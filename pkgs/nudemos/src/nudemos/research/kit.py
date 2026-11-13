@@ -225,7 +225,7 @@ def _page(
         f"{ROOT}_{kind}",
         kind.title(),
         cells=tuple(cells),
-        web=WebOptions(editable=True, full_width=True),
+        web=WebOptions(editable=True, width="board"),
         backend="async",
     )
 

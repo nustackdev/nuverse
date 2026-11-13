@@ -257,7 +257,7 @@ PLANE = PlaneSpec(
     "Messages",
     icon="list",
     description="One log stream, read off either end, filtered, live.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("bar", BAR), ("messages", MESSAGES)),
     backend="async",
 )

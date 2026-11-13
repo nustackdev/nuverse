@@ -39,7 +39,7 @@ PLANE = PlaneSpec(
     "Movies",
     icon="film",
     description="The cinematheque: films, people and timelines as a web of live pages.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=cells.ROOT,
     group="Demos",
     backend="async",

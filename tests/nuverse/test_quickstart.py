@@ -138,7 +138,7 @@ def test_quickstart_registers_first_with_its_five_cells():
         "async",
     )
     assert spec.meta == {}
-    assert (spec.web.editable, spec.web.full_width) == (True, False)
+    assert (spec.web.editable, spec.web.width) == (True, "page")
     assert spec.key == ""
     assert list(SOURCES) == ["welcome", "dial", "meter", "agent", "next"]
 

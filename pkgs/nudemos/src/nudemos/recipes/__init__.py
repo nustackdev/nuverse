@@ -80,7 +80,7 @@ _PAGES = (
     ("landing", "Landing", "rocket"),
 )
 
-_WEB = WebOptions(editable=True, full_width=True)
+_WEB = WebOptions(editable=True, width="board")
 
 
 def page_id(base: str, recipe: str) -> str:

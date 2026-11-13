@@ -78,7 +78,7 @@ PLANE = PlaneSpec(
     "Counter",
     icon="hash",
     description="A count ticking once a second, kept in its cell's state.",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     cells=(("count", COUNT), ("about", ABOUT)),
     group="Demos",
     backend="async",

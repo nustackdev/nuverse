@@ -40,7 +40,7 @@ PLANE = PlaneSpec(
     "Log",
     icon="database",
     description="A nulog store read live: log streams, metric series, and its config.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("intro", INTRO), ("bar", BAR), ("overview", OVERVIEW)),
     children=CHILDREN,
     group="Observe",

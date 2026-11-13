@@ -473,7 +473,7 @@ def open_customer(
         "Customer",
         icon="user",
         cells=CUSTOMER_CELLS,
-        web=WebOptions(editable=True, full_width=True),
+        web=WebOptions(editable=True, width="board"),
         backend="async",
     )
     held = SHOP.customers[cid]

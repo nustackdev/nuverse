@@ -45,6 +45,6 @@ PLANE = PlaneSpec(
     cells=cells.ROOT,
     group="Demos",
     key=KEY,
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     backend="async",
 )

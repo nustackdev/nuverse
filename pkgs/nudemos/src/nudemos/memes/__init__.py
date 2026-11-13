@@ -34,7 +34,7 @@ PLANE = PlaneSpec(
     "Memes",
     icon="flame",
     description="A live terminal over meme launches, synced from Solana.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=cells.ROOT,
     children=(overview.PLANE, monitor.PLANE, sync.PLANE),
     group="Demos",

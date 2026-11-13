@@ -149,7 +149,7 @@ PLANE = PlaneSpec(
     "Sync",
     icon="cog",
     description="Where the memes sync reads from, how fast, and from which slot.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("sync", BAR), ("settings", SETTINGS), ("state", STATE), ("about", ABOUT)),
     backend="async",
 )

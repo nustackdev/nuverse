@@ -366,7 +366,7 @@ PLANE = PlaneSpec(
         ("next", NEXT),
     ),
     group="Quickstart",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     backend="async",
 )
 

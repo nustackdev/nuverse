@@ -287,7 +287,7 @@ def _page(
         f"{ROOT}_{kind}",
         kind.title(),
         cells=tuple(cells),
-        web=nuspace.specs.WebOptions(editable=True, full_width=wide),
+        web=nuspace.specs.WebOptions(editable=True, width="board" if wide else "page"),
         backend="async",
     )
     meta = nu.Dict.of(**{kind: subject})

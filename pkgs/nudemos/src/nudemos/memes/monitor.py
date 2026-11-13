@@ -166,7 +166,7 @@ PLANE = PlaneSpec(
     "Monitor",
     icon="activity",
     description="The memes sync, watched: throughput, lag, latency, errors.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("sync", BAR), ("health", HEALTH), ("charts", CHARTS), ("errors", ERRORS)),
     backend="async",
 )

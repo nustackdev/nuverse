@@ -39,6 +39,6 @@ PLANE = PlaneSpec(
     children=pages.PAGES,
     group="Demos",
     key=KEY,
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     backend="async",
 )

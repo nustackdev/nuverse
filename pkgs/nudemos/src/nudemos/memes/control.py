@@ -99,7 +99,7 @@ def open_token(root: nu.StrArg, mint: nu.StrArg, history: nustd.ui.HistoryRef) -
         "Token",
         icon="coins",
         cells=CELLS,
-        web=nuspace.specs.WebOptions(editable=True, full_width=True),
+        web=nuspace.specs.WebOptions(editable=True, width="board"),
         backend="async",
     )
     held = made_at(root).token_planes[mint]

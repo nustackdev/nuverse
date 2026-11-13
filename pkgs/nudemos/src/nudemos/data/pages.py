@@ -26,7 +26,7 @@ def _page(name: str, label: str, icon: str, description: str, cells: tuple) -> P
         icon=icon,
         description=description,
         cells=cells,
-        web=WebOptions(editable=True, full_width=True),
+        web=WebOptions(editable=True, width="board"),
         backend="async",
     )
 

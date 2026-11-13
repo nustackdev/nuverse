@@ -139,7 +139,7 @@ PLANE = PlaneSpec(
     "Compare",
     icon="trophy",
     description="Every MNIST run side by side: a table, overlaid curves, the best one.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("leader", LEADER), ("table", TABLE), ("overlay", OVERLAY)),
     backend="async",
 )

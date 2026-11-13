@@ -36,7 +36,7 @@ PLANE = PlaneSpec(
     "Agents",
     icon="bot",
     description="Claude Code sessions, run, steered and orchestrated from a space.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("intro", board.INTRO), ("new", board.NEW), ("board", board.BOARD)),
     children=(orchestrate.FANOUT_PLANE, orchestrate.CHAIN_PLANE, orchestrate.TASKS_PLANE),
     group="Demos",

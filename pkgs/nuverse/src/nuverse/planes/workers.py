@@ -165,6 +165,6 @@ PLANE = PlaneSpec(
     description="The workers the backends hold, kept live.",
     cells=(("counts", COUNTS), ("workers", TABLE)),
     group="System",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     backend="async",
 )

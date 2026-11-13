@@ -276,6 +276,6 @@ PLANE = PlaneSpec(
     description="Live plane runs and their cells, kept live.",
     cells=(("counts", COUNTS), ("live", LIVE), ("cells", CELLS)),
     group="System",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     backend="async",
 )

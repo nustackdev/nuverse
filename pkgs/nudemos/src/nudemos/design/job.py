@@ -132,7 +132,7 @@ def cut(base: nu.StrArg, export: nu.StrArg, version: nu.StrArg, spec: nu.Nu) -> 
         "Release",
         icon="tag",
         cells=RELEASE,
-        web=nuspace.specs.WebOptions(editable=True, full_width=True, compact=True),
+        web=nuspace.specs.WebOptions(editable=True, width="board"),
         backend="async",
     )
     held = system(base).release_planes[_slug(version)]

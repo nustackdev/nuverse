@@ -552,7 +552,7 @@ def _page(
         spec,
         kind.title(),
         cells=tuple(cells),
-        web=WebOptions(editable=True, full_width=wide),
+        web=WebOptions(editable=True, width="board" if wide else "page"),
         backend="async",
     )
     about = nu.Dict.of(**{kind: subject})

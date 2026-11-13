@@ -273,7 +273,7 @@ def _plane(kind: str, label: str, icon: str, description: str) -> PlaneSpec:
         label,
         icon=icon,
         description=description,
-        web=WebOptions(editable=True, full_width=True),
+        web=WebOptions(editable=True, width="board"),
         cells=(("flow", about(kind)), ("run", RUN.replace('KIND = "fanout"', f"KIND = {kind!r}"))),
         backend="async",
     )

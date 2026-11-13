@@ -37,7 +37,7 @@ from . import cells
 __all__ = ["PLANE"]
 
 
-_WIDE = WebOptions(editable=True, full_width=True, compact=True)
+_WIDE = WebOptions(editable=True, width="board")
 
 
 def _page(

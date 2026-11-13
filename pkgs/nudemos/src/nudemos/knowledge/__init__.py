@@ -45,7 +45,7 @@ PLANE = PlaneSpec(
     "Knowledge",
     icon="sprout",
     description="Larkspur's wiki, handbook and notes: every page live, every fact cited once.",
-    web=WebOptions(editable=True, full_width=True, compact=True),
+    web=WebOptions(editable=True, width="board"),
     cells=cells.ROOT,
     group="Demos",
     backend="async",

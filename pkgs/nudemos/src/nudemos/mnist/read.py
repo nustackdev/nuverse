@@ -204,7 +204,7 @@ PLANE = PlaneSpec(
     "Read",
     icon="pencil",
     description="Pick a trained MNIST model, draw a digit, and watch it read.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("read", READ),),
     backend="async",
 )

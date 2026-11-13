@@ -36,7 +36,7 @@ PLANE = PlaneSpec(
     "Chat",
     icon="messages-square",
     description="A conversation with an agent that answers in Nu and acts on the space.",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     cells=(("composer", COMPOSER),),
     group="Agents",
     backend="async",

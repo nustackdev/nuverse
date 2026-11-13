@@ -283,7 +283,7 @@ async def test_the_first_open_makes_the_pages_and_the_jobs_once(store, tmp_path)
     folders = made["folders"]
     assert {folders[k] for k in ("jobs", "deploys", "incidents", "status")} <= set(kids)
     assert await store.read(Space.planes[folders["jobs"]].meta.extract()) == {"view": "jobs"}
-    assert await store.read(Web.planes[folders["jobs"]].full_width) is True
+    assert await store.read(Web.planes[folders["jobs"]].width) == "board"
     gateway = made["views"]["gateway"]
     assert await store.read(Space.planes[gateway].parent) == folders["jobs"]
     assert await store.read(Space.planes[gateway].meta["job"]) == "gateway"

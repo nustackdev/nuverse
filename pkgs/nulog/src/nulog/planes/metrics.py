@@ -188,7 +188,7 @@ PLANE = PlaneSpec(
     "Metrics",
     icon="chart-line",
     description="One metric series over a window, charted from a sample, live.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("bar", BAR), ("metrics", METRICS)),
     backend="async",
 )

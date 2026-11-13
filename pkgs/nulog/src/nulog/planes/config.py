@@ -163,7 +163,7 @@ PLANE = PlaneSpec(
     "Config",
     icon="cog",
     description="Which nulog store this Log plane reads, and how often.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("bar", BAR), ("config", CONFIG), ("about", ABOUT)),
     backend="async",
 )

@@ -38,7 +38,7 @@ PLANE = PlaneSpec(
     "Nu demos",
     icon="compass",
     description="A counter and a sampled series, nested under one plane.",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     cells=(("intro", INTRO),),
     children=(counter.PLANE, sampled.PLANE),
     group="Demos",

@@ -272,7 +272,7 @@ PAGE = PlaneSpec(
     "Run",
     icon="activity",
     description="One MNIST training run: live curves, digits and distributions, steered from here.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(
         ("status", STATUS),
         ("steer", STEER),

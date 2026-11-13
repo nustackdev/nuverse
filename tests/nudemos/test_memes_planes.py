@@ -174,7 +174,7 @@ async def test_opening_a_token_makes_its_page_once_under_the_overview(store):
     assert await store.read(Space.planes[page].spec) == TOKEN
     assert await store.read(Space.planes[page].meta.extract()) == {"mint": CAP}
     assert await store.read(Space.planes[page].icon) == "lucide:coins"
-    assert await store.read(nuspace.web.Web.planes[page].full_width) is True
+    assert await store.read(nuspace.web.Web.planes[page].width) == "board"
     assert await store.read(root_of(page)) == "m"
     await nu.arun(control.open_token("m", CAP, history), session)
     assert await _kids(store, overview) == [page]

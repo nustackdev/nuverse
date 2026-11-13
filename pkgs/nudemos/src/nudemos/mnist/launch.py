@@ -172,7 +172,7 @@ PLANE = PlaneSpec(
     "Launch",
     icon="rocket",
     description="Start MNIST training runs from a form.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("form", FORM), ("runs", RUNS)),
     backend="async",
 )

@@ -193,7 +193,7 @@ PAGE = PlaneSpec(
     "Agent",
     icon="bot",
     description="One Claude Code session: its transcript streamed live, steered from here.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(
         ("status", STATUS),
         ("say", SAY),

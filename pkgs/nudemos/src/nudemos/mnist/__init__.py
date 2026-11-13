@@ -78,7 +78,7 @@ PLANE = PlaneSpec(
     "MNIST",
     icon="network",
     description="Train a CNN on MNIST, steer it live, track the runs, and read digits you draw.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(("intro", INTRO), ("leader", compare.LEADER)),
     children=(launch.PLANE, compare.PLANE, read.PLANE),
     group="Demos",

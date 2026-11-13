@@ -137,7 +137,7 @@ PLANE = PlaneSpec(
     "Overview",
     icon="square-terminal",
     description="The memes terminal: tokens, trades and launches, live.",
-    web=WebOptions(editable=True, full_width=True),
+    web=WebOptions(editable=True, width="board"),
     cells=(
         ("sync", BAR),
         ("tiles", TILES),

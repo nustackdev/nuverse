@@ -436,6 +436,6 @@ PLANE = PlaneSpec(
     description="Headless planes that run code: make them, boot them, restart them.",
     cells=(("jobs", TABLE), ("new", NEW), ("job", DETAIL)),
     group="System",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     backend="async",
 )

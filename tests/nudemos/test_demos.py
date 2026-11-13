@@ -207,7 +207,7 @@ async def test_each_demo_is_created_with_its_cells(store, module):
     assert row["backend"] == "async"
     assert row["icon"] == f"lucide:{spec.icon}"
     shown = await store.read(Web.planes["p1"].extract())
-    assert shown == {"editable": True, "full_width": spec.web.full_width, "compact": False}
+    assert shown == {"editable": True, "width": spec.web.width}
     ids = await _cells(store, "p1")
     # In the spec's order on the plane, each found by its name in the plane's state.
     placed = await store.read(Space.planes["p1"].cells.keys(limit=20))

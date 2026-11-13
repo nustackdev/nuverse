@@ -191,6 +191,6 @@ PLANE = PlaneSpec(
     description="The planes by spec, and the planes at the top, kept live.",
     cells=(("by_spec", BY_SPEC), ("planes", TABLE)),
     group="System",
-    web=WebOptions(editable=True, full_width=False),
+    web=WebOptions(editable=True),
     backend="async",
 )
