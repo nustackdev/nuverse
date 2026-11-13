@@ -40,6 +40,7 @@ from nuverse.cells.debugging import (
     space_content_lens,
 )
 from nuverse.cells.examples import converter, password, ticker
+from nuverse.cells.planes import plane
 from nuverse.contents.date import DateContent
 from nuverse.contents.flag import FlagContent
 from nuverse.contents.number import NumberContent
@@ -442,7 +443,7 @@ def test_every_cell_is_one_import_line_or_an_editable_lens():
 
 
 def _module(spec: object) -> str:
-    category = {"Examples": "examples"}.get(spec.group, "content")
+    category = {"Examples": "examples", "Planes": "planes"}.get(spec.group, "content")
     name = {"text": "text_editor"}.get(spec.name, spec.name)
     return f"{category}.{name}"
 
@@ -990,5 +991,34 @@ async def test_ticker_counts_in_its_own_state(store):
     try:
         await _settles(store, _state("c", ticker.Tick).n, lambda v: v == 1)
         await _until(lambda: any(f.payload == {"value": "1"} for f in browser.frames))
+    finally:
+        task.cancel()
+
+
+async def test_plane_makes_one_plane_under_its_own_and_links_it(store):
+    await _spec_cell(store, plane.CELL)
+    browser = _Browser()
+    task = await _running(store, "p", "c", browser)
+    try:
+        made = await _settles(store, _state("c", plane.Made).plane.fallback(""), lambda v: v != "")
+        assert await store.read(Space.planes[made].parent) == "p"
+        assert await store.read(Space.planes[made].name) == plane.NAME
+        await _until(
+            lambda: any(
+                f.ref[-1] == "plane" and isinstance(f.payload, dict) for f in browser.frames
+            )
+        )
+        assert browser.last("plane")["href"] == f"/p/{made}"
+        # Renamed, the link follows.
+        await store.do(nuspace.plane.rename(made, "Basil"))
+        await _until(lambda: browser.last("plane").get("title") == "Basil")
+    finally:
+        task.cancel()
+
+    # Run again, it keeps the plane it made.
+    task = await _running(store, "p", "c", _Browser())
+    try:
+        await asyncio.sleep(0.2)
+        assert await store.read(nu.list(nu.Dict(Space.planes["p"].children).keys())) == [made]
     finally:
         task.cancel()

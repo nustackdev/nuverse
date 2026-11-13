@@ -3,7 +3,7 @@
 - :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``quickstart``,
   ``jobs``, ``runs``, ``workers``, ``planes``.
 - :mod:`.cells`: what ``/`` inserts, one module each, by category:
-  views and editors over content items, lenses, examples.
+  views and editors over content items, planes, lenses, examples.
 - :mod:`.contents`: the content kinds the Cells keep their findable data
   in, Text, Number, Flag, Date and Row.
 
@@ -56,6 +56,7 @@ def extension() -> Extension:
         space_content_lens,
     )
     from .cells.examples import converter, password, ticker
+    from .cells.planes import plane
     from .contents import date, flag, number, row, text
     from .planes import jobs, planes, quickstart, runs, workers
 
@@ -72,6 +73,7 @@ def extension() -> Extension:
         checkbox,
         select,
         date_picker,
+        plane,
         lens,
         plane_lens,
         cell_lens,

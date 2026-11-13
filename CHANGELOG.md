@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- A cell that makes a new plane under its own and links to it
 - Agent settings found by role again; chat bubbles and composer stay steady
 - Log planes pick up fixes in existing spaces and show live times and levels
 - System planes and editors load again, with linked tables and shared editor layout
