@@ -320,7 +320,7 @@ class View(nustd.ui.Column):
 
 
 def out(plane):
-    return View.head.set("Opening") >> View.history.push(web.href(plane + ".run", {"id": 7})) >> nu.ForeverDo(nu.Delay(3600.0))
+    return View.head.set("Opening") >> View.history.push(web.href(plane + "_run", {"id": 7})) >> nu.ForeverDo(nu.Delay(3600.0))
 """
 
 
@@ -333,7 +333,7 @@ async def test_a_cell_moves_the_page_with_a_history_ref_under_itself(store):
     finally:
         await _stop(task)
     (frame,) = [f for f in tab.frames if f.ref[-1] == "history"]
-    assert frame.payload == {"action": "push", "uri": "/p.run?id=7"}
+    assert frame.payload == {"action": "push", "uri": "/p/p_run?id=7"}
     # Rooted under the cell like any other Ref it draws, typed for the kit's History.
     assert frame.ref[-2:] == ("c", "history")
     assert frame.chain[-1][1] == "HistoryRef"

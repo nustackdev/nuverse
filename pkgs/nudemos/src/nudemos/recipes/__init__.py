@@ -96,17 +96,18 @@ def _source(recipe: str) -> str:
 
 # --- in a space ------------------------------------------------------------------------------
 # The pages are siblings under one index, at ``<index id>-<recipe>``, each
-# opened at its pane URL, ``/<plane id>``: this page's own id says where the
-# others are. A recipe takes its links as plain strings, before it builds a
-# Ref, so they are spelled here rather than by ``web.href``; a plane id
-# of key chars reads the same either way.
+# opened at its pane URL: this page's own id says where the others are. A
+# recipe takes its links as plain strings, before it builds a Ref, so they
+# come from ``web.url``, the plain python form of ``web.href``.
+
+import nuspace.web as web
 
 RECIPES = {RECIPES!r}
 
 
 def out(plane):
     base = plane.rsplit("-", 1)[0]
-    links = {{name: f"/{{base}}-{{name}}" for name in RECIPES}}
+    links = {{name: web.url(f"{{base}}-{{name}}") for name in RECIPES}}
     return page(links=links) >> nu.ForeverDo(nu.Delay(3600.0))
 """
     )

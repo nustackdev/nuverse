@@ -281,12 +281,12 @@ def test_linked_turns_page_ids_into_hrefs() -> None:
     ]
     got, _ = nu.run(pages.linked(rows, "what"))
     assert got == [
-        {"k": 1, "what": {"href": "/a%20b", "title": "A"}},
+        {"k": 1, "what": {"href": "/p/a%20b", "title": "A"}},
         {"k": 2, "what": {"title": "B"}},
         {"k": 3, "what": ""},
     ]
     got, _ = nu.run(pages.linked(rows[:1], "what", prop="label"))
-    assert got == [{"k": 1, "what": {"href": "/a%20b", "label": "A"}}]
+    assert got == [{"k": 1, "what": {"href": "/p/a%20b", "label": "A"}}]
 
 
 # --- the first open, on a store ----------------------------------------------------------------

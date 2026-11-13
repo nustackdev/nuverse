@@ -418,7 +418,7 @@ async def test_make_a_page_makes_an_empty_page_under_quickstart_and_goes_there(s
     assert await store.read(Space.planes[kid].name) == "My first page"
     assert await store.read(nu.list(Space.planes[kid].cells.keys())) == []
     assert await store.read(Web.planes.contains(kid)) is True
-    assert _pushed(browser) == [f"/{kid}"]
+    assert _pushed(browser) == [f"/p/{kid}"]
 
 
 async def test_a_demo_opens_the_newest_plane_of_its_spec_made_once(store):
@@ -430,16 +430,16 @@ async def test_a_demo_opens_the_newest_plane_of_its_spec_made_once(store):
     open_made = _next()["open_made"]
     first = await _handle(store, open_made(demo.PLANE))
     (pid,) = await store.read(nu.list(made.keys()))
-    assert _pushed(first) == [f"/{pid}"]
+    assert _pushed(first) == [f"/p/{pid}"]
     again = await _handle(store, open_made(demo.PLANE))
     assert await store.read(nu.list(made.keys())) == [pid]
-    assert _pushed(again) == [f"/{pid}"]
+    assert _pushed(again) == [f"/p/{pid}"]
     # Removed, the next open makes a new one, and it is the newest.
     await store.do(nuspace.plane.remove(pid))
     third = await _handle(store, open_made(demo.PLANE))
     newest = await store.read(made.last())
     assert newest != pid
-    assert _pushed(third) == [f"/{newest}"]
+    assert _pushed(third) == [f"/p/{newest}"]
 
 
 # --- telemetry -------------------------------------------------------------------------------

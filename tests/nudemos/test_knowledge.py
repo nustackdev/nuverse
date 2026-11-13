@@ -43,15 +43,15 @@ def test_links_facts_and_people_render(base: tuple[dict, dict]) -> None:
     docs, facts = base
     pages = _pages(docs)
     md = text.render("pricing", docs, facts, pages, NOW)
-    assert f"[{facts['price']['value']}](/p-facts)" in md
+    assert f"[{facts['price']['value']}](/p/p-facts)" in md
     assert "{{" not in md
-    assert "](/p-arlo)" in md
+    assert "](/p/p-arlo)" in md
     assert (
         "~~" not in text.inline("[[pricing]] and [[nowhere]]", docs, facts, pages).split(" and ")[0]
     )
     assert "~~nowhere~~" in text.inline("[[nowhere]]", docs, facts, pages)
     # A page the base has made no plane for yet links nowhere.
-    assert "](/p-facts)" not in text.render("pricing", docs, facts, {"doc": {}}, NOW)
+    assert "](/p/p-facts)" not in text.render("pricing", docs, facts, {"doc": {}}, NOW)
 
 
 def test_a_fact_changed_once_shows_everywhere(base: tuple[dict, dict]) -> None:
@@ -60,7 +60,7 @@ def test_a_fact_changed_once_shows_everywhere(base: tuple[dict, dict]) -> None:
     citing = [k for k, d in docs.items() if "price" in text.facts_of(d["body"])]
     assert len(citing) >= 2
     pages = _pages(docs)
-    assert all("[$79](/p-facts)" in text.render(k, docs, facts, pages, NOW) for k in citing)
+    assert all("[$79](/p/p-facts)" in text.render(k, docs, facts, pages, NOW) for k in citing)
 
 
 def test_tasks_parse_and_tick_in_their_page() -> None:
@@ -86,7 +86,7 @@ def test_queries_are_tables_over_the_base(base: tuple[dict, dict]) -> None:
         1 for d in docs.values() if d["kind"] == "decision" and d["status"] == "open"
     )
     assert "Unknown query" in text.query("nope", "", docs, facts, pages, NOW)
-    assert "](/p-" in text.query("owned-by", "theo", docs, facts, pages, NOW)
+    assert "](/p/p-" in text.query("owned-by", "theo", docs, facts, pages, NOW)
 
 
 def test_backlinks_find_the_line_that_links(base: tuple[dict, dict]) -> None:
@@ -277,8 +277,8 @@ async def test_a_doc_page_links_the_pages_the_base_made(store) -> None:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
     md = str(browser.drawn[-1])
-    assert f"](/{pages['doc']['arlo']})" in md
-    assert f"](/{pages['view']['facts']})" in md
+    assert f"](/p/{pages['doc']['arlo']})" in md
+    assert f"](/p/{pages['view']['facts']})" in md
 
 
 # --- what the cells draw ------------------------------------------------------------------------
