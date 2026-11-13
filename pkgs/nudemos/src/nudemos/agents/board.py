@@ -77,12 +77,12 @@ class View(nu.Shape):
 form = View.card[0].to(nustd.ui.GridRef.slot(max_columns=4, min_cell_width=180, gap=3))
 name = form["name"].to(nustd.ui.InputRef.slot(label="Name", placeholder="Name it, or leave it to us"))
 cwd = form["cwd"].to(nustd.ui.InputRef.slot(label="Working folder", placeholder="A fresh temp folder"))
-model = form["model"].to(nustd.ui.FieldRef.slot(label="Model")).control.to(nustd.ui.SelectRef.slot(options=views.MODELS))
-mode = form["mode"].to(nustd.ui.FieldRef.slot(label="Permission mode")).control.to(nustd.ui.SelectRef.slot(options=views.MODES))
+model = form["model"].to(nustd.ui.FieldRef.slot(label="Model")).control.to(nustd.ui.SelectRef.slot(options=views.MODELS, value=views.MODELS[0]))
+mode = form["mode"].to(nustd.ui.FieldRef.slot(label="Permission mode")).control.to(nustd.ui.SelectRef.slot(options=views.MODES, value=views.MODES[0]))
 brief = View.card[1].to(nustd.ui.TextAreaRef.slot(rows=3, auto_resize=True, placeholder="The brief: what should it do?"))
 go = View.card[2].to(nustd.ui.RowRef.slot(gap=2, justify="end", wrap=True))
-start = go[0].to(nustd.ui.ButtonRef.slot(icon="play"))
-demo_run = go[1].to(nustd.ui.ButtonRef.slot(variant="secondary", icon="git-fork"))
+start = go[0].to(nustd.ui.ButtonRef.slot(label="Start agent", icon="play"))
+demo_run = go[1].to(nustd.ui.ButtonRef.slot(label="Run the demo: 3 builders and a judge", variant="secondary", icon="git-fork"))
 
 
 def started(root):
@@ -91,7 +91,7 @@ def started(root):
         def opened(page):
             return launch(root, spec, page=page) >> View.history.push(web.href(page))
 
-        return nu.let("", opened) >> name.set("") >> brief.set("")
+        return nu.let("", opened) >> name.reset() >> brief.reset()
 
     count = nuspace.atomic(agents_of(root).len())
     spec = views.spec_of(nu.Str(name), nu.Str(cwd), nu.Str(model), nu.Str(mode), nu.Str(brief), count)
@@ -113,10 +113,8 @@ def demo(root):
 
 
 def defaults():
-    return (
-        name.set("") >> cwd.set("") >> model.set(views.MODELS[0]) >> mode.set(views.MODES[0]) >> brief.set("")
-        >> start.set("Start agent", icon="play") >> demo_run.set("Run the demo: 3 builders and a judge", variant="secondary", icon="git-fork")
-    )
+    # Every part as its slot declares it.
+    return nu.Sequential(*(part.init() for part in (name, cwd, model, mode, brief, start, demo_run)))
 
 
 def out(plane):

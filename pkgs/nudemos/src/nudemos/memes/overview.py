@@ -52,7 +52,7 @@ class View(nu.Shape):
     tokens = nustd.ui.PageSectionRef.slot(title="Tokens", description="every coin the sync follows; a click opens its page")
 
 
-sort = View.tokens.actions["sort"].to(nustd.ui.SelectRef.slot(options=ORDERS, selected="new"))
+sort = View.tokens.actions["sort"].to(nustd.ui.SelectRef.slot(options=ORDERS, value="new"))
 table = View.tokens["table"].to(nustd.ui.DataTableRef.slot(
     columns=COLUMNS, row_key="mint", clickable_rows=True, density="compact", label="Tokens",
     sort_column="age", sort_direction="desc",

@@ -447,14 +447,21 @@ class Actions(nustd.ui.Row):
     pill = nustd.ui.StatusPillRef.slot()
     push = nustd.ui.SpacerRef.slot()
     send = nustd.ui.ButtonRef.slot(label="Send", icon="send")
-    stop = nustd.ui.ButtonRef.slot(label="Stop", variant="secondary", icon="square")
+    stop = nustd.ui.ButtonRef.slot(label="Stop", variant="secondary", icon="square", disabled=True)
 
 
 class Composer(nustd.ui.Column):
     """A failure on top, then the box, then the actions."""
 
     error = nustd.ui.AlertRef.slot(variant="danger")
-    text = nustd.ui.TextAreaRef.slot(placeholder="Message the agent", rows=3, auto_resize=True)
+    # Enter sends and clears the box, shift+Enter is a newline.
+    text = nustd.ui.TextAreaRef.slot(
+        placeholder="Message the agent",
+        rows=3,
+        auto_resize=True,
+        submit_on="enter",
+        clear_on_submit=True,
+    )
     actions = Actions.slot(gap=2, align="center")
 
 
@@ -467,7 +474,8 @@ class Composing(nu.Shape):
 def composer(page: nu.StrArg) -> nu.Nu:
     """The composer cell: the engine made sure of, then Send and Stop, and the status by them.
 
-    Send puts the message on the page and in the inbox (:func:`tell`). The
+    Send, or Enter in the box, puts the message on the page and in the inbox
+    (:func:`tell`). The
     status pill is always drawn at the start and Send and Stop sit at the
     end, so nothing moves as the status changes. Stop is live only while
     the engine thinks, and a failure shows above the box. The status is a
@@ -478,8 +486,8 @@ def composer(page: nu.StrArg) -> nu.Nu:
     box, actions = composer.text, composer.actions
 
     def sent(typed: nu.Nu) -> nu.Nu:
-        text = nu.Str(typed)
-        return nu.IfDo(text != "", tell(page, text) >> box.set(""))
+        text = nu.Str(typed).strip()
+        return nu.IfDo(text != "", tell(page, text))
 
     def draw(seen: nu.Nu) -> nu.Nu:
         s = nu.Dict(seen)
@@ -501,7 +509,9 @@ def composer(page: nu.StrArg) -> nu.Nu:
                 after=nu.RECHECK_AFTER,
                 every=5.0,
             ),
-            nu.ReactEvery(actions.send.on_click(), nu.let(nu.Str(box).strip(), sent)),
+            # Enter: the box cleared itself, the text came with the submit.
+            nu.ReactEvery(box.on_submit(), lambda sub: sent(sub["value"])),
+            nu.ReactEvery(actions.send.on_click(), nu.let(nu.Str(box), sent) >> box.reset()),
             nu.ReactEvery(actions.stop.on_click(), stop(engine)),
         )
 
@@ -509,10 +519,10 @@ def composer(page: nu.StrArg) -> nu.Nu:
     # while it is not there, and the actions go in as they read.
     placed = (
         composer.insert("error", at=0)
-        >> box.set("")
+        >> box.init()
         >> actions.pill.set(IDLE, tone=TONES[IDLE])
         >> actions.push.init()
-        >> actions.send.set("Send")
-        >> actions.stop.set("Stop", disabled=True)
+        >> actions.send.init()
+        >> actions.stop.init()
     )
     return ensure(page) >> placed >> nu.let(nuspace.atomic(engine_of(page)), follow)

@@ -195,7 +195,11 @@ def out() -> nu.Nu:
     slots = (mine.backend, mine.model, mine.endpoint, mine.key_env)
     changes = [slot.on_change() for slot in slots]
     # The rule first: children draw where first written.
-    drawn = View.agent.rule.init() >> _save.set("Save")
+    drawn = View.agent.rule.init() >> _save.init()
+    # Save, or Enter in any of the typed fields.
+    asked = nu.OnAny(
+        _save.on_click(), _model.on_submit(), _endpoint.on_submit(), _key_env.on_submit()
+    )
     return drawn >> nu.ParallelAsync(
         nu.Reconcile(
             nuspace.atomic(nu.OnAny(*changes)),
@@ -203,7 +207,7 @@ def out() -> nu.Nu:
             after=nu.RECHECK_AFTER,
             every=nu.RECHECK_EVERY,
         ),
-        nu.ReactEvery(_save.on_click(), nuspace.atomic(typed)),
+        nu.ReactEvery(asked, nuspace.atomic(typed)),
     )
 
 

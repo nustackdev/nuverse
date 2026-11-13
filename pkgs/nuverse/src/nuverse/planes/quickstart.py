@@ -144,7 +144,7 @@ def out(plane):
     moved = nu.ReactEvery(slider.on_change(), nu.let(nu.float(slider), keep) >> quickstart.moved())
     follow = nu.Reconcile(
         nuspace.atomic(nu.OnAny(PAGE.level.on_change())),
-        nu.let(nuspace.atomic(PAGE.level.fallback(quickstart.START)), slider.set_value),
+        nu.let(nuspace.atomic(PAGE.level.fallback(quickstart.START)), slider.set),
     )
     return quickstart.counting(
         View.turn.actions.hide() >> View.turn.init()

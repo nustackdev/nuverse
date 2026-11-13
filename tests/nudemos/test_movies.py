@@ -51,10 +51,17 @@ class _Browser(WsSession):
         ]
 
     def touch(self, name: str, value: object, payload: object = None) -> None:
-        """The person changes the input ``name`` to ``value``: it reads so, and it notifies."""
+        """The person changes the input ``name`` to ``value``: it reads so, and it notifies a change."""
         (path,) = {f.ref for f in self.frames if f.ref and f.ref[-1] == name}
         self.values[name] = value
-        self._dispatch(Frame(OP_NOTIFY, ref=path, payload=value if payload is None else payload))
+        sent = {"event": "change"} if payload is None else payload
+        self._dispatch(Frame(OP_NOTIFY, ref=path, payload=sent))
+
+    def submit(self, field: str, values: dict, button: str) -> None:
+        """The person submits the Form two levels above the input ``field``: one notify, every value in it."""
+        (path,) = {f.ref for f in self.frames if f.ref and f.ref[-1] == field}
+        payload = {"event": "submit", "values": values, "button": button}
+        self._dispatch(Frame(OP_NOTIFY, ref=path[:-2], payload=payload))
 
 
 async def _until(check: Callable[[], object], timeout: float = 20.0) -> None:
@@ -293,7 +300,7 @@ async def test_an_edit_in_the_table_moves_the_film_page(seeded):
             "previous": 9.0,
         }
         shelf.touch("table", None, edit)
-        await _until(lambda: page.drawn("rating")[-1].get("value") == 6.5)
+        await _until(lambda: page.drawn("rating")[-1] == 6.5)
     finally:
         await _stop(*tasks)
 
@@ -323,8 +330,7 @@ async def test_adding_a_film_makes_its_page(seeded):
     task = await _run(store, "m", (await _cells(store, "m"))["add"], tab)
     try:
         await _until(lambda: tab.drawn("add"))
-        tab.values["title"] = "Oppenheimer (2023)"
-        tab.touch("add", None, {})
+        tab.submit("title", {"line": {"title": "Oppenheimer (2023)"}}, "add")
         await _until(lambda: _made(store, "m", "film", "oppenheimer", len(cells.FILM)))
     finally:
         await _stop(task)
@@ -349,7 +355,7 @@ async def test_facts_saved_credit_a_new_person(seeded):
             cast=["Song Kang-ho", "Lee Sun-kyun"],
             genres=["Thriller"],
         )
-        page.touch("save", None, {})
+        page.touch("save", None, {"event": "click"})
 
         async def saved() -> bool:
             return (await _films(store, "m"))["parasite"]["cast"] == [

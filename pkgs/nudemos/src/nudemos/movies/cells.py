@@ -124,22 +124,22 @@ from nudemos.movies import kit
 
 
 class View(nu.Shape):
-    form = nustd.ui.RowRef.slot(gap=3, align="end", grow={"title": 1})
+    form = nustd.ui.FormRef.slot(clear_on_submit=True)
 
 
-title = View.form["title"].to(nustd.ui.InputRef.slot(placeholder="A film to add, eg Oppenheimer (2023)"))
-add = View.form["add"].to(nustd.ui.ButtonRef.slot(label="Add film", icon="plus"))
+line = View.form["line"].to(nustd.ui.InputGroupRef.slot())
+title = line["title"].to(nustd.ui.InputRef.slot(placeholder="A film to add, eg Oppenheimer (2023)", required=True))
+add = line["add"].to(nustd.ui.ButtonRef.slot(label="Add film", icon="plus", submit=True))
 
 
 def out(plane):
+    # Enter in the title or a click on Add film: one submit, the title in it, the field cleared.
     def added(base):
-        typed = nu.Str(title).strip()
-        film = kit.add_film(base, kit.typed_film(typed))
-        return nu.IfDo(typed != "", film >> title.set(""))
+        return lambda sub: kit.add_film(base, kit.typed_film(nu.Str(sub["values"]["line"]["title"]).strip()))
 
     # The first run brings in the opening films, each with its page, then the people.
-    return title.set("") >> add.init() >> kit.on_catalog(
-        plane, lambda base: kit.seed(base) >> nu.ReactEvery(add.on_click(), added(base))
+    return title.init() >> add.init() >> kit.on_catalog(
+        plane, lambda base: kit.seed(base) >> nu.ReactEvery(View.form.on_submit(), added(base))
     )
 """
 
@@ -334,7 +334,7 @@ def out(plane):
         films = kit.catalog(base).films
         film, ours = films[key], View.ours
         shown = nu.Dict.of(rating=film.rating.fallback(0.0), watched=film.watched.fallback(False), rank=rank(films.extract(), key))
-        draw = lambda v: ours.rating.set_value(v["rating"]) >> ours.watched.set(v["watched"]) >> ours.rank.set_value(v["rank"])
+        draw = lambda v: ours.rating.set(v["rating"]) >> ours.watched.set(v["watched"]) >> ours.rank.set_value(v["rank"])
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(shown), draw)),
             nu.ReactEvery(ours.rating.on_change(), film.rating.set(nu.ToFloat(ours.rating))),
@@ -363,7 +363,7 @@ def out(plane):
         kept = kit.catalog(base).films[key].notes
         return (
             notes.set(kept.fallback(""))
-            >> notes.set_editable(True)
+            >> notes.set_readonly(False)
             >> notes.set_placeholder("What we thought.")
             >> nu.ParallelAsync(
                 nu.ReactEvery(notes.on_change(), kept.set(nu.Str(notes))),
@@ -455,7 +455,7 @@ def out(plane):
     def build(base, key):
         film, e = kit.catalog(base).films[key], View.edit
         show = (
-            e.when.year.set_value(film.year.fallback(0)) >> e.when.runtime.set_value(film.runtime.fallback(0))
+            e.when.year.set(film.year.fallback(0)) >> e.when.runtime.set(film.runtime.fallback(0))
             >> e.director.set(film.director.fallback("")) >> e.cast.set(nu.list(film.cast)) >> e.genres.set(nu.list(film.genres))
         )
         save = (

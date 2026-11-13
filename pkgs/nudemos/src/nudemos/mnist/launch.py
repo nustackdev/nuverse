@@ -53,17 +53,17 @@ knobs = View.run["knobs"].to(nustd.ui.GridRef.slot(cols=3, stack_below=640, gap=
 notice = View.run.footer["notice"].to(nustd.ui.MarkdownRef)
 
 
-def pick(r, c, label, options):
-    # A labelled select at a place of the knobs grid.
-    return knobs[r, c].to(nustd.ui.Field.slot(label=label)).control.to(nustd.ui.SelectRef.slot(options=options))
+def pick(r, c, label, options, value):
+    # A labelled select at a place of the knobs grid, starting on ``value``.
+    return knobs[r, c].to(nustd.ui.Field.slot(label=label)).control.to(nustd.ui.SelectRef.slot(options=options, value=value))
 
 
-optimizer = pick(0, 0, "Optimizer", OPTIMIZERS)
-lr = pick(0, 1, "Learning rate", RATES)
-batch = pick(0, 2, "Batch size", BATCHES)
-channels = pick(1, 0, "Conv channels", CHANNELS)
-epochs = knobs[1, 1].to(nustd.ui.NumberInputRef.slot(label="Epochs", min=1, max=20, step=1))
-dropout = knobs[1, 2].to(nustd.ui.SliderRef.slot(label="Dropout", min=0.0, max=0.6, step=0.05))
+optimizer = pick(0, 0, "Optimizer", OPTIMIZERS, "adam")
+lr = pick(0, 1, "Learning rate", RATES, "0.001")
+batch = pick(0, 2, "Batch size", BATCHES, "64")
+channels = pick(1, 0, "Conv channels", CHANNELS, "16")
+epochs = knobs[1, 1].to(nustd.ui.NumberInputRef.slot(label="Epochs", min=1, max=20, step=1, value=3.0))
+dropout = knobs[1, 2].to(nustd.ui.SliderRef.slot(label="Dropout", min=0.0, max=0.6, step=0.05, value=0.25))
 name = View.run["name"].to(nustd.ui.InputRef.slot(placeholder="Name it, or leave it to us"))
 go = View.run.actions["launch"].to(nustd.ui.ButtonRef.slot(label="Launch run", icon="play"))
 sweep = View.run.actions["sweep"].to(
@@ -107,7 +107,7 @@ def runs(root, how):
         each = nu.ForEachDo(nu.List(plan), lambda p: launch(root, nu.List(p)[0], nu.List(p)[1]))
         newest = nuspace.atomic(nu.List(runs_of(root))[-1][0])
         opened = View.history.push(nuspace.web.href(newest))
-        return each >> name.set("") >> nu.IfDo(nu.Str(how) == "one", opened)
+        return each >> name.reset() >> nu.IfDo(nu.Str(how) == "one", opened)
 
     typed = nu.Str(name).strip()
     plan = views.plan(asked(), nuspace.atomic(runs_of(root).len()), typed, how)
@@ -115,10 +115,8 @@ def runs(root, how):
 
 
 def defaults():
-    return (
-        optimizer.set("adam") >> lr.set("0.001") >> batch.set("64") >> channels.set("16")
-        >> epochs.set_value(3.0) >> dropout.set(0.25) >> name.set("")
-    )
+    # Every knob as its slot declares it.
+    return nu.Sequential(*(k.init() for k in (optimizer, lr, batch, channels, epochs, dropout, name)))
 
 
 def out(plane):

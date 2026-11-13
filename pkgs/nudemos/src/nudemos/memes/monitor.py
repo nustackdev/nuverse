@@ -98,7 +98,7 @@ class View(nu.Shape):
     over = nustd.ui.PageSectionRef.slot(title="Over time", description="each a series sampled at a fixed cost, however long the sync has run")
 
 
-window = View.over.actions["window"].to(nustd.ui.SelectRef.slot(options=WINDOWS, selected="1800"))
+window = View.over.actions["window"].to(nustd.ui.SelectRef.slot(options=WINDOWS, value="1800"))
 grid = View.over["charts"].to(nustd.ui.GridRef.slot(max_columns=3, min_cell_width=320, gap=4))
 charts = {k: grid[k].to(nustd.ui.CardRef.slot(title=title, size="sm"))[k].to(chart) for k, (title, chart) in CHARTS.items()}
 

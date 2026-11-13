@@ -24,9 +24,9 @@ CONTROL = ENTRY.control.to(nustd.ui.DatePickerRef.slot())
 
 
 def _edit(item: Date) -> nu.Nu:
-    """The item's day in the picker, both ways: cleared, the date is gone."""
+    """The item's day in the picker, both ways: cleared (NULL), the date is gone."""
     day = nu.Str(CONTROL)
-    keep = nu.IfDo(day == "", item.value.erase(), item.value.set(day))
+    keep = nu.IfDo(day.is_null(), item.value.erase(), item.value.set(day))
     return CONTROL.set(iso(item)) >> nu.ParallelAsync(
         nu.ReactEvery(CONTROL.on_change(), keep),
         nu.ReactEvery(item.value.on_change(), CONTROL.set(iso(item))),

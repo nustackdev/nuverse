@@ -69,9 +69,7 @@ count = (
 window = (
     knobs[0, 2]
     .to(ui.FieldRef.slot(label="Metrics window to start on"))
-    .control.to(
-        ui.SelectRef.slot(options=list(consts.WINDOW_OPTIONS), selected=consts.DEFAULT_WINDOW)
-    )
+    .control.to(ui.SelectRef.slot(options=list(consts.WINDOW_OPTIONS), value=consts.DEFAULT_WINDOW))
 )
 save_button = form.footer[0].to(ui.ButtonRef.slot(label="Save", icon="save"))
 hint = form.footer[1].to(ui.TextRef.slot(tone="muted", size="sm"))
@@ -96,8 +94,8 @@ def show(root: nu.Str) -> nu.Nu:
         s = nu.Dict(v)
         return (
             path.set(s["path"])
-            >> every.set_value(s["every"])
-            >> count.set_value(s["count"])
+            >> every.set(s["every"])
+            >> count.set(s["count"])
             >> window.set(s["window"])
             >> checked(s["path"])
         )
@@ -122,7 +120,11 @@ def out(plane: nu.StrArg) -> nu.Nu:
 
     def follow(root: nu.Str) -> nu.Nu:
         ready = show(root) >> save_button.init() >> hint.set(HINT)
-        return ready >> nu.ReactEvery(save_button.on_click(), save(root))
+        # Save, or Enter in any of the typed fields.
+        asked = nu.OnAny(
+            save_button.on_click(), path.on_submit(), every.on_submit(), count.on_submit()
+        )
+        return ready >> nu.ReactEvery(asked, save(root))
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
 

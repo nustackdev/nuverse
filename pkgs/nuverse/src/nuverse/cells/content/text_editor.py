@@ -29,7 +29,7 @@ def _edit(item: Text) -> nu.Nu:
     text, body = item.value, nustd.ui.MarkdownRef("text")
     return (
         body.set(text.fallback(""))
-        >> body.set_editable(True)
+        >> body.set_readonly(False)
         >> nu.ParallelAsync(
             # This tab typed: keep it. Every other tab, and every program
             # reading the text, hears it through the store.

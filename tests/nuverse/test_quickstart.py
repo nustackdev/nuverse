@@ -211,7 +211,7 @@ async def test_the_slider_starts_at_the_stills_number(store):
     frames = _dicts(await _run(store, "s", cells["dial"]))
     # Reconcile re-checks early after subscribing, so the same value may draw
     # more than once; only the last one has to be right.
-    assert _payloads(frames, ("turn", "level"))[-1] == {"value": quickstart.START}
+    assert _payloads(frames, ("turn", "level"))[-1] == quickstart.START
 
 
 async def test_put_the_meter_back_never_shows_as_shipped(store):
@@ -278,7 +278,7 @@ async def test_clicking_put_back_restores_meter(store):
     try:
         await asyncio.sleep(0.3)
         (clicked,) = browser._subs
-        browser._dispatch(Frame(OP_NOTIFY, ref=clicked, payload={}))
+        browser._dispatch(Frame(OP_NOTIFY, ref=clicked, payload={"event": "click"}))
         await asyncio.sleep(0.5)
     finally:
         task.cancel()
@@ -306,7 +306,7 @@ async def test_a_slider_left_off_start_says_so(store):
     await store.do(nuspace.at.plane(id="s").state(_Page).level.set(48.0))
     frames = _dicts(await _run(store, "s", cells["dial"]))
     assert "Still at 48, where you left it." in _texts(frames)
-    assert {"value": 48.0} in _payloads(frames, ("turn", "level"))
+    assert 48.0 in _payloads(frames, ("turn", "level"))
 
 
 # --- the path ---------------------------------------------------------------------------------

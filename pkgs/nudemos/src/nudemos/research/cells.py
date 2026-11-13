@@ -244,7 +244,9 @@ class View(nu.Shape):
     add = ui.CollapsibleRef.slot(title="Add a source", open=False, gap=3)
 
 
-form = View.add[0].to(ui.GridRef.slot(cols=3, stack_below=640, gap=3))
+# A Form: Enter in any field or the button adds, and a title is required.
+form = View.add[0].to(ui.FormRef.slot(gap=3))
+grid = form["fields"].to(ui.GridRef.slot(cols=3, stack_below=640, gap=3))
 INPUTS = {
     "title": ("Title", "Scaling Laws for Neural Language Models"),
     "authors": ("Authors", "Kaplan et al."),
@@ -252,19 +254,18 @@ INPUTS = {
     "venue": ("Venue", "arXiv, NeurIPS, ICLR..."),
     "arxiv": ("arXiv id", "2001.08361"),
 }
-typed = {k: form[i // 3, i % 3].to(ui.InputRef.slot(label=label, placeholder=hint)) for i, (k, (label, hint)) in enumerate(INPUTS.items())}
-by = form[1, 2].to(ui.FieldRef.slot(label="Added by")).control.to(ui.SelectRef.slot(options=list(data.TEAM), selected=data.TEAM[0]))
-go = View.add[1].to(ui.RowRef.slot(justify="end"))[0].to(ui.ButtonRef.slot(label="Add to the list", icon="plus"))
+typed = {k: grid[i // 3, i % 3].to(ui.InputRef.slot(label=label, placeholder=hint, required=k == "title")) for i, (k, (label, hint)) in enumerate(INPUTS.items())}
+by = grid[1, 2].to(ui.FieldRef.slot(label="Added by")).control.to(ui.SelectRef.slot(options=list(data.TEAM), value=data.TEAM[0]))
+go = form["actions"].to(ui.RowRef.slot(justify="end"))[0].to(ui.ButtonRef.slot(label="Add to the list", icon="plus", submit=True))
 
 
 def out(plane):
     def add(base):
         source = kit.typed_source(*(nu.Str(typed[k]) for k in INPUTS), nu.Str(by))
-        cleared = nu.Sequential(*(i.set("") for i in typed.values()))
-        return nu.IfDo(nu.Str(typed["title"]).strip() != "", kit.add_source(base, source) >> cleared)
+        return kit.add_source(base, source) >> form.reset()
 
     shown = nu.Sequential(*(i.init() for i in typed.values())) >> by.init() >> go.init()
-    return shown >> kit.on_desk(plane, lambda base: nu.ReactEvery(go.on_click(), add(base)))
+    return shown >> kit.on_desk(plane, lambda base: nu.ReactEvery(form.on_submit(), add(base)))
 """
 
 
@@ -419,7 +420,7 @@ class View(nu.Shape):
 
 
 text = View.notes[0].to(ui.MarkdownRef.slot(
-    editable=True, placeholder="What it shows, what it does not, what to check. Markdown, kept as you type.",
+    readonly=False, placeholder="What it shows, what it does not, what to check. Markdown, kept as you type.",
 ))
 
 
@@ -505,12 +506,12 @@ L = View.link
 pick = L[0].to(ui.GridRef.slot(cols=3, stack_below=640, gap=4))
 claim = pick[0, 0].to(ui.FieldRef.slot(label="Claim")).control.to(ui.SelectRef.slot(placeholder="A claim on the board"))
 stance = pick[0, 1].to(ui.FieldRef.slot(label="Stance")).control.to(ui.RadioGroupRef.slot(
-    options=[{"value": "for", "label": "For"}, {"value": "against", "label": "Against"}], selected="for", orientation="horizontal",
+    options=[{"value": "for", "label": "For"}, {"value": "against", "label": "Against"}], value="for", orientation="horizontal",
 ))
 weight = pick[0, 2].to(ui.SliderRef.slot(label="Weight", min=1, max=3, step=1, value=2))
 say = L[1].to(ui.RowRef.slot(gap=3, align="end", grow={0: 1}))
 note = say[0].to(ui.InputRef.slot(placeholder="What in it bears on the claim, in a line"))
-by = say[1].to(ui.SelectRef.slot(options=list(data.TEAM), selected=data.TEAM[0]))
+by = say[1].to(ui.SelectRef.slot(options=list(data.TEAM), value=data.TEAM[0]))
 go = say[2].to(ui.ButtonRef.slot(label="Put it on the board", icon="scale"))
 
 
@@ -522,11 +523,12 @@ def options(claims):
 def out(plane):
     def build(base, key):
         typed = kit.typed_evidence(key, nu.Str(claim), nu.Str(stance), nu.ToStr(weight), nu.Str(note), nu.Str(by))
-        add = nu.IfDo(nu.Str(claim) != "", kit.add_evidence(base, typed) >> note.set(""))
+        # No claim picked reads NULL: nothing to link yet.
+        add = nu.IfDo(nu.Str(claim).is_null(), nu.Noop(), kit.add_evidence(base, typed) >> note.set(""))
         shown = stance.init() >> weight.init() >> note.init() >> by.init() >> go.init()
         return shown >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims"))), nu.let(nuspace.atomic(options(DESK.claims.extract())), claim.set_options)),
-            nu.ReactEvery(go.on_click(), add),
+            nu.ReactEvery(nu.OnAny(go.on_click(), note.on_submit()), add),
         )
 
     return kit.on_page(plane, build)
@@ -592,20 +594,24 @@ from nudemos.research import data, kit
 
 
 class View(nu.Shape):
-    form = ui.RowRef.slot(gap=3, align="end", grow={0: 1}, basis={1: 200}, wrap=True)
+    form = ui.FormRef.slot(clear_on_submit=True)
 
 
-text = View.form[0].to(ui.InputRef.slot(label="A claim to weigh", placeholder="Longer contexts make retrieval worse"))
-topic = View.form[1].to(ui.InputRef.slot(label="Topic", placeholder="Long context"))
-go = View.form[2].to(ui.ButtonRef.slot(label="Put on the board", icon="plus"))
+line = View.form["line"].to(ui.RowRef.slot(gap=3, align="end", grow={"text": 1}, basis={"topic": 200}, wrap=True))
+text = line["text"].to(ui.InputRef.slot(label="A claim to weigh", placeholder="Longer contexts make retrieval worse", required=True))
+topic = line["topic"].to(ui.InputRef.slot(label="Topic", placeholder="Long context"))
+go = line["go"].to(ui.ButtonRef.slot(label="Put on the board", icon="plus", submit=True))
 
 
 def out(plane):
+    # Enter in either field or the button: one submit with both, the fields cleared.
     def add(base):
-        typed = kit.typed_claim(nu.Str(text), nu.Str(topic), data.TEAM[0])
-        return nu.IfDo(nu.Str(text).strip() != "", kit.add_claim(base, typed) >> text.set("") >> topic.set(""))
+        def put(sub):
+            said = nu.Dict(sub["values"]["line"])
+            return kit.add_claim(base, kit.typed_claim(nu.Str(said["text"]), nu.Str(said["topic"]), data.TEAM[0]))
+        return put
 
-    return text.init() >> topic.init() >> go.init() >> kit.on_desk(plane, lambda base: nu.ReactEvery(go.on_click(), add(base)))
+    return text.init() >> topic.init() >> go.init() >> kit.on_desk(plane, lambda base: nu.ReactEvery(View.form.on_submit(), add(base)))
 """
 
 
@@ -748,7 +754,7 @@ class View(nu.Shape):
 
 
 text = View.take[0].to(ui.MarkdownRef.slot(
-    editable=True, placeholder="Where we land, and what would change our mind. Markdown, kept as you type.",
+    readonly=False, placeholder="Where we land, and what would change our mind. Markdown, kept as you type.",
 ))
 
 
@@ -909,11 +915,11 @@ class View(nu.Shape):
 A = View.arm
 about = A[0].to(ui.MarkdownRef)
 pick = A[1].to(ui.GridRef.slot(cols=3, stack_below=800, gap=4))
-model = pick[0, 0].to(ui.FieldRef.slot(label="Model")).control.to(ui.SelectRef.slot(options=choices(evals.MODELS), selected="haiku"))
+model = pick[0, 0].to(ui.FieldRef.slot(label="Model")).control.to(ui.SelectRef.slot(options=choices(evals.MODELS), value="haiku"))
 style = pick[0, 1].to(ui.FieldRef.slot(label="Asked for")).control.to(
-    ui.RadioGroupRef.slot(options=choices(evals.STYLES), selected="direct", orientation="horizontal"))
+    ui.RadioGroupRef.slot(options=choices(evals.STYLES), value="direct", orientation="horizontal"))
 context = pick[0, 2].to(ui.FieldRef.slot(label="Context")).control.to(
-    ui.RadioGroupRef.slot(options=choices(evals.CONTEXTS), selected="noisy", orientation="horizontal"))
+    ui.RadioGroupRef.slot(options=choices(evals.CONTEXTS), value="noisy", orientation="horizontal"))
 one = A.actions[0].to(ui.ButtonRef.slot(label="Run this arm", icon="play"))
 four = A.actions[1].to(ui.ButtonRef.slot(label="Run all four arms", icon="layers", variant="secondary"))
 note = A.footer[0].to(ui.TextRef.slot(tone="muted", size="sm"))
@@ -1339,7 +1345,7 @@ class View(nu.Shape):
 W = View.write
 head = W[0].to(ui.RowRef.slot(gap=3, align="end", grow={0: 1}, wrap=True))
 title = head[0].to(ui.InputRef.slot(placeholder="A title for the entry"))
-by = head[1].to(ui.SelectRef.slot(options=list(data.TEAM), selected=data.TEAM[2]))
+by = head[1].to(ui.SelectRef.slot(options=list(data.TEAM), value=data.TEAM[2]))
 go = head[2].to(ui.ButtonRef.slot(label="Add the entry", icon="pen-line"))
 text = W[1].to(ui.TextAreaRef.slot(placeholder="What we did and what we saw. Markdown. Write {best}, {best_acc}, {cot_gap}, {noise_gap}, {runs}, {probe_acc} or {probe_split} and the entry keeps them current."))
 
@@ -1352,7 +1358,9 @@ def entry(title, text, by):
 def out(plane):
     add = nu.IfDo(nu.Str(title).strip() != "", DESK.notebook.append(entry(nu.Str(title), nu.Str(text), nu.Str(by))) >> title.set("") >> text.set(""))
     shown = title.init() >> by.init() >> go.init() >> text.init()
-    return shown >> kit.on_desk(plane, lambda base: nu.ReactEvery(go.on_click(), add))
+    # Enter in the title, cmd+Enter in the text, or the button.
+    asked = nu.OnAny(go.on_click(), title.on_submit(), text.on_submit())
+    return shown >> kit.on_desk(plane, lambda base: nu.ReactEvery(asked, add))
 """
 
 

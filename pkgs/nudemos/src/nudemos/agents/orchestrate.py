@@ -189,16 +189,20 @@ class Run(nustd.ui.Card):
     outcome = nustd.ui.MarkdownRef.slot()
 
 
-class More(nustd.ui.Row):
-    task = nustd.ui.InputRef.slot(placeholder="Another task for the newest board")
-    add = nustd.ui.ButtonRef.slot(label="Add task", variant="secondary", icon="plus")
+class MoreLine(nustd.ui.InputGroup):
+    task = nustd.ui.InputRef.slot(placeholder="Another task for the newest board", required=True)
+    add = nustd.ui.ButtonRef.slot(label="Add task", variant="secondary", icon="plus", submit=True)
+
+
+class More(nustd.ui.Form):
+    line = MoreLine.slot()
 
 
 class View(nustd.ui.Column):
     notice = nustd.ui.MarkdownRef.slot()
     brief = nustd.ui.TextAreaRef.slot(rows=4, auto_resize=True)
     ask = Ask.slot(gap=3, align="end")
-    more = More.slot(gap=2, align="end")
+    more = More.slot(clear_on_submit=True)
     head = nustd.ui.HeadingRef.slot(level=4)
     runs = nustd.ui.ColumnRef.slot(Run, gap=3)
 
@@ -216,12 +220,13 @@ def started(plane):
 
 
 def added(plane):
-    # A task onto the newest board: a free worker pulls it on the board's next round.
-    text = nuspace.atomic(nu.Str(View.more.task).strip())
+    # Enter or Add task: a task onto the newest board, the box cleared. A free
+    # worker pulls it on the board's next round.
     newest = nuspace.atomic(nu.str(flows_of(plane).iter().last(default="")))
-    def add(t, job):
-        return nu.IfDo((nu.Str(t) != "").and_(nu.Str(job) != ""), orchestrate.add_task(job, t) >> View.more.task.set(""))
-    return nu.let(text, lambda t: nu.let(newest, lambda j: add(t, j)))
+    def add(sub):
+        t = nu.Str(sub["values"]["line"]["task"]).strip()
+        return nu.let(newest, lambda j: nu.IfDo(nu.Str(j) != "", orchestrate.add_task(j, t)))
+    return add
 
 
 def member(r, a):
@@ -254,14 +259,14 @@ def out(plane):
     if not READY:
         return View.notice.set(views.MISSING) >> nu.ForeverDo(nu.Delay(3600.0))
     # A chain is one agent a step, so it takes no count; only a board takes more tasks.
-    count = View.ask.n.set_value(float(ASK["n"])) if KIND != "chain" else nu.Noop()
-    more = View.more.task.set("") >> View.more.add.set("Add task") if KIND == "tasks" else nu.Noop()
-    placed = View.brief.set(ASK["brief"]) >> count >> View.ask.run.set("Run it", icon="play") >> more >> View.head.set("Runs")
+    count = View.ask.n.set(float(ASK["n"])) if KIND != "chain" else nu.Noop()
+    more = View.more.init() if KIND == "tasks" else nu.Noop()
+    placed = View.brief.set(ASK["brief"]) >> count >> View.ask.run.init() >> more >> View.head.set("Runs")
     kids = runs_at(plane).flows.on_change()
     runs = orchestrate.shown(orchestrate.flows_view(plane))
     return placed >> nu.ParallelAsync(
         nu.ReactEvery(View.ask.run.on_click(), started(plane)),
-        nu.ReactEvery(View.more.add.on_click(), added(plane)),
+        nu.ReactEvery(View.more.on_submit(), added(plane)),
         nu.Reconcile(nuspace.atomic(nu.OnAny(*[kids])), nu.let(nuspace.atomic(runs), draw), every=1.5),
     )
 """

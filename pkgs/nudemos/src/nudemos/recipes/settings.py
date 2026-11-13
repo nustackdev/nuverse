@@ -124,14 +124,14 @@ def page(links: Mapping[str, str] | None = None) -> nu.Nu:
         _field(
             pair,
             2,
-            ui.SelectRef.slot(options=ZONES, selected="America/Santiago"),
+            ui.SelectRef.slot(options=ZONES, value="America/Santiago"),
             "Time zone",
             "Plans and reports use it.",
         ),
         _field(
             pair,
             3,
-            ui.SelectRef.slot(options=["Sexagesimal", "Decimal degrees"], selected="Sexagesimal"),
+            ui.SelectRef.slot(options=["Sexagesimal", "Decimal degrees"], value="Sexagesimal"),
             "Coordinates",
         ),
         _field(
@@ -157,9 +157,9 @@ def page(links: Mapping[str, str] | None = None) -> nu.Nu:
         .to(ui.ButtonRef.slot(label="Reset", icon="rotate-ccw", variant="ghost", size="sm"))
         .init(),
         observing[0]
-        .to(ui.SwitchRef.slot(label="Book clear nights on their own", default=True))
+        .to(ui.SwitchRef.slot(label="Book clear nights on their own", value=True))
         .init(),
-        observing[1].to(ui.SwitchRef.slot(label="Email the morning report", default=True)).init(),
+        observing[1].to(ui.SwitchRef.slot(label="Email the morning report", value=True)).init(),
         observing[2]
         .to(ui.SwitchRef.slot(label="Skip nights within three days of full moon"))
         .init(),

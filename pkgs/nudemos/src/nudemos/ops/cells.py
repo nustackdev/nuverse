@@ -398,7 +398,7 @@ def draw(v):
 def out(plane):
     def build(root):
         moved = OPS.load.set(kit.merged(OPS.load.fallback({}), nu.Dict.of(users=nu.ToInt(users))))
-        return users.set_value(nu.Float(OPS.load.fallback({})["users"])) >> nu.ParallelAsync(
+        return users.set(nu.Float(OPS.load.fallback({})["users"])) >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.load.on_change()])), nu.let(nuspace.atomic(shown(OPS.load.fallback({}))), draw), every=2.0),
             nu.ReactEvery(users.on_change(), nuspace.atomic(moved)),
         )
@@ -544,10 +544,10 @@ class View(nu.Shape):
 
 
 pick = View.explorer[0].to(ui.RowRef.slot(gap=3, wrap=True, grow={"find": 1}))
-stream = pick["stream"].to(ui.SelectRef.slot(options=list(JOBS)))
-level = pick["level"].to(ui.SelectRef.slot(options=LEVELS))
+stream = pick["stream"].to(ui.SelectRef.slot(options=list(JOBS), value="gateway"))
+level = pick["level"].to(ui.SelectRef.slot(options=LEVELS, value="info"))
 find = pick["find"].to(ui.InputRef.slot(placeholder="Find in the newest 4,000 lines, eg ranking or 503"))
-live = pick["live"].to(ui.SwitchRef.slot(label="Follow", default=True))
+live = pick["live"].to(ui.SwitchRef.slot(label="Follow", value=True))
 said = View.explorer[1].to(ui.TextRef.slot(tone="muted", size="sm"))
 lines = View.explorer[2].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", density="compact", label="Log lines"))
 
@@ -573,8 +573,9 @@ def out(plane):
 
         once = nu.let(nustd.time.time(), show)
         follow = nu.Reconcile(nuspace.atomic(OPS.counts.on_change()), nu.IfDo(nu.Bool(live), once) >> nu.Delay(1.0), every=5.0)
-        picked = [nu.ReactEvery(ev, once) for ev in (stream.on_change(), level.on_change(), find.on_change())]
-        return stream.set("gateway") >> level.set("info") >> find.set("") >> live.set(True) >> said.set("Reading the stream") >> once >> nu.ParallelAsync(follow, *picked)
+        # A pick looks again at once; a search runs on Enter.
+        picked = [nu.ReactEvery(ev, once) for ev in (stream.on_change(), level.on_change(), find.on_submit())]
+        return stream.init() >> level.init() >> find.init() >> live.init() >> said.set("Reading the stream") >> once >> nu.ParallelAsync(follow, *picked)
 
     return kit.on_ops(plane, build)
 """
@@ -928,9 +929,10 @@ status = top[0].to(ui.StatusPillRef)
 line = top[1].to(ui.TextRef.slot(tone="muted"))
 card = View.head[1].to(ui.CardRef.slot(title="Timeline", subtitle="oldest first"))
 timeline = card[0].to(ui.DataTableRef.slot(columns=TIMELINE, row_key="key", density="compact", label="Timeline"))
-say = card[1].to(ui.RowRef.slot(gap=2, grow={"text": 1}))
-text = say["text"].to(ui.InputRef.slot(placeholder="Add a note to the timeline"))
-add = say["add"].to(ui.ButtonRef.slot(label="Add note", variant="secondary", icon="send"))
+say = card[1].to(ui.FormRef.slot(clear_on_submit=True))
+bar = say["line"].to(ui.InputGroupRef.slot())
+text = bar["text"].to(ui.InputRef.slot(placeholder="Add a note to the timeline", required=True))
+add = bar["add"].to(ui.ButtonRef.slot(label="Add note", variant="secondary", icon="send", submit=True))
 
 
 def draw(v):
@@ -942,15 +944,15 @@ def out(plane):
     def build(root, iid):
         inc = OPS.incidents[iid].fallback({})
         read = nu.Dict.of(head=views.incident_head(inc, nustd.time.time()), timeline=views.timeline(inc))
-        typed = nu.Str(text).strip()
-        note = nu.IfDo(typed != "", kit.remark(root, iid, typed) >> text.set(""))
-        first = ack.init() >> resolve.init() >> text.set("") >> add.init()
+        # Enter or Add note: one submit with the text, the field cleared.
+        note = lambda sub: kit.remark(root, iid, nu.Str(sub["values"]["line"]["text"]).strip())
+        first = ack.init() >> resolve.init() >> text.init() >> add.init()
         linked = nuspace.atomic(web.link(runbook, folder_of("runbooks"), label="Open the runbook"))
         return first >> linked >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents[iid].on_change()])), nu.let(nuspace.atomic(read), draw), every=5.0),
             nu.ReactEvery(ack.on_click(), kit.settle_incident(root, iid, "acked")),
             nu.ReactEvery(resolve.on_click(), kit.settle_incident(root, iid, "resolved")),
-            nu.ReactEvery(add.on_click(), note),
+            nu.ReactEvery(say.on_submit(), note),
         )
 
     return kit.on_subject(plane, "incident", build)

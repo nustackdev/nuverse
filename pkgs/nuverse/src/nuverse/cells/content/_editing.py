@@ -132,7 +132,7 @@ class Scope(nustd.ui.Row):
     """The scope's id or key, with the switch saying which, inline."""
 
     value = nustd.ui.InputRef.slot(label="Scope identity", placeholder="This cell or plane")
-    by = nustd.ui.RadioGroupRef.slot(options=BY_OPTIONS, selected=BY_ID, orientation="horizontal")
+    by = nustd.ui.RadioGroupRef.slot(options=BY_OPTIONS, value=BY_ID, orientation="horizontal")
 
 
 class Where(nustd.ui.Column):
@@ -292,7 +292,10 @@ def where(
         return nu.If(value == "", blanks[name], value) if name in blanks else value
 
     show = nu.Sequential(*(control.set(given(f)) for f, control in controls.items()))
-    asked = nu.Dict.of(**{f: nu.Str(nu.ToStr(control)).strip() for f, control in controls.items()})
+    # A select with nothing picked reads NULL: that part is blank.
+    asked = nu.Dict.of(
+        **{f: nu.Str(control).fallback("").strip() for f, control in controls.items()}
+    )
     keep = TARGET.set(asked)
     reactions = [nu.ReactEvery(control.on_change(), keep) for control in controls.values()]
     return show, [*reactions, nu.ReactEvery(TARGET.on_change(), show)]
@@ -346,9 +349,9 @@ def editor(
 #: The settings a number input and a slider share: min, max and step, under :data:`SETTINGS`.
 BOUNDS = {
     "min": SETTINGS["min"].to(nustd.ui.NumberInputRef.slot(label="Min")),
-    "max": SETTINGS["max"].to(nustd.ui.NumberInputRef.slot(label="Max", default=100)),
+    "max": SETTINGS["max"].to(nustd.ui.NumberInputRef.slot(label="Max", value=100)),
     "step": SETTINGS["step"].to(
-        nustd.ui.NumberInputRef.slot(label="Step", min=0, step=0.1, default=1)
+        nustd.ui.NumberInputRef.slot(label="Step", min=0, step=0.1, value=1)
     ),
 }
 
@@ -367,13 +370,15 @@ def bounded(state: nu.Shape, control: nu.Nu) -> tuple[nu.Nu, list[nu.Nu]]:
 
     def show(name: str) -> nu.Nu:
         value = getattr(state, name).fallback(held[name])
-        return setters[name](value) >> BOUNDS[name].set_value(value)
+        return setters[name](value) >> BOUNDS[name].set(value)
 
     reactions = []
     for name in held:
         typed = BOUNDS[name]
+        # A cleared bound reads NULL: it goes back to its default.
+        typed_value = nu.Float(typed).fallback(held[name])
         reactions += [
-            nu.ReactEvery(typed.on_change(), getattr(state, name).set(nu.ToFloat(typed))),
+            nu.ReactEvery(typed.on_change(), getattr(state, name).set(typed_value)),
             nu.ReactEvery(getattr(state, name).on_change(), show(name)),
         ]
     return nu.Sequential(*(show(name) for name in held)), reactions

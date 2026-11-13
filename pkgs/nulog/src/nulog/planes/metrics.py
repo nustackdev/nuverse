@@ -66,9 +66,7 @@ series = (
 window = (
     tools[1]
     .to(ui.FieldRef.slot(label="Window"))
-    .control.to(
-        ui.SelectRef.slot(options=list(consts.WINDOW_OPTIONS), selected=consts.DEFAULT_WINDOW)
-    )
+    .control.to(ui.SelectRef.slot(options=list(consts.WINDOW_OPTIONS), value=consts.DEFAULT_WINDOW))
 )
 
 empty = View.metrics[1].to(ui.EmptyStateRef)

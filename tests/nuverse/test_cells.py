@@ -84,9 +84,9 @@ class _Browser(WsSession):
         self._dispatch(Frame(OP_NOTIFY, ref=path, payload=payload))
 
     def pick(self, cell_id: str) -> None:
-        """What the dropdown does: select locally, notify with no payload."""
+        """What the dropdown does: select locally, notify a change."""
         self.selected = cell_id
-        self.notify(self.path(self.select), None)
+        self.notify(self.path(self.select), {"event": "change"})
 
     def path(self, name: str) -> tuple[str, ...]:
         return next(f.ref for f in self.frames if f.ref[-1] == name)
@@ -593,9 +593,11 @@ class _Inputs(_Browser):
         return written[-1] if written else ""
 
     def type(self, *names: str, value: object) -> None:
-        """What an input does: hold the value locally, notify with no payload."""
+        """What an input does: hold the value locally, notify a change."""
         self.values[names] = value
-        self.notify(next(f.ref for f in self.frames if f.ref[-len(names) :] == names), None)
+        self.notify(
+            next(f.ref for f in self.frames if f.ref[-len(names) :] == names), {"event": "change"}
+        )
 
     def shown(self, *names: str) -> list:
         """Every payload written to the ref ending in ``names``, oldest first."""
@@ -626,7 +628,7 @@ async def test_number_input_stores_what_is_typed_and_shows_what_is_set(store):
 
         # Set by a program: the running cell shows it.
         await _write(store, _value(NumberContent).set(7.5))
-        await _until(lambda: {"value": 7.5} in browser.shown("entry", "control"))
+        await _until(lambda: 7.5 in browser.shown("entry", "control"))
 
         # Config: a bound typed is stored in the cell's own state and applied.
         browser.type("settings", "min", value=-3)
@@ -656,7 +658,7 @@ async def test_number_input_stores_what_is_typed_and_shows_what_is_set(store):
             "2027-01-01",
             "2027-01-01",
         ),
-        (slider, NumberContent, 30, 30.0, 55.0, {"value": 55.0}),
+        (slider, NumberContent, 30, 30.0, 55.0, 55.0),
     ],
     ids=lambda v: getattr(v, "__name__", "").rpartition(".")[2] or None,
 )
@@ -683,7 +685,8 @@ async def test_a_cleared_date_is_gone(store):
         assert browser.shown("entry", "control")[0] == ""
         browser.type("entry", "control", value="2026-10-06")
         await _settles(store, _value(DateContent), lambda v: v == datetime.date(2026, 10, 6))
-        browser.type("entry", "control", value="")
+        # Cleared, the picker holds no date: it reads NULL.
+        browser.type("entry", "control", value=None)
         await _settles(store, _value(DateContent).exists(), lambda v: not v)
     finally:
         task.cancel()
@@ -707,7 +710,7 @@ async def test_slider_range_comes_from_config(store):
         assert {"max": 100.0} in browser.shown("entry", "control")
         browser.type("settings", "max", value=10)
         await _until(lambda: {"max": 10.0} in browser.shown("entry", "control"))
-        assert {"value": 10.0} in browser.shown("settings", "max")
+        assert 10.0 in browser.shown("settings", "max")
     finally:
         task.cancel()
 
@@ -877,7 +880,7 @@ async def test_items_lists_adds_opens_and_removes(store):
 
         # Add: a new item under a fresh key, opened. Written by its address, as an
         # editor does, its line follows.
-        browser.notify((*browser.path("lines")[:-1], "actions"), None)
+        browser.notify((*browser.path("lines")[:-1], "actions"), {"event": "click"})
         made = await _settles(store, opened, lambda v: bool(v))
         assert made.startswith("i_")
         assert sorted(await store.read(nu.list(held.keys()))) == sorted(["one", made])
@@ -885,9 +888,9 @@ async def test_items_lists_adds_opens_and_removes(store):
         await _until(lambda: {"value": "Thyme"} in browser.shown(made, "hit", "hit"))
 
         # Open another, then remove it.
-        browser.notify((*browser.path("lines"), "one", "open"), None)
+        browser.notify((*browser.path("lines"), "one", "open"), {"event": "click"})
         await _settles(store, opened, lambda v: v == "one")
-        browser.notify((*browser.path("lines"), "one", "delete"), None)
+        browser.notify((*browser.path("lines"), "one", "delete"), {"event": "click"})
         await _settles(store, nu.list(held.keys()), lambda v: v == [made])
         await _settles(store, opened, lambda v: v == "")
     finally:
@@ -911,7 +914,7 @@ async def test_item_picker_keeps_the_picked_items_address(store):
         assert {"value": "Nothing picked."} in browser.shown("none")
         await _listening()
 
-        browser.notify((*browser.path("rows"), "1", "pick"), None)
+        browser.notify((*browser.path("rows"), "1", "pick"), {"event": "click"})
         picked = await _settles(store, link, lambda v: bool(v))
         assert picked == {"kind": kind_name(TextContent), "scope": [PLANE, "p"], "key": "title"}
         await _until(lambda: {"value": "Garden"} in browser.shown("picked", "hit", "hit"))
@@ -920,7 +923,7 @@ async def test_item_picker_keeps_the_picked_items_address(store):
         await _write(store, _item(TextContent, SPACE, "", "readme").set("Mint"))
         await _until(lambda: {"value": "Mint"} in browser.shown("2", "about", "hit", "hit"))
 
-        browser.notify((*browser.path("none")[:-1], "picked", "unpick"), None)
+        browser.notify((*browser.path("none")[:-1], "picked", "unpick"), {"event": "click"})
         await _settles(store, link.exists(), lambda v: not v)
     finally:
         task.cancel()
@@ -952,7 +955,7 @@ async def test_password_draws_again_when_an_option_changes(store):
         # Generate draws a new one with the same options.
         last = browser.shown("password")[-1]
         # Never written, so no frame names it: its address is its sibling's.
-        browser.notify((*browser.path("upper")[:-1], "generate"), None)
+        browser.notify((*browser.path("upper")[:-1], "generate"), {"event": "click"})
         await _until(lambda: browser.shown("password")[-1] != last)
         assert browser.shown("password")[-1].islower()
     finally:
@@ -963,18 +966,18 @@ async def test_converter_follows_either_side(store):
     browser, task = await _example(store, converter, ("right", "amount"))
     try:
         # 1 m on the left, in km on the right.
-        assert browser.shown("left", "amount")[-1] == {"value": 1.0}
-        assert browser.shown("right", "amount")[-1] == {"value": 0.001}
+        assert browser.shown("left", "amount")[-1] == 1.0
+        assert browser.shown("right", "amount")[-1] == 0.001
         browser.type("right", "amount", value=2)
-        await _until(lambda: browser.shown("left", "amount")[-1] == {"value": 2000.0})
+        await _until(lambda: browser.shown("left", "amount")[-1] == 2000.0)
 
         # Temperature: 100 °C is 212 °F, and back.
         browser.type("kind", value="Temperature")
         await _until(lambda: browser.shown("right", "unit")[-1] == "°F")
         browser.type("left", "amount", value=100)
-        await _until(lambda: browser.shown("right", "amount")[-1] == {"value": 212.0})
+        await _until(lambda: browser.shown("right", "amount")[-1] == 212.0)
         browser.type("right", "amount", value=32)
-        await _until(lambda: browser.shown("left", "amount")[-1] == {"value": 0.0})
+        await _until(lambda: browser.shown("left", "amount")[-1] == 0.0)
         assert await store.read(_state("c", converter.Convert).kind) == "Temperature"
     finally:
         task.cancel()

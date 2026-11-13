@@ -107,8 +107,8 @@ def out() -> nu.Nu:
             >> Box.right.unit.set_options(names)
             >> Box.left.unit.set(left)
             >> Box.right.unit.set(right)
-            >> Box.left.amount.set_value(amount(left))
-            >> Box.right.amount.set_value(amount(right))
+            >> Box.left.amount.set(amount(left))
+            >> Box.right.amount.set(amount(right))
         )
 
     def rekind() -> nu.Nu:

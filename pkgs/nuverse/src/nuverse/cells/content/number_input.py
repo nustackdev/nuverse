@@ -36,11 +36,16 @@ CONTROL = ENTRY.control.to(nustd.ui.NumberInputRef.slot())
 
 
 def _edit(item: Number) -> nu.Nu:
-    """The item's number in the input, both ways."""
+    """The item's number in the input, both ways: cleared, the number is gone."""
     value = item.value
-    return CONTROL.set_value(value.fallback(0.0)) >> nu.ParallelAsync(
-        nu.ReactEvery(CONTROL.on_change(), value.set(nu.ToFloat(CONTROL))),
-        nu.ReactEvery(value.on_change(), CONTROL.set_value(value)),
+
+    def keep(typed: nu.Nu) -> nu.Nu:
+        number = nu.Float(typed)
+        return nu.IfDo(number.is_null(), value.erase(), value.set(number))
+
+    return CONTROL.set(value.fallback(0.0)) >> nu.ParallelAsync(
+        nu.ReactEvery(CONTROL.on_change(), nu.let(nu.Float(CONTROL), keep)),
+        nu.ReactEvery(value.on_change(), CONTROL.set(value.fallback(""))),
     )
 
 

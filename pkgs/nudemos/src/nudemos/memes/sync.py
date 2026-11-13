@@ -55,7 +55,7 @@ def show(root):
         rpc=c.rpc.fallback(""), rate=c.rate.fallback(RATE), start=c.start.fallback(0), images=c.images.fallback(False),
     )
     return nu.let(nuspace.atomic(shown), lambda v: (
-        K.rpc.set(v["rpc"]) >> K.rate.set_value(v["rate"]) >> K.start.set_value(v["start"])
+        K.rpc.set(v["rpc"]) >> K.rate.set(v["rate"]) >> K.start.set(v["start"])
         >> View.go.hint.set(views.endpoint_hint(v["rpc"])) >> View.images.show.set(v["images"])
     ))
 

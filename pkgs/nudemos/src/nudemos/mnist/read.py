@@ -63,7 +63,7 @@ run = pick[0, 0].to(nustd.ui.Field.slot(label="Run")).control.to(
     nustd.ui.SelectRef.slot(placeholder="No runs yet: launch one", searchable=True)
 )
 checkpoint = pick[0, 1].to(nustd.ui.Field.slot(label="Checkpoint")).control.to(
-    nustd.ui.RadioGroupRef.slot(options=SLOTS, selected="latest", orientation="horizontal")
+    nustd.ui.RadioGroupRef.slot(options=SLOTS, value="latest", orientation="horizontal")
 )
 
 pad = work[0, 0].to(nustd.ui.CardRef.slot(title="Draw", subtitle="read on every stroke"))

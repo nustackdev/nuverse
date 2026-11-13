@@ -91,16 +91,16 @@ stream = _picker(0, "Stream").control.to(
 )
 mode = _picker(1, "Read from").control.to(
     ui.RadioGroupRef.slot(
-        options=list(consts.MODE_OPTIONS), selected=consts.DEFAULT_MODE, orientation="horizontal"
+        options=list(consts.MODE_OPTIONS), value=consts.DEFAULT_MODE, orientation="horizontal"
     )
 )
 count = _picker(2, "How many").control.to(
     ui.NumberInputRef.slot(
-        min=consts.MIN_COUNT, max=consts.MAX_COUNT, step=50, default=consts.DEFAULT_COUNT
+        min=consts.MIN_COUNT, max=consts.MAX_COUNT, step=50, value=consts.DEFAULT_COUNT
     )
 )
 level = _picker(3, "Level").control.to(
-    ui.SelectRef.slot(options=list(consts.LEVEL_OPTIONS), selected=consts.DEFAULT_LEVEL)
+    ui.SelectRef.slot(options=list(consts.LEVEL_OPTIONS), value=consts.DEFAULT_LEVEL)
 )
 text = _picker(4, "Filter").control.to(
     ui.InputRef.slot(placeholder="Text in the message, then Enter")
@@ -190,16 +190,17 @@ def opened(e: nu.Nu) -> nu.Nu:
 
 
 def picked() -> list[nu.Nu]:
-    def on(control: ui.Ref, keep: nu.Nu) -> nu.Nu:
-        return nu.ReactEvery(control.on_change(), keep >> paint())
+    def on(heard: nu.Nu, keep: nu.Nu) -> nu.Nu:
+        return nu.ReactEvery(heard, keep >> paint())
 
     held = fmt.bounded(count, Pick.count, consts.MIN_COUNT, consts.MAX_COUNT)
     return [
-        on(stream, Pick.stream.set(nu.Str(stream))),
-        on(mode, Pick.mode.set(nu.Str(mode))),
-        on(count, Pick.count.set(nu.int(held))),
-        on(level, Pick.level.set(nu.Str(level))),
-        on(text, Pick.text.set(nu.Str(text))),
+        on(stream.on_change(), Pick.stream.set(nu.Str(stream))),
+        on(mode.on_change(), Pick.mode.set(nu.Str(mode))),
+        on(count.on_change(), Pick.count.set(nu.int(held))),
+        on(level.on_change(), Pick.level.set(nu.Str(level))),
+        # The filter runs on Enter, with the text it was sent with.
+        on(text.on_submit(), Pick.text.set(nu.Str(text))),
         nu.ReactEvery(
             table.on_row_click(), lambda ev: nu.let(fmt.entry(Pick.read, ev["key"]), opened)
         ),
@@ -229,7 +230,7 @@ def out(plane: nu.StrArg) -> nu.Nu:
         shown = (
             stream.init()
             >> mode.set(Pick.mode)
-            >> count.set_value(Pick.count)
+            >> count.set(Pick.count)
             >> level.set(Pick.level)
             >> text.set(Pick.text)
         )

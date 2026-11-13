@@ -227,17 +227,23 @@ def listing(plane: nu.StrArg) -> nu.Nu:
 # --- new: make a job ---------------------------------------------------------------------------
 
 
-class NewJob(nustd.ui.Row):
+class NewJob(nustd.ui.InputGroup):
     """A job's name and the button that makes it."""
 
     name = nustd.ui.InputRef.slot(label="New job", placeholder="Job name")
-    create = nustd.ui.ButtonRef.slot(label="Create job")
+    create = nustd.ui.ButtonRef.slot(label="Create job", submit=True)
+
+
+class NewForm(nustd.ui.Form):
+    """Enter in the name or Create job: one submit, the name in it, the field cleared."""
+
+    line = NewJob.slot()
 
 
 class New(nu.Shape):
     """The ``new`` cell's root."""
 
-    form = NewJob.slot(gap=2, align="end", grow={"name": 1})
+    form = NewForm.slot(clear_on_submit=True)
 
 
 def create(plane: nu.StrArg, name: nu.StrArg) -> nu.Nu:
@@ -253,12 +259,15 @@ def create(plane: nu.StrArg, name: nu.StrArg) -> nu.Nu:
 
 
 def new(plane: nu.StrArg) -> nu.Nu:
-    """The ``new`` cell: a click makes a job, named as typed or ``New job``, and selects it."""
+    """The ``new`` cell: a submit makes a job, named as typed or ``New job``, and selects it."""
     form = New.form
-    typed = nu.Str(form.name)
-    name = nu.If(typed == "", "New job", typed)
-    make = nu.let(name, lambda held: create(plane, nu.Str(held)) >> form.name.set(""))
-    return form.name.set("") >> form.create.init() >> nu.ReactEvery(form.create.on_click(), make)
+
+    def make(sub: nu.Nu) -> nu.Nu:
+        typed = nu.Str(sub["values"]["line"]["name"]).strip()
+        name = nu.If(typed == "", "New job", typed)
+        return nu.let(name, lambda held: create(plane, nu.Str(held)))
+
+    return form.init() >> nu.ReactEvery(form.on_submit(), make)
 
 
 # --- job: the selected one ---------------------------------------------------------------------
@@ -282,7 +291,9 @@ class Detail(nustd.ui.Card):
     """The selected job: its code, whether it starts with the space, how it restarts."""
 
     actions = Actions.slot(gap=2)
-    editor = nustd.ui.CodeRef.slot(language="python", editable=True, min_height=160, max_height=560)
+    editor = nustd.ui.CodeRef.slot(
+        language="python", readonly=False, min_height=160, max_height=560
+    )
     boot = nustd.ui.SwitchRef.slot(label="Start when the space opens")
     restart = Restart.slot(gap=4, align="end", grow={"policy": 1, "delay": 1}, stack_below=480)
 

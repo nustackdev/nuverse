@@ -68,17 +68,21 @@ def out(plane):
 
 
 SAY = _cell("""\
-class Say(nustd.ui.Row):
-    text = nustd.ui.InputRef.slot(placeholder="Say something: it is the agent's next turn")
-    send = nustd.ui.ButtonRef.slot(label="Say", icon="send")
+class Say(nustd.ui.InputGroup):
+    text = nustd.ui.InputRef.slot(placeholder="Say something: it is the agent's next turn", required=True)
+    send = nustd.ui.ButtonRef.slot(label="Say", icon="send", submit=True)
     stop = nustd.ui.ButtonRef.slot(label="Stop", variant="secondary", icon="square")
 
 
+class Box(nustd.ui.Form):
+    line = Say.slot()
+
+
 class View(nu.Shape):
-    say = Say.slot(gap=2, align="end", grow={"text": 1})
+    say = Box.slot(clear_on_submit=True)
 
 
-S = View.say
+S = View.say.line
 
 
 def button(label):
@@ -88,9 +92,9 @@ def button(label):
 
 
 def sent(job):
-    # The box's text into the agent's inbox: it is the next turn, now or after this one.
-    typed = nuspace.atomic(nu.Str(S.text).strip())
-    return nu.let(typed, lambda t: nu.IfDo(nu.Str(t) != "", launch.say(job, t) >> S.text.set("")))
+    # Enter or Say: the box's text into the agent's inbox, the box cleared. It is
+    # the next turn, now or after this one.
+    return lambda sub: launch.say(job, nu.Str(sub["values"]["line"]["text"]).strip())
 
 
 def press(job):
@@ -101,10 +105,10 @@ def press(job):
 def follow(job):
     status = agent(job).status
     label = nu.Dict(views.head(views.agent_view(job)))["button"]
-    placed = S.text.set("") >> S.send.set("Say") >> S.stop.set("Stop")
+    placed = View.say.init()
     return placed >> nu.ParallelAsync(
         nu.Reconcile(nuspace.atomic(nu.OnAny(*[status.on_change()])), nu.let(nuspace.atomic(label), button), every=3.0),
-        nu.ReactEvery(S.send.on_click(), sent(job)),
+        nu.ReactEvery(View.say.on_submit(), sent(job)),
         nu.ReactEvery(S.stop.on_click(), press(job)),
     )
 

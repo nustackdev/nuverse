@@ -303,17 +303,17 @@ async def test_messages_filter_the_read_and_open_an_entry(store, tmp_path):
     try:
         await _until(b, lambda b: len(b.rows()) == 6)
         # Level: warnings only, of the same read.
-        await _act(b, "level", "warning", value="warning")
+        await _act(b, "level", {"event": "change"}, value="warning")
         await _until(b, lambda b: [r["level"]["label"] for r in b.rows()] == ["warning"])
         assert b.drawn("shown")[-1] == {"value": "1", "delta": "of 6 read"}
         # Back to all, then text: any case, in the message.
-        await _act(b, "level", "all", value="all")
-        await _act(b, "text", "TICK 3", value="TICK 3")
+        await _act(b, "level", {"event": "change"}, value="all")
+        await _act(b, "text", {"event": "submit", "value": "TICK 3"}, value="TICK 3")
         await _until(b, lambda b: [r["message"] for r in b.rows()] == ["tick 3"])
         # Oldest first, two of them.
-        await _act(b, "text", "", value="")
-        await _act(b, "mode", "take", value="take")
-        await _act(b, "count", 2.0, value=2.0)
+        await _act(b, "text", {"event": "submit", "value": ""}, value="")
+        await _act(b, "mode", {"event": "change"}, value="take")
+        await _act(b, "count", {"event": "change"}, value=2.0)
         await _until(b, lambda b: [r["message"] for r in b.rows()] == ["tick 0", "tick 1"])
         # A row clicked: the entry whole, its fields as JSON.
         key = b.rows()[1]["key"]

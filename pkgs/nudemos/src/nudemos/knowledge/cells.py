@@ -66,9 +66,9 @@ def out(plane):
     def build(base, B):
         found = views.search(B.docs.extract(), B.facts.extract(), nu.Str(View.q), B.planes.extract())
         intro = views.welcome(B.facts.extract(), B.planes.extract(), kit.now())
-        return View.intro.init() >> View.q.set("") >> nu.ParallelAsync(
+        return View.intro.init() >> View.q.init() >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.facts.on_change()])), nu.let(nuspace.atomic(intro), View.intro.set), every=600.0),
-            nu.ReactEvery(View.q.on_change(), nu.let(found, draw)),
+            nu.ReactEvery(View.q.on_submit(), nu.let(found, draw)),
         )
 
     return kit.on_base(plane, build)
@@ -108,33 +108,39 @@ def out(plane):
 
 
 CAPTURE = cell("""\
-class Form(nustd.ui.Row):
-    title = nustd.ui.InputRef.slot(placeholder="Capture a thought, a link, a question. It becomes a note in My notes.")
-    add = nustd.ui.ButtonRef.slot(label="Capture", icon="plus")
+class Line(nustd.ui.InputGroup):
+    title = nustd.ui.InputRef.slot(placeholder="Capture a thought, a link, a question. It becomes a note in My notes.", required=True)
+    add = nustd.ui.ButtonRef.slot(label="Capture", icon="plus", submit=True)
+
+
+class Capture(nustd.ui.Form):
+    line = Line.slot()
 
 
 class View(nu.Shape):
     history = nustd.ui.HistoryRef.slot()
-    form = Form.slot(gap=3, align="end")
+    form = Capture.slot(clear_on_submit=True)
 
 
 def out(plane):
     form = View.form
 
     def build(base, B):
-        typed = nu.Str(form.title).strip()
-
         def made(c):
             c = nu.Dict(c)
             slug = nu.Str(c["slug"])
             opened = View.history.push(kit.doc_href(B, slug))
-            return kit.add_doc(base, slug, c["doc"], "captured") >> form.title.set("") >> opened
+            return kit.add_doc(base, slug, c["doc"], "captured") >> opened
 
-        add = nu.IfDo(typed != "", nu.let(views.capture(typed, B.docs.extract(), kit.now()), made))
+        # Enter or Capture: one submit with the text, the field cleared.
+        def add(sub):
+            typed = nu.Str(sub["values"]["line"]["title"]).strip()
+            return nu.let(views.capture(typed, B.docs.extract(), kit.now()), made)
+
         # The first run brings in the base: the folders, every page, then the checker.
-        return kit.seed(base) >> nu.ReactEvery(form.add.on_click(), add)
+        return kit.seed(base) >> nu.ReactEvery(form.on_submit(), add)
 
-    return form.title.set("") >> form.add.set_label("Capture") >> kit.on_base(plane, build)
+    return form.init() >> kit.on_base(plane, build)
 """)
 
 
@@ -325,7 +331,7 @@ def out(plane):
 EDIT = cell("""\
 class Edit(nustd.ui.Collapsible):
     title = nustd.ui.InputRef.slot(label="Title")
-    source = nustd.ui.CodeRef.slot(language="markdown", editable=True, wrap=True, min_height=220, max_height=560)
+    source = nustd.ui.CodeRef.slot(language="markdown", readonly=False, wrap=True, min_height=220, max_height=560)
     tags = nustd.ui.TagInputRef.slot(label="Tags", placeholder="A tag, then Enter")
     save = nustd.ui.ButtonRef.slot(label="Save page", icon="save")
     hint = nustd.ui.TextRef.slot()
@@ -349,7 +355,7 @@ def out(plane):
         )
         # Two commits: the page in the base, then the plane's name.
         save = nuspace.atomic(kept) >> nuspace.atomic(nuspace.plane.rename(plane, title))
-        return show >> e.save.set_label("Save page") >> e.hint.set(HINT) >> nu.ParallelAsync(
+        return show >> e.save.init() >> e.hint.set(HINT) >> nu.ParallelAsync(
             nu.ReactEvery(e.save.on_click(), nu.IfDo(title != "", save)),
             nu.ReactEvery(doc.body.on_change(), e.source.set(doc.body.fallback(""))),
         )
@@ -591,10 +597,10 @@ def out(plane):
             slug = nu.Str(c["slug"])
             return kit.add_doc(base, slug, c["doc"], "wrote up") >> f.line.title.set("") >> View.history.push(kit.doc_href(B, slug))
 
-        new = views.meeting_new(nu.Str(f.line.title), nu.Str(f.line.project), nu.List(f.people), "", B.docs.extract(), kit.now())
+        new = views.meeting_new(nu.Str(f.line.title), nu.Str(f.line.project).fallback(""), nu.List(f.people), "", B.docs.extract(), kit.now())
         return f.line.project.set_options(projects(B.docs.extract())) >> nu.ReactEvery(f.write.on_click(), nu.let(new, made))
 
-    return f.line.title.set("") >> f.people.set([]) >> f.write.set_label("Write the note") >> f.hint.set(HINT) >> kit.on_base(plane, build)
+    return f.line.title.init() >> f.people.init() >> f.write.init() >> f.hint.set(HINT) >> kit.on_base(plane, build)
 """)
 
 
@@ -726,7 +732,7 @@ PEOPLE = [{"value": "", "label": "Everyone"}] + [{"value": k, "label": v} for k,
 
 def out(plane):
     def build(base, B):
-        rows = pages.linked(views.task_rows(B.docs.extract(), B.planes.extract(), kit.now(), nu.Str(WHO), -1, nu.Bool(DONE)), "page")
+        rows = pages.linked(views.task_rows(B.docs.extract(), B.planes.extract(), kit.now(), nu.Str(WHO).fallback(""), -1, nu.Bool(DONE)), "page")
         again = nu.let(rows, TABLE.set_rows)
         return nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), TABLE.set_rows), every=60.0),
@@ -735,7 +741,7 @@ def out(plane):
             nu.ReactEvery(TABLE.on_edit(), lambda ev: tick(B, ev)),
         )
 
-    return WHO.set_options(PEOPLE) >> WHO.set("") >> DONE.set(False) >> kit.on_base(plane, build)
+    return WHO.set_options(PEOPLE) >> WHO.init() >> DONE.init() >> kit.on_base(plane, build)
 """
 )
 
@@ -997,7 +1003,7 @@ def out(plane):
 
     hint = "The checker runs in its own process: on every change, and every 20 seconds. Each issue links its page."
     # The bar and the gauge first, so they draw above the button whatever lands first.
-    drawn = View.bar.init() >> View.top.init() >> View.act.hint.set(hint) >> View.act.reviewed.set_label("Mark stale pages reviewed")
+    drawn = View.bar.init() >> View.top.init() >> View.act.hint.set(hint) >> View.act.reviewed.init()
     return drawn >> View.issues.init() >> kit.on_base(plane, build)
 """)
 
@@ -1044,7 +1050,7 @@ def out(plane):
             nu.ReactEvery(p.go.on_click(), start),
         )
 
-    return View.note.set(NOTE) >> p.source.set_options(sources()) >> p.source.set("lab-notebook") >> p.go.set_label("Import") >> kit.on_base(plane, build)
+    return View.note.set(NOTE) >> p.source.set_options(sources()) >> p.source.set("lab-notebook") >> p.go.init() >> kit.on_base(plane, build)
 """)
 
 
@@ -1055,14 +1061,18 @@ from nudemos.knowledge.ask import OPTIONS, Asker, answered, asked, shown
 TRIES = ("What is still blocking the launch?", "Why did we pick LoRa?", "What is Theo working on this week?")
 
 
-class Asking(nustd.ui.Row):
-    q = nustd.ui.InputRef.slot(placeholder="Ask anything the base knows: dates, owners, why we decided something...")
-    go = nustd.ui.ButtonRef.slot(label="Ask", icon="sparkles")
+class Asking(nustd.ui.InputGroup):
+    q = nustd.ui.InputRef.slot(placeholder="Ask anything the base knows: dates, owners, why we decided something...", required=True)
+    go = nustd.ui.ButtonRef.slot(label="Ask", icon="sparkles", submit=True)
+
+
+class Ask(nustd.ui.Form):
+    line = Asking.slot()
 
 
 class View(nustd.ui.Column):
     note = nustd.ui.TextRef.slot(tone="muted")
-    box = Asking.slot(gap=3, align="end")
+    box = Ask.slot(busy_on_submit=True)
     tries = nustd.ui.RowRef.slot(gap=2, wrap=True)
     status = nustd.ui.TextRef.slot()
     answer = nustd.ui.MarkdownRef.slot()
@@ -1087,27 +1097,27 @@ def out(plane):
 
             reading = nu.Str("Reading ") + nu.ToStr(nu.Dict(B.docs.extract()).len()) + " pages..."
             failed = lambda err: View.status.set(nu.Str("Could not ask: ") + nu.ToStr(err))
+            # Busy while Claude reads: the form takes no other ask, Ask spins.
             return (
-                View.status.set(reading) >> b.go.set_disabled(True)
+                View.status.set(reading) >> b.set_busy(True)
                 >> nu.TryCatch(nu.let(kit.now(), call) >> View.status.set(""), catch=failed)
-                >> b.go.set_disabled(False)
+                >> b.set_busy(False)
             )
 
         def tried(ref, question):
-            return nu.ReactEvery(ref.on_click(), b.q.set(question) >> ask(question))
+            return nu.ReactEvery(ref.on_click(), b.line.q.set(question) >> ask(question))
 
-        typed = nu.Str(b.q).strip()
         draw = lambda v: View.answer.set(v["answer"]) >> View.line.set(v["line"]) >> View.before.set(v["before"])
         read = shown(B.asks.fallback([]), B.docs.extract(), B.facts.extract(), B.planes.extract(), kit.now())
         body = nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.asks.on_change(), B.docs.on_change()])), nu.let(nuspace.atomic(read), draw), every=30.0),
-            nu.ReactEvery(b.go.on_click(), nu.IfDo(typed != "", ask(typed))),
+            nu.ReactEvery(b.on_submit(), lambda sub: ask(nu.Str(sub["values"]["line"]["q"]).strip())),
             *(tried(ref, q) for ref, q in zip(TRY, TRIES, strict=True)),
         )
         return nu.With(nustd.cc.bind(Asker, **OPTIONS), body=body)
 
     shown_first = (
-        View.note.set(NOTE) >> b.q.set("") >> b.go.set_label("Ask") >> LEAD.set("Try")
+        View.note.set(NOTE) >> b.init() >> LEAD.set("Try")
         >> nu.Sequential(*(ref.set(q) for ref, q in zip(TRY, TRIES, strict=True)))
     )
     return shown_first >> kit.on_base(plane, build)

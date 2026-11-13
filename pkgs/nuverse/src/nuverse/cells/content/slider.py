@@ -37,9 +37,9 @@ CONTROL = ENTRY.control.to(nustd.ui.SliderRef.slot())
 def _edit(item: Number) -> nu.Nu:
     """The item's number on the slider, both ways."""
     value = item.value
-    return CONTROL.set_value(value.fallback(0.0)) >> nu.ParallelAsync(
+    return CONTROL.set(value.fallback(0.0)) >> nu.ParallelAsync(
         nu.ReactEvery(CONTROL.on_change(), value.set(nu.ToFloat(CONTROL))),
-        nu.ReactEvery(value.on_change(), CONTROL.set_value(value)),
+        nu.ReactEvery(value.on_change(), CONTROL.set(value.fallback(0.0))),
     )
 
 

@@ -74,7 +74,7 @@ def out() -> nu.Nu:
     return nuspace.bracketed(
         first
         >> Box.password.set(nu.str(state.password))
-        >> Box.length.set_value(length)
+        >> Box.length.set(length)
         >> Box.options.upper.set(upper)
         >> Box.options.digits.set(digits)
         >> Box.options.symbols.set(symbols)

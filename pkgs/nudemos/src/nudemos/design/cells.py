@@ -91,7 +91,7 @@ def out(plane):
             knobs[i].set(specs.num(specs.DEFAULTS, key), min=lo, max=hi, step=step, label=label, show_value=True)
             for i, (key, label, lo, hi, step) in enumerate(ROWS)
         ))
-        draw = lambda v: nu.Sequential(*(knobs[i].set_value(nu.List(v)[i]) for i in range(len(ROWS))))
+        draw = lambda v: nu.Sequential(*(knobs[i].set(nu.List(v)[i]) for i in range(len(ROWS))))
         moves = [
             nu.ReactEvery(knobs[i].on_change(), kit.edit(S, changes(kit.spec(S), key, nu.float(knobs[i])), "you", label))
             for i, (key, label, *_) in enumerate(ROWS)
@@ -609,7 +609,7 @@ def out(plane):
     def build(base, S):
         shape = View.bar.size.set(560, min=360, max=760, step=10, label="Glyph on the 1024 tile", show_value=True) >> View.bar.radius.set(
             230, min=0, max=512, step=2, label="Tile corner", show_value=True)
-        draw = lambda v: View.bar.size.set_value(v["size"]) >> View.bar.radius.set_value(v["radius"]) >> View.bar.shadow.set(v["shadow"])
+        draw = lambda v: View.bar.size.set(v["size"]) >> View.bar.radius.set(v["radius"]) >> View.bar.shadow.set(v["shadow"])
         return shape >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(seen(kit.spec(S))), draw)),
             nu.ReactEvery(View.bar.size.on_change(), kit.edit(S, nu.Dict.of(**{"mark.size": whole(nu.float(View.bar.size))}), "you", "Resized the glyph")),
@@ -862,7 +862,7 @@ def out(plane):
         return first >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change(), S.rev.on_change(), S.pick.on_change()])), nu.let(nuspace.atomic(read), table.set_rows)),
             nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.paused.on_change()])), nu.let(nuspace.atomic(S.paused.fallback(False).not_()), studio_bar.live.set)),
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.pace.on_change()])), nu.let(nuspace.atomic(S.pace.fallback(studio.PACE)), pace.set_value)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.pace.on_change()])), nu.let(nuspace.atomic(S.pace.fallback(studio.PACE)), pace.set)),
             nu.ReactEvery(table.on_row_click(), lambda ev: S.pick.set(nu.Str(ev["key"]))),
             nu.ReactEvery(studio_bar.live.on_change(), S.paused.set(nu.Bool(studio_bar.live).not_())),
             nu.ReactEvery(pace.on_change(), S.pace.set(nu.float(pace))),
@@ -1001,7 +1001,7 @@ import re
 from nudemos.design import job
 
 
-class Go(nustd.ui.Row):
+class Go(nustd.ui.InputGroup):
     version = nustd.ui.InputRef.slot(label="Version")
     cut = nustd.ui.ButtonRef.slot(label="Cut release", icon="package")
 
@@ -1012,7 +1012,7 @@ class View(nu.Shape):
 
 
 drift_text = View.card[0].to(nustd.ui.MarkdownRef)
-go = View.card[1].to(Go.slot(gap=3, align="end"))
+go = View.card[1].to(Go.slot(gap=3))
 
 
 @nu.host
@@ -1051,9 +1051,9 @@ def out(plane):
         read = nu.Dict.of(drift=drift(S.spec.fallback({}), S.releases.fallback([])), next=following(S.releases.fallback([])))
         draw = lambda v: drift_text.set(v["drift"]) >> go.version.set(v["next"])
         moves = [S.rev.on_change(), S.mail.on_change(), S.releases.on_change()]
-        return drift_text.set("") >> go.version.set("") >> go.cut.set("Cut release", icon="package") >> nu.ParallelAsync(
+        return drift_text.set("") >> go.version.init() >> go.cut.init() >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw)),
-            nu.ReactEvery(go.cut.on_click(), cut(base, S, plane)),
+            nu.ReactEvery(nu.OnAny(go.cut.on_click(), go.version.on_submit()), cut(base, S, plane)),
         )
 
     return kit.on_system(plane, build)
