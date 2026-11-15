@@ -15,6 +15,7 @@ import pytest_asyncio
 from _support.made import MADE, MADE_STORE
 
 import nu
+import nuspace.system.planes
 import nustd.kv
 from nu.lang import ScalarQuery
 from nuspace.host.stores import SPACE_STORE, STATE_STORE
@@ -103,8 +104,9 @@ def _navigators(backend: str, root: Path) -> tuple[nu.Nu, ...]:
 
 
 def init_stores() -> nu.Nu:
-    """Every store's fixed containers, made where missing: one commit per store."""
-    return nu.Sequential(*(nustd.kv.atomic(s.init()) for s in STORES_OF_A_SPACE))
+    """Every store's fixed containers, then the system planes, made where missing, as a host opens a space."""
+    stores = nu.Sequential(*(nustd.kv.atomic(s.init()) for s in STORES_OF_A_SPACE))
+    return stores >> nuspace.system.planes.ensure()
 
 
 @pytest_asyncio.fixture

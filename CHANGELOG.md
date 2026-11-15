@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nuverse 0.3.11, nuagent 0.2.8, nudemos 0.1.9, nulog 0.2.7 on nu 0.7.5 and nuspace 0.7.3
 - A cell that makes a new plane under its own and links to it
 - Agent settings found by role again; chat bubbles and composer stay steady
 - Log planes pick up fixes in existing spaces and show live times and levels

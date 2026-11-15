@@ -176,7 +176,7 @@ async def test_a_cut_makes_its_release_once_under_export(store):
     import nu
     import nuspace
     from nuspace import Space
-    from nuspace.system.supervisor import ON_FAILURE, Policy
+    from nuspace.system.supervisor import ON_FAILURE
 
     await _design(store)
     export = await store.read(job.export_of("d"))
@@ -195,7 +195,7 @@ async def test_a_cut_makes_its_release_once_under_export(store):
     assert await store.read(kit.root_of(jb)) == "d"
     cell = await store.read(job.job_cell(jb))
     assert "VERSION = 'v1.2.0'" in await store.read(Space.cells[cell].prog)
-    policy = nuspace.at.plane(id="supervisor").state(Policy).planes[jb].policy
+    policy = nuspace.system.supervisor.supervised()[jb].policy
     assert await store.read(policy) == ON_FAILURE
     assert await store.read(job.release_page("d", "v9.9.9")) == ""
 

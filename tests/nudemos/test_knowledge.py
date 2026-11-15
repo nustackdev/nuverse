@@ -203,7 +203,7 @@ async def test_the_first_open_makes_every_page_once_and_the_checker(store) -> No
     import nuspace.specs
     from nudemos.knowledge import PLANE, kit
     from nuspace import Space
-    from nuspace.system.supervisor import ON_FAILURE, Policy
+    from nuspace.system.supervisor import ON_FAILURE
 
     await store.run(nuspace.specs.add_plane(PLANE, "k"))
     await store.run(kit.seed(nu.Str("k")))
@@ -227,7 +227,7 @@ async def test_the_first_open_makes_every_page_once_and_the_checker(store) -> No
     assert kids == [pages["view"][name] for name, _, _ in kit.VIEWS] + [checker]
     assert await store.read(Space.planes[checker].spec) == "knowledge_checker"
     assert await store.read(kit.base_of(checker)) == "k"
-    policy = nuspace.at.plane(id="supervisor").state(Policy).planes[checker].policy
+    policy = nuspace.system.supervisor.supervised()[checker].policy
     assert await store.read(policy) == ON_FAILURE
     assert await store.read(kit.live("k", "checker")) is False
     # A second start writes the job's prog again, on the same job.

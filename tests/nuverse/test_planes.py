@@ -127,6 +127,15 @@ def _rows(frames: list) -> list:
     return rows
 
 
+#: The titles of the system planes every space is opened with.
+_OPENED_WITH = {title for _, title, *_ in nuspace.system.planes.PLANES}
+
+
+def _made_here(rows: list) -> list:
+    """The listing's rows less the system planes the space was opened with."""
+    return [r for r in rows if not (r["system"] and r["name"]["title"] in _OPENED_WITH)]
+
+
 def _started(rows: list) -> list:
     """The rows with ``started`` taken out, each checked to be epoch ms or blank."""
     for r in rows:
@@ -322,7 +331,7 @@ async def test_planes_draws_specs_and_the_top_planes(store):
         {"spec": "nuverse.workers", "planes": "1"},
     ]
     assert _columns(planes.TABLE_REF) == ["name", "spec", "system", "cells", "planes", "id"]
-    top = _rows(await _frames(store, planes.draw_listing()))
+    top = _made_here(_rows(await _frames(store, planes.draw_listing())))
     r2 = top[1]["id"]
     assert top == [
         _top("R", "nuverse.runs", "", "3", "1", r),
@@ -347,7 +356,7 @@ async def test_a_count_past_a_page_says_so(store):
     await store.do(nuspace.plane.add("big", name="Big"))
     for i in range(planes.PAGE + 1):
         await store.do(nuspace.plane.add(f"k{i:03d}", parent="big"))
-    top = _rows(await _frames(store, planes.draw_listing()))
+    top = _made_here(_rows(await _frames(store, planes.draw_listing())))
     assert top == [_top("Big", "", "", "0", f"{planes.PAGE}+", "big")]
 
 

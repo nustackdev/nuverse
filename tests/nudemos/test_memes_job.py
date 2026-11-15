@@ -25,7 +25,7 @@ from nudemos.memes import book as booklib
 from nudemos.memes.chain import decode_block
 from nudemos.memes.state import JOB, control_at, made_at, memes_at, root_of
 from nuspace import Space
-from nuspace.system.supervisor import ON_FAILURE, Policy
+from nuspace.system.supervisor import ON_FAILURE
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "memes"
@@ -114,7 +114,7 @@ async def test_starting_makes_the_job_once_under_the_root(store):
     (cell,) = await store.read(nu.list(row.cells.keys()))
     assert await store.read(Space.cells[cell].name) == "sync"
     assert await store.read(Space.cells[cell].fabrics) == []
-    policy = nuspace.at.plane(id="supervisor").state(Policy).planes[job].policy
+    policy = nuspace.system.supervisor.supervised()[job].policy
     assert await store.read(policy) == ON_FAILURE
     assert await store.read(C.stop) is False
     await store.run(control.stop("m"))

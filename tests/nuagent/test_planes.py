@@ -309,7 +309,7 @@ async def test_a_chat_makes_its_engine_reaction_and_settings_once(space):
     assert (await space.read(Space.cells[agent].extract()))["plane"] == role
     assert (await space.read(Space.cells[agent].extract()))["prog"] == settings.SOURCE
     reaction = await space.read(linked(page).reaction)
-    by_plane = nuspace.at.plane(id=reactions.PLANE).state(Registry).by_plane[eid].ids
+    by_plane = nuspace.at.plane(reactions.KEY).state(Registry).by_plane[eid].ids
     assert await space.read(by_plane.extract()) == {reaction: True}
     # Nothing was waiting, so nothing ran it.
     await space.until(live(eid), lambda rs: rs == [], SLOW)
