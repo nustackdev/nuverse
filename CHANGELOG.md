@@ -2,6 +2,8 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nuverse 0.3.12 on nu 0.8.0 and nuspace 0.7.4
+- Cells grouped into inputs, items and text; password and converter examples laid out
 - Gallery cell shows its drop zone and grid from the start
 - Media cells for images, video, sound and files, plus a gallery, kept in the blob store
 - Release nuverse 0.3.11, nuagent 0.2.8, nudemos 0.1.9, nulog 0.2.7 on nu 0.7.5 and nuspace 0.7.3
