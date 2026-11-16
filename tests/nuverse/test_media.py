@@ -398,7 +398,8 @@ async def test_a_gallery_keeps_each_file_dropped_as_an_item_and_tiles_it(store, 
     tab = _Tab(tmp_path / "area", many=True)
     task = await _running(store, tab, blobs)
     try:
-        await _until(lambda: tab.has("drop"))
+        # The drop zone and the grid come on screen before any file: placed is not drawn.
+        await _until(lambda: "init" in tab.ops("drop") and "init" in tab.ops("grid"))
         await _listening()
         tab.pick(("lizard.png", "image/png", PNG), ("clip.mp4", "video/mp4", PDF))
 

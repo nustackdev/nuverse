@@ -176,7 +176,8 @@ def _landed(event: nu.Nu) -> nu.Nu:
 
 def out() -> nu.Nu:
     """The drop zone and the grid, for as long as the cell runs."""
-    order = nu.Sequential(*(BODY.insert(part) for part in ("drop", "grid")))
+    # Nothing writes them until a file comes: up as declared, in the order they draw.
+    order = DROP.init() >> GRID.init()
     uploads = nu.ParallelAsync(
         nu.ReactEvery(DROP.on_change(), lambda _: _picked()),
         nu.ReactEvery(DROP.on_progress(), _moved),
