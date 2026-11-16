@@ -20,7 +20,7 @@ from nuspace.shapes.content import entries
 from nuspace.specs import CellSpec
 
 from .. import source
-from ._editing import (
+from .._editing import (
     DEFAULT_KIND,
     ITEM,
     KIND,
@@ -119,6 +119,6 @@ CELL = CellSpec(
     "Item",
     source(__name__),
     description="Any one item of any kind, drawn in full, picked under Config.",
-    group="Content",
+    group="Items",
     icon="file-text",
 )

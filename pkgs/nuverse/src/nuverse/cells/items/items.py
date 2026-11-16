@@ -28,7 +28,7 @@ from nuspace.specs import CellSpec
 from nuspace.utils import MintId
 
 from .. import source
-from ._editing import (
+from .._editing import (
     DEFAULT_KIND,
     KIND,
     TARGET,
@@ -213,6 +213,6 @@ CELL = CellSpec(
     "Items",
     source(__name__),
     description="Every item of one kind in one scope: open, add and remove them.",
-    group="Content",
+    group="Items",
     icon="list-checks",
 )

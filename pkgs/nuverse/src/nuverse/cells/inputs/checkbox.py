@@ -13,7 +13,7 @@ from nuspace.specs import CellSpec
 
 from ...contents.flag import Flag, FlagContent
 from .. import source
-from ._editing import ENTRY, editor
+from .._editing import ENTRY, editor
 
 
 __all__ = ["CELL", "CONTROL", "out"]

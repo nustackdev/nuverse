@@ -18,7 +18,7 @@ from nuspace.specs import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
-from ._editing import editing
+from .._editing import editing
 
 
 __all__ = ["CELL", "out"]
@@ -49,10 +49,10 @@ def out() -> nu.Nu:
 
 CELL = CellSpec(
     "text",
-    "Text",
+    "Prose",
     source(__name__),
     description="Text a person reads and edits, markdown kept as text content.",
-    group="Content",
+    group="Text",
     icon="type",
     classes=("prose",),
     default_for=("prose",),

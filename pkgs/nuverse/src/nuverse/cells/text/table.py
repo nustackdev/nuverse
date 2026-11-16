@@ -101,6 +101,6 @@ CELL = CellSpec(
     "Table",
     source(__name__),
     description="An editable data table, each row kept as row content of the cell.",
-    group="Content",
+    group="Text",
     icon="table",
 )

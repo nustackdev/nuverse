@@ -2,7 +2,7 @@
 
 An image, video, audio or file cell keeps one
 :class:`~nuverse.contents.file.FileContent` item: the cell's own ``value``
-unless its Config points it elsewhere, as any editor's (:mod:`..content._editing`).
+unless its Config points it elsewhere, as any editor's (:mod:`.._editing`).
 Its control is a :class:`Box`: the file drawn by its type
 (:func:`~nuverse.contents.file.draw`), a progress bar while one goes up, the
 drop zone, and a note when one fails.
@@ -23,7 +23,7 @@ import nuspace
 import nustd.ui
 
 from ...contents.file import File, FileContent, draw, slots
-from ..content._editing import ENTRY, editor
+from .._editing import ENTRY, editor
 
 
 if TYPE_CHECKING:

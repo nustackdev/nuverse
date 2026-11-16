@@ -17,7 +17,7 @@ from nuspace.specs import CellSpec
 from .. import source
 
 
-__all__ = ["CELL", "KINDS", "Convert", "out"]
+__all__ = ["CELL", "KINDS", "Convert", "View", "out"]
 
 
 #: Each kind's units as ``unit: [scale, offset]``: ``base = amount * scale + offset``.
@@ -68,14 +68,35 @@ class Convert(nu.Shape):
 
 
 class Side(nustd.ui.Row):
+    """One side: an amount and its unit."""
+
     amount = nustd.ui.NumberInputRef.slot(step=0.1)
     unit = nustd.ui.SelectRef.slot()
 
 
-class Box(nustd.ui.Column):
-    kind = nustd.ui.SelectRef.slot(options=list(KINDS))
-    left = Side.slot(gap=2)
-    right = Side.slot(gap=2)
+class Sides(nustd.ui.Row):
+    """The two sides with an equals between, stacked on a narrow cell."""
+
+    left = Side.slot(gap=2, grow={"amount": 1}, basis={"unit": 96})
+    equals = nustd.ui.IconRef.slot(name="arrow-left-right", tone="muted")
+    right = Side.slot(gap=2, grow={"amount": 1}, basis={"unit": 96})
+
+
+class Body(nustd.ui.Column):
+    kind = nustd.ui.SegmentedControlRef.slot(options=list(KINDS), fill=True)
+    sides = Sides.slot(gap=3, grow={"left": 1, "right": 1}, stack_below=440)
+
+
+class View(nu.Shape):
+    """The cell's root: the kind on top, the two sides under it."""
+
+    body = Body.slot(gap=4)
+
+
+#: The running cell's surface.
+Box = View.body
+#: Its two sides.
+LEFT, RIGHT = Box.sides.left, Box.sides.right
 
 
 def out() -> nu.Nu:
@@ -85,8 +106,15 @@ def out() -> nu.Nu:
     kind = state.kind.fallback("Length")
     units = nu.Dict(kinds[kind])
     names = nu.list(units.keys())
-    left = state.left.fallback(nu.str(names[0]))
-    right = state.right.fallback(nu.str(names[1]))
+
+    def held(slot: nu.Nu, at: int) -> nu.Str:
+        # A unit of another kind (stored mid switch, or the old pick a
+        # select echoes back) reads as the kind's own default.
+        stored = nu.str(slot.fallback(nu.str(names[at])))
+        return nu.str(nu.If(units.contains(stored), stored, nu.str(names[at])))
+
+    left = held(state.left, 0)
+    right = held(state.right, 1)
 
     def scale(unit: nu.Nu) -> nu.Float:
         return nu.Float(nu.List(units[unit])[0])
@@ -100,15 +128,20 @@ def out() -> nu.Nu:
     def typed(side: nu.Nu, unit: nu.Nu) -> nu.Nu:
         return state.base.set(nu.ToFloat(side.amount) * scale(unit) + offset(unit))
 
+    def picked(slot: nu.Nu, select: nu.Nu) -> nu.Nu:
+        # Only a unit of the kind shown: options swapping can echo the old one.
+        unit = nu.ToStr(select)
+        return nu.IfDo(units.contains(unit), slot.set(unit))
+
     def show() -> nu.Nu:
         return (
             Box.kind.set(kind)
-            >> Box.left.unit.set_options(names)
-            >> Box.right.unit.set_options(names)
-            >> Box.left.unit.set(left)
-            >> Box.right.unit.set(right)
-            >> Box.left.amount.set(amount(left))
-            >> Box.right.amount.set(amount(right))
+            >> LEFT.unit.set_options(names)
+            >> RIGHT.unit.set_options(names)
+            >> LEFT.unit.set(left)
+            >> RIGHT.unit.set(right)
+            >> LEFT.amount.set(amount(left))
+            >> RIGHT.amount.set(amount(right))
         )
 
     def rekind() -> nu.Nu:
@@ -130,10 +163,10 @@ def out() -> nu.Nu:
         show()
         >> nu.ParallelAsync(
             nu.ReactEvery(Box.kind.on_change(), rekind()),
-            nu.ReactEvery(Box.left.unit.on_change(), state.left.set(nu.ToStr(Box.left.unit))),
-            nu.ReactEvery(Box.right.unit.on_change(), state.right.set(nu.ToStr(Box.right.unit))),
-            nu.ReactEvery(Box.left.amount.on_change(), typed(Box.left, left)),
-            nu.ReactEvery(Box.right.amount.on_change(), typed(Box.right, right)),
+            nu.ReactEvery(LEFT.unit.on_change(), picked(state.left, LEFT.unit)),
+            nu.ReactEvery(RIGHT.unit.on_change(), picked(state.right, RIGHT.unit)),
+            nu.ReactEvery(LEFT.amount.on_change(), typed(LEFT, left)),
+            nu.ReactEvery(RIGHT.amount.on_change(), typed(RIGHT, right)),
             *(nu.ReactEvery(slot.on_change(), show()) for slot in stored),
         )
     )

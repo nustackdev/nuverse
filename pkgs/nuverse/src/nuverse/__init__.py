@@ -3,7 +3,7 @@
 - :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``quickstart``,
   ``jobs``, ``runs``, ``workers``, ``planes``.
 - :mod:`.cells`: what ``/`` inserts, one module each, by category:
-  views and editors over content items, media, planes, lenses, examples.
+  prose, media, inputs, planes, items, lenses, examples.
 - :mod:`.contents`: the content kinds the Cells keep their findable data
   in, Text, Number, Flag, Date, Row and File.
 
@@ -33,20 +33,6 @@ def extension() -> Extension:
     """
     from nuspace.specs import Extension
 
-    from .cells.content import (
-        checkbox,
-        date_picker,
-        item,
-        item_picker,
-        items,
-        number_input,
-        select,
-        slider,
-        switch,
-        table,
-        text_editor,
-        text_input,
-    )
     from .cells.debugging import (
         cell_content_lens,
         cell_lens,
@@ -56,8 +42,19 @@ def extension() -> Extension:
         space_content_lens,
     )
     from .cells.examples import converter, password, ticker
+    from .cells.inputs import (
+        checkbox,
+        date_picker,
+        number_input,
+        select,
+        slider,
+        switch,
+        text_input,
+    )
+    from .cells.items import item, item_picker, items
     from .cells.media import audio, file, gallery, image, video
     from .cells.planes import plane
+    from .cells.text import table, text_editor
     from .contents import date, flag, number, row, text
     from .contents import file as file_kind
     from .planes import jobs, planes, quickstart, runs, workers
@@ -65,9 +62,11 @@ def extension() -> Extension:
     cells = (
         text_editor,
         table,
-        item,
-        items,
-        item_picker,
+        image,
+        video,
+        audio,
+        file,
+        gallery,
         text_input,
         number_input,
         slider,
@@ -75,12 +74,10 @@ def extension() -> Extension:
         checkbox,
         select,
         date_picker,
-        image,
-        video,
-        audio,
-        file,
-        gallery,
         plane,
+        item,
+        items,
+        item_picker,
         lens,
         plane_lens,
         cell_lens,

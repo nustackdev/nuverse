@@ -17,7 +17,7 @@ from nuspace.specs import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
-from ._editing import ENTRY, SETTINGS, editor
+from .._editing import ENTRY, SETTINGS, editor
 
 
 __all__ = ["CELL", "CONTROL", "OPTIONS", "OPTIONS_INPUT", "Choice", "out"]

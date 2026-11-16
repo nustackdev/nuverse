@@ -17,21 +17,7 @@ from nuspace.shapes.content import CELL, PLANE, SPACE, kind_name
 from nuspace.web.env import session_env
 from nustd.ui.core import OP_NOTIFY, Frame, WsSession
 from nustd.ui.core.session import Session
-from nuverse.cells.content import (
-    checkbox,
-    date_picker,
-    item,
-    item_picker,
-    items,
-    number_input,
-    select,
-    slider,
-    switch,
-    table,
-    text_editor,
-    text_input,
-)
-from nuverse.cells.content._editing import BY_ID, BY_KEY, ITEM, Target
+from nuverse.cells._editing import BY_ID, BY_KEY, ITEM, Target
 from nuverse.cells.debugging import (
     cell_content_lens,
     cell_lens,
@@ -40,7 +26,18 @@ from nuverse.cells.debugging import (
     space_content_lens,
 )
 from nuverse.cells.examples import converter, password, ticker
+from nuverse.cells.inputs import (
+    checkbox,
+    date_picker,
+    number_input,
+    select,
+    slider,
+    switch,
+    text_input,
+)
+from nuverse.cells.items import item, item_picker, items
 from nuverse.cells.planes import plane
+from nuverse.cells.text import table, text_editor
 from nuverse.contents.date import DateContent
 from nuverse.contents.flag import FlagContent
 from nuverse.contents.number import NumberContent
@@ -443,9 +440,7 @@ def test_every_cell_is_one_import_line_or_an_editable_lens():
 
 
 def _module(spec: object) -> str:
-    category = {"Examples": "examples", "Media": "media", "Planes": "planes"}.get(
-        spec.group, "content"
-    )
+    category = spec.group.lower()
     name = {"text": "text_editor"}.get(spec.name, spec.name)
     return f"{category}.{name}"
 
@@ -944,7 +939,7 @@ async def _example(store, kind: object, first: tuple[str, ...]) -> tuple[_Inputs
 
 
 async def test_password_draws_again_when_an_option_changes(store):
-    browser, task = await _example(store, password, ("options", "symbols"))
+    browser, task = await _example(store, password, ("charset", "symbols"))
     try:
         first = browser.shown("password")[-1]
         assert len(first) == 20
@@ -958,7 +953,7 @@ async def test_password_draws_again_when_an_option_changes(store):
         # Generate draws a new one with the same options.
         last = browser.shown("password")[-1]
         # Never written, so no frame names it: its address is its sibling's.
-        browser.notify((*browser.path("upper")[:-1], "generate"), {"event": "click"})
+        browser.notify((*browser.path("password")[:-1], "generate"), {"event": "click"})
         await _until(lambda: browser.shown("password")[-1] != last)
         assert browser.shown("password")[-1].islower()
     finally:
@@ -982,6 +977,16 @@ async def test_converter_follows_either_side(store):
         browser.type("right", "amount", value=32)
         await _until(lambda: browser.shown("left", "amount")[-1] == 0.0)
         assert await store.read(_state("c", converter.Convert).kind) == "Temperature"
+
+        # Mass, then back: a select echoing a unit of the old kind is ignored.
+        browser.type("kind", value="Mass")
+        await _until(lambda: browser.shown("right", "unit")[-1] == "g")
+        browser.type("kind", value="Temperature")
+        browser.type("right", "unit", value="g")
+        await _until(lambda: browser.shown("right", "unit")[-1] == "°F")
+        browser.type("left", "amount", value=100)
+        await _until(lambda: browser.shown("right", "amount")[-1] == 212.0)
+        assert await store.read(_state("c", converter.Convert).right) == "°F"
     finally:
         task.cancel()
 

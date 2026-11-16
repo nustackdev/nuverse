@@ -24,7 +24,7 @@ from nuspace.shapes.content import kind_name
 from nuspace.specs import CellSpec
 
 from .. import source
-from ._editing import (
+from .._editing import (
     DEFAULT_KIND,
     KIND,
     TARGET,
@@ -214,6 +214,6 @@ CELL = CellSpec(
     "Item picker",
     source(__name__),
     description="Picks an item of any kind and keeps its address, linking this cell to it.",
-    group="Content",
+    group="Items",
     icon="link",
 )

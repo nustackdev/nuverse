@@ -1,4 +1,4 @@
-"""What content Cells share: where their item is, their name as their label, kinds by name.
+"""What the text, input and item Cells share: where their item is, their name as their label, kinds by name.
 
 An editor of one item (a text input, a number input, ...) edits its own
 cell's :data:`ITEM` by default. Its Config's Item section can point it at
@@ -14,10 +14,10 @@ Every editor draws on one surface, :class:`Editor`: its control in a Field
 labelled with the cell's name, then Config. An editor names only its
 control's kind and its own settings; :func:`editor` runs the rest.
 
-The viewers of any kind (:mod:`.item`, :mod:`.items`, :mod:`.item_picker`)
-pick the kind too, by name, from the installed kinds
-(:func:`kind_options`, read off the registry where the cell is built), and
-build what they draw for it at run time with :class:`ForKind`.
+The viewers of any kind (:mod:`.items.item`, :mod:`.items.items`,
+:mod:`.items.item_picker`) pick the kind too, by name, from the installed
+kinds (:func:`kind_options`, read off the registry where the cell is
+built), and build what they draw for it at run time with :class:`ForKind`.
 """
 
 from __future__ import annotations

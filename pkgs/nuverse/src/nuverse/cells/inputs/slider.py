@@ -16,7 +16,7 @@ from nuspace.specs import CellSpec
 
 from ...contents.number import Number, NumberContent
 from .. import source
-from ._editing import ENTRY, bounded, editor
+from .._editing import ENTRY, bounded, editor
 
 
 __all__ = ["CELL", "CONTROL", "Range", "out"]

@@ -26,7 +26,7 @@ from nuspace.shapes.content import CELL, PLANE, entries
 from nuspace.specs import content_specs, kind_name
 from nustd.ui.lens.columns import LensFailed
 
-from ..content._editing import drawing
+from .._editing import drawing
 
 
 if TYPE_CHECKING:

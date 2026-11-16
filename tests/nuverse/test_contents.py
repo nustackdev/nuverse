@@ -17,18 +17,17 @@ from nuspace.specs import add_cell, content_spec, kind_name, space_registry
 from nuspace.web.planes import ensure, search
 from nustd.ui.core import Frame, WsSession
 from nustd.ui.core.session import Session
-from nuverse.cells.content import (
+from nuverse.cells._editing import DEFAULT_KIND, ITEM
+from nuverse.cells.inputs import (
     checkbox,
     date_picker,
     number_input,
     select,
     slider,
     switch,
-    table,
-    text_editor,
     text_input,
 )
-from nuverse.cells.content._editing import DEFAULT_KIND, ITEM
+from nuverse.cells.text import table, text_editor
 from nuverse.contents.date import DateContent
 from nuverse.contents.flag import FlagContent
 from nuverse.contents.number import NumberContent

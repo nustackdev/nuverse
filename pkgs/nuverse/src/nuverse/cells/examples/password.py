@@ -19,7 +19,7 @@ from nuspace.specs import CellSpec
 from .. import source
 
 
-__all__ = ["CELL", "Pass", "out"]
+__all__ = ["CELL", "Pass", "View", "out"]
 
 
 def _draw(alphabet: str, length: int) -> str:
@@ -40,17 +40,41 @@ class Pass(nu.Shape):
     password = nustd.kv.StrRef.slot()
 
 
-class Options(nustd.ui.Row):
-    upper = nustd.ui.SwitchRef.slot(label="A-Z")
-    digits = nustd.ui.SwitchRef.slot(label="0-9")
-    symbols = nustd.ui.SwitchRef.slot(label="!@#")
-    generate = nustd.ui.ButtonRef.slot(label="Generate", variant="secondary")
+class Shown(nustd.ui.Row):
+    """The password, copied off its own button, and Generate beside it."""
 
-
-class Box(nustd.ui.Column):
     password = nustd.ui.CodeRef.slot()
+    generate = nustd.ui.ButtonRef.slot(icon="refresh-cw", tooltip="Generate", variant="secondary")
+
+
+class Charset(nustd.ui.Row):
+    """Which characters it draws from, beyond the lowercase it always has."""
+
+    upper = nustd.ui.ToggleRef.slot(label="A-Z")
+    digits = nustd.ui.ToggleRef.slot(label="0-9")
+    symbols = nustd.ui.ToggleRef.slot(label="!@#")
+
+
+class Characters(nustd.ui.Field):
+    charset = Charset.slot(gap=2, wrap=True)
+
+
+class Body(nustd.ui.Column):
+    shown = Shown.slot(gap=2, grow={"password": 1})
     length = nustd.ui.SliderRef.slot(label="Length", min=8, max=64)
-    options = Options.slot(gap=4, wrap=True)
+    characters = Characters.slot(label="Characters")
+
+
+class View(nu.Shape):
+    """The cell's root: the password on top, its options under it."""
+
+    body = Body.slot(gap=4)
+
+
+#: The running cell's surface.
+Box = View.body
+#: Its character toggles.
+CHARSET = Box.characters.charset
 
 
 def out() -> nu.Nu:
@@ -73,25 +97,26 @@ def out() -> nu.Nu:
     first = nu.IfDo(state.password.is_null(), draw)
     return nuspace.bracketed(
         first
-        >> Box.password.set(nu.str(state.password))
+        >> Box.shown.password.set(nu.str(state.password))
         >> Box.length.set(length)
-        >> Box.options.upper.set(upper)
-        >> Box.options.digits.set(digits)
-        >> Box.options.symbols.set(symbols)
+        >> CHARSET.upper.set(upper)
+        >> CHARSET.digits.set(digits)
+        >> CHARSET.symbols.set(symbols)
         >> nu.ParallelAsync(
-            nu.ReactEvery(Box.options.generate.on_click(), draw),
+            nu.ReactEvery(Box.shown.generate.on_click(), draw),
             nu.ReactEvery(Box.length.on_change(), keep(state.length, nu.ToInt(Box.length))),
-            nu.ReactEvery(
-                Box.options.upper.on_change(), keep(state.upper, nu.ToBool(Box.options.upper))
-            ),
-            nu.ReactEvery(
-                Box.options.digits.on_change(), keep(state.digits, nu.ToBool(Box.options.digits))
-            ),
-            nu.ReactEvery(
-                Box.options.symbols.on_change(), keep(state.symbols, nu.ToBool(Box.options.symbols))
+            *(
+                nu.ReactEvery(toggle.on_change(), keep(slot, nu.ToBool(toggle)))
+                for toggle, slot in (
+                    (CHARSET.upper, state.upper),
+                    (CHARSET.digits, state.digits),
+                    (CHARSET.symbols, state.symbols),
+                )
             ),
             # Every tab shows the password the store holds.
-            nu.ReactEvery(state.password.on_change(), Box.password.set(nu.str(state.password))),
+            nu.ReactEvery(
+                state.password.on_change(), Box.shown.password.set(nu.str(state.password))
+            ),
         )
     )
 
