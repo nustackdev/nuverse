@@ -10,6 +10,7 @@ class as the class is less ``Content``, and ``CONTENT``, the
 - :mod:`.flag`: :class:`~.flag.FlagContent`, an on or off.
 - :mod:`.date`: :class:`~.date.DateContent`, a day, found within bounds.
 - :mod:`.row`: :class:`~.row.RowContent`, a table row, found by the words in its cells.
+- :mod:`.file`: :class:`~.file.FileContent`, a file in the blob store, found by its name and type.
 
 Nothing here imports a kind: a cell's prog imports only the kinds its Cell
 keeps. :func:`nuverse.extension` gathers the specs.

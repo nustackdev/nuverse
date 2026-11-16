@@ -443,7 +443,9 @@ def test_every_cell_is_one_import_line_or_an_editable_lens():
 
 
 def _module(spec: object) -> str:
-    category = {"Examples": "examples", "Planes": "planes"}.get(spec.group, "content")
+    category = {"Examples": "examples", "Media": "media", "Planes": "planes"}.get(
+        spec.group, "content"
+    )
     name = {"text": "text_editor"}.get(spec.name, spec.name)
     return f"{category}.{name}"
 

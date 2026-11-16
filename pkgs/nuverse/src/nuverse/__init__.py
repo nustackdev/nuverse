@@ -3,9 +3,9 @@
 - :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``quickstart``,
   ``jobs``, ``runs``, ``workers``, ``planes``.
 - :mod:`.cells`: what ``/`` inserts, one module each, by category:
-  views and editors over content items, planes, lenses, examples.
+  views and editors over content items, media, planes, lenses, examples.
 - :mod:`.contents`: the content kinds the Cells keep their findable data
-  in, Text, Number, Flag, Date and Row.
+  in, Text, Number, Flag, Date, Row and File.
 
 nuspace finds this package through the ``nuspace.extensions`` entry point,
 which names :func:`extension`. Nothing is imported here at module scope:
@@ -56,8 +56,10 @@ def extension() -> Extension:
         space_content_lens,
     )
     from .cells.examples import converter, password, ticker
+    from .cells.media import audio, file, gallery, image, video
     from .cells.planes import plane
     from .contents import date, flag, number, row, text
+    from .contents import file as file_kind
     from .planes import jobs, planes, quickstart, runs, workers
 
     cells = (
@@ -73,6 +75,11 @@ def extension() -> Extension:
         checkbox,
         select,
         date_picker,
+        image,
+        video,
+        audio,
+        file,
+        gallery,
         plane,
         lens,
         plane_lens,
@@ -87,6 +94,6 @@ def extension() -> Extension:
     return Extension(
         planes=tuple(m.PLANE for m in (quickstart, jobs, runs, workers, planes)),
         cells=tuple(m.CELL for m in cells),
-        contents=tuple(m.CONTENT for m in (text, number, flag, date, row)),
+        contents=tuple(m.CONTENT for m in (text, number, flag, date, row, file_kind)),
         envs={},
     )

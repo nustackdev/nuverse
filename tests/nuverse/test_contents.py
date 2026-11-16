@@ -73,6 +73,7 @@ def test_every_kind_is_registered_by_its_package_and_name():
         "nuverse.Flag",
         "nuverse.Date",
         "nuverse.Row",
+        "nuverse.File",
     ]
     assert nuverse.extension().contents == CONTENTS
     assert [content_spec(n) for n in names] == list(CONTENTS)
@@ -91,6 +92,7 @@ def test_each_kind_asks_by_its_keywords():
         "Flag": [("on", "switch")],
         "Date": [("min", "text"), ("max", "text")],
         "Row": [("text", "text")],
+        "File": [("text", "text"), ("type", "text")],
     }
 
 

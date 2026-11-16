@@ -2,6 +2,8 @@
 
 - :mod:`.content`: views and editors over content items
   (:mod:`nuverse.contents`): text, inputs, items and the table.
+- :mod:`.media`: an image, a video, a sound or any file, and a gallery of
+  them, kept as file items (:mod:`nuverse.contents.file`).
 - :mod:`.planes`: a new plane under the cell's own, and a link to it.
 - :mod:`.debugging`: lenses on the store and on content items.
 - :mod:`.examples`: small programs showing what a cell can do.
