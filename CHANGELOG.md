@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Cell Config opens from a gear beside the label, no longer a box below
 - Release nuverse 0.3.12 on nu 0.8.0 and nuspace 0.7.4
 - Cells grouped into inputs, items and text; password and converter examples laid out
 - Gallery cell shows its drop zone and grid from the start

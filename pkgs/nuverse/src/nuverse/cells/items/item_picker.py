@@ -27,8 +27,10 @@ from .. import source
 from .._editing import (
     DEFAULT_KIND,
     KIND,
+    ROW,
     TARGET,
     ForKind,
+    Viewer,
     drawing,
     kind_of,
     kind_options,
@@ -65,26 +67,35 @@ class Body(nustd.ui.Column):
     # Where the candidates built for the kind land.
     candidates = nustd.ui.ColumnRef.slot(gap=1)
     note = nustd.ui.TextRef.slot()
-    config = nustd.ui.AccordionRef.slot(sections=[{"id": "which", "label": "Config"}])
 
 
-class View(nu.Shape):
-    """The cell's root: its :class:`Body`, the parts spaced apart."""
+class Frame(Viewer):
+    """Its :class:`Body`, growing, beside the gear its Config opens from."""
 
     body = Body.slot(gap=3)
 
 
+class View(nu.Shape):
+    """The cell's root: its :class:`Frame`."""
+
+    frame = Frame.slot(gap=2, align="start", grow={"body": 1})
+
+
+#: The body beside its gear.
+FRAME = View.frame
+
 #: The running cell's surface.
-BODY = View.body
+BODY = FRAME.body
 
 
 #: The body's parts in the order they draw, whichever is written first.
 ORDER = nu.Sequential(
-    *(BODY.insert(part) for part in ("picked", "none", "candidates", "note", "config"))
+    *(FRAME.insert(part) for part in ("body", "config")),
+    *(BODY.insert(part) for part in ("picked", "none", "candidates", "note")),
 )
 
-#: The kind select, in the Config's one section.
-KINDS = BODY.config["which"].to(nustd.ui.FieldRef.slot(label="Kind")).control.to(KIND)
+#: The kind select, in the Config's one section, under the gear.
+KINDS = FRAME.config["which"].to(nustd.ui.FieldRef.slot(label="Kind", **ROW)).control.to(KIND)
 
 
 class About(nustd.ui.Column):

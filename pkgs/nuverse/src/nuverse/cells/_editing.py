@@ -1,7 +1,7 @@
 """What the text, input and item Cells share: where their item is, their name as their label, kinds by name.
 
 An editor of one item (a text input, a number input, ...) edits its own
-cell's :data:`ITEM` by default. Its Config's Item section can point it at
+cell's :data:`ITEM` by default. Its Config's Item tab can point it at
 another item of its kind: the scope's level (a cell, a plane, the space),
 the scope's id or key (blank for this cell or this plane; an inline switch
 says which the input holds, id by default) and the item's content key
@@ -11,8 +11,11 @@ a program can point one by writing it
 (``nuspace.at.cell(id=c).state(Target).target.set(...)``).
 
 Every editor draws on one surface, :class:`Editor`: its control in a Field
-labelled with the cell's name, then Config. An editor names only its
-control's kind and its own settings; :func:`editor` runs the rest.
+labelled with the cell's name, and Config behind a gear at the label's end
+(:data:`CONFIG`), floating, so it takes no room until asked for. An editor
+names only its control's kind and its own settings; :func:`editor` runs the
+rest. A viewer has no Field: its body and the gear sit side by side in a
+:class:`Viewer`.
 
 The viewers of any kind (:mod:`.items.item`, :mod:`.items.items`,
 :mod:`.items.item_picker`) pick the kind too, by name, from the installed
@@ -39,31 +42,37 @@ from nustd.ui.core import Ref as UiRef
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-    from nu.domains.shape import StructuredRef
+    from nu.domains.shape import Slot, StructuredRef
     from nu.lang.runtime import Runtime
     from nuspace.shapes.content import Content
 
 
 __all__ = [
     "BOUNDS",
+    "BY",
     "BY_ID",
     "BY_KEY",
     "BY_OPTIONS",
+    "CONFIG",
     "DEFAULT_KIND",
     "ENTRY",
+    "GEAR",
+    "IDENTITY",
     "ITEM",
+    "KEY",
     "KIND",
     "LEVEL",
     "LEVEL_OPTIONS",
     "NAME",
-    "SECTIONS",
+    "ROW",
+    "ROWS",
     "SETTINGS",
     "TARGET",
     "Editing",
     "Editor",
     "ForKind",
-    "Scope",
     "Target",
+    "Viewer",
     "Where",
     "bounded",
     "drawing",
@@ -77,6 +86,7 @@ __all__ = [
     "render",
     "render_hit",
     "scoped",
+    "setting",
     "where",
 ]
 
@@ -98,8 +108,8 @@ BY_KEY = "key"
 #: The switch beside the scope input: what the input holds.
 BY_OPTIONS = [{"value": BY_ID, "label": "ID"}, {"value": BY_KEY, "label": "Key"}]
 
-#: An editor's Config: its own settings, then where its item is.
-SECTIONS = [{"id": "settings", "label": "Config"}, {"id": "item", "label": "Item"}]
+#: The gear a cell's Config opens from: an icon button, the panel floating under it.
+GEAR = nustd.ui.PopoverRef.slot(icon="settings-2", tooltip="Config", title="Config", width=300)
 
 #: The kind a viewer of any kind (:mod:`.item`, :mod:`.items`, :mod:`.item_picker`)
 #: shows when its Config names none: text.
@@ -121,37 +131,52 @@ class Target(nu.Shape):
 TARGET = nuspace.here(Target).target
 
 
-#: The select a Config picks the scope level with, the control of a "Scope" Field.
-LEVEL = nustd.ui.SelectRef.slot(options=LEVEL_OPTIONS)
+#: One row of a Config panel: its label in a left column, the control beside it.
+ROW = {"inline": True, "label_width": 64}
 
-#: The select a viewer's Config picks the kind with, the control of a "Kind" Field.
-KIND = nustd.ui.SelectRef.slot(placeholder="No content kinds registered")
+#: The space between a Config panel's rows.
+ROWS = 2
 
+#: The select a Config picks the scope level with, the control of a "Scope" row.
+LEVEL = nustd.ui.SelectRef.slot(options=LEVEL_OPTIONS, size="sm")
 
-class Scope(nustd.ui.Row):
-    """The scope's id or key, with the switch saying which, inline."""
+#: The select a viewer's Config picks the kind with, the control of a "Kind" row.
+KIND = nustd.ui.SelectRef.slot(placeholder="No content kinds registered", size="sm")
 
-    value = nustd.ui.InputRef.slot(label="Scope identity", placeholder="This cell or plane")
-    by = nustd.ui.RadioGroupRef.slot(options=BY_OPTIONS, value=BY_ID, orientation="horizontal")
+#: The scope's id or key, the control of an "Identity" row.
+IDENTITY = nustd.ui.InputRef.slot(placeholder="This cell or plane", size="sm")
+
+#: The switch at the end of the "Identity" row: what the identity is.
+BY = nustd.ui.SegmentedControlRef.slot(options=BY_OPTIONS, value=BY_ID, size="sm")
+
+#: The item's content key, the control of a "Key" row.
+KEY = nustd.ui.InputRef.slot(placeholder=ITEM, size="sm")
 
 
 class Where(nustd.ui.Column):
-    """An editor's Item section: where the item it edits is."""
+    """Where the item is, a row each: the scope level, its identity (by id or key), the item's key."""
 
-    level = nustd.ui.FieldRef.slot(label="Scope")
-    scope = Scope.slot(gap=3, align="end", grow={"value": 1})
-    key = nustd.ui.InputRef.slot(label="Item key", placeholder=ITEM)
+    level = nustd.ui.FieldRef.slot(label="Scope", **ROW)
+    scope = nustd.ui.FieldRef.slot(label="Identity", **ROW)
+    key = nustd.ui.FieldRef.slot(label="Key", **ROW)
 
 
-class Config(nustd.ui.Accordion):
-    """An editor's Config: its own settings, then where its item is (:data:`SECTIONS`)."""
+class Item(nustd.ui.Column):
+    """An editor's Item section: its heading, then where its item is."""
 
-    settings = nustd.ui.ColumnRef.slot(gap=3)
-    item = Where.slot(gap=3)
+    heading = nustd.ui.TextRef.slot(size="sm", weight="medium")
+    where = Where.slot(gap=ROWS)
+
+
+class Config(nustd.ui.Column):
+    """An editor's Config: its own settings, then the Item section, set apart by space, no rule."""
+
+    settings = nustd.ui.ColumnRef.slot(gap=ROWS)
+    item = Item.slot(gap=3)
 
 
 class Editor(nustd.ui.Column):
-    """Every single item editor's surface: the control in a Field labelled with the cell's name, then Config.
+    """Every single item editor's surface: the control in a Field labelled with the cell's name, Config behind its gear.
 
     An editor names its control's kind at the use site,
     ``ENTRY.control.to(nustd.ui.SliderRef.slot())``, and adds its
@@ -159,7 +184,6 @@ class Editor(nustd.ui.Column):
     """
 
     entry = nustd.ui.FieldRef.slot()
-    config = Config.slot(sections=SECTIONS)
 
 
 class Editing(nu.Shape):
@@ -171,16 +195,45 @@ class Editing(nu.Shape):
 #: The Field an editor's control sits in: its label is the cell's name, its error why nothing is edited.
 ENTRY = Editing.editor.entry
 
-#: An editor's own settings, by name: ``SETTINGS["min"].to(nustd.ui.NumberInputRef.slot(...))``.
-SETTINGS = Editing.editor.config.settings
+#: An editor's Config, the gear at the end of its Field's label row, the panel floating under it.
+CONFIG = ENTRY.actions.to(GEAR)["config"].to(Config.slot(gap=4))
+
+#: An editor's own settings, a row each, by name: use :func:`setting`.
+SETTINGS = CONFIG.settings
+
+
+def setting(name: str, label: str, control: Slot) -> nustd.ui.Ref:
+    """An editor's own setting ``name``: a Config row labelled ``label``, ``control`` in it."""
+    return SETTINGS[name].to(nustd.ui.FieldRef.slot(label=label, **ROW)).control.to(control)
+
+
+class Viewer(nustd.ui.Row):
+    """A viewer's surface: its own body, growing, and the gear its Config opens from, top right.
+
+    A viewer declares its body as ``body`` on a subclass and its Config
+    under ``VIEWER.config["which"]``, rows of :data:`ROW` spaced :data:`ROWS`.
+    """
+
+    config = GEAR
+
 
 #: The cell's name, the first of an editor's settings.
-NAME = SETTINGS["name"].to(nustd.ui.InputRef.slot(label="Name"))
+NAME = setting("name", "Name", nustd.ui.InputRef.slot(size="sm"))
 
 
-def scoped(level: nustd.ui.FieldRef, scope: nu.Nu) -> dict[str, nu.Nu]:
-    """The scope's controls for :func:`where`: the level select in ``level``, the identity and its switch in a :class:`Scope`."""
-    return {"level": level.control.to(LEVEL), "scope": scope.value, "by": scope.by}
+def scoped(rows: nu.Nu, *, key: bool = True) -> dict[str, nu.Nu]:
+    """Where the item is, for :func:`where`, on the rows of a :class:`Where` (or any with its rows).
+
+    The level select, the identity input with its ID / Key switch at its
+    row's end, and the key input (left out with ``key=False``, for a viewer
+    of a whole scope), in the order they draw.
+    """
+    asks = {
+        "level": rows.level.control.to(LEVEL),
+        "scope": rows.scope.control.to(IDENTITY),
+        "by": rows.scope.actions.to(BY),
+    }
+    return {**asks, "key": rows.key.control.to(KEY)} if key else asks
 
 
 def _given(held: nu.Nu, name: str) -> nu.Str:
@@ -333,10 +386,11 @@ def editor(
             settings: what it writes under :data:`SETTINGS` draws after the name.
         also: More reactions, eg the editor's own settings kept live.
     """
-    item = Editing.editor.config.item
     show_name, renames = named()
-    show_where, points = where({**scoped(item.level, item.scope), "key": item.key})
-    head = nu.Sequential(show_name, *([] if first is None else [first]), show_where)
+    show_where, points = where(scoped(CONFIG.item.where))
+    # The heading draws first in its section, before where the item is.
+    heading = CONFIG.item.heading.set("Item")
+    head = nu.Sequential(show_name, *([] if first is None else [first]), heading, show_where)
 
     def found(held: nu.Nu) -> nu.Nu:
         return ENTRY.set_error("") >> body(held)
@@ -348,10 +402,10 @@ def editor(
 
 #: The settings a number input and a slider share: min, max and step, under :data:`SETTINGS`.
 BOUNDS = {
-    "min": SETTINGS["min"].to(nustd.ui.NumberInputRef.slot(label="Min")),
-    "max": SETTINGS["max"].to(nustd.ui.NumberInputRef.slot(label="Max", value=100)),
-    "step": SETTINGS["step"].to(
-        nustd.ui.NumberInputRef.slot(label="Step", min=0, step=0.1, value=1)
+    "min": setting("min", "Min", nustd.ui.NumberInputRef.slot(size="sm")),
+    "max": setting("max", "Max", nustd.ui.NumberInputRef.slot(value=100, size="sm")),
+    "step": setting(
+        "step", "Step", nustd.ui.NumberInputRef.slot(min=0, step=0.1, value=1, size="sm")
     ),
 }
 

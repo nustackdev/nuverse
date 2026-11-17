@@ -17,7 +17,7 @@ from nuspace.specs import CellSpec
 
 from ...contents.text import Text, TextContent
 from .. import source
-from .._editing import ENTRY, SETTINGS, editor
+from .._editing import ENTRY, editor, setting
 
 
 __all__ = ["CELL", "CONTROL", "OPTIONS", "OPTIONS_INPUT", "Choice", "out"]
@@ -38,8 +38,8 @@ class Choice(nu.Shape):
 CONTROL = ENTRY.control.to(nustd.ui.SelectRef.slot(placeholder="Pick one"))
 
 #: The options, under the editor's settings.
-OPTIONS_INPUT = SETTINGS["options"].to(
-    nustd.ui.TagInputRef.slot(label="Options", placeholder="Add an option")
+OPTIONS_INPUT = setting(
+    "options", "Options", nustd.ui.TagInputRef.slot(placeholder="Add an option", size="sm")
 )
 
 

@@ -22,11 +22,12 @@ from nuspace.specs import CellSpec
 from .. import source
 from .._editing import (
     DEFAULT_KIND,
-    ITEM,
     KIND,
+    ROW,
+    ROWS,
     TARGET,
     ForKind,
-    Scope,
+    Viewer,
     kind_of,
     kind_options,
     pointed,
@@ -43,36 +44,47 @@ __all__ = ["CELL", "out"]
 
 
 class Which(nustd.ui.Column):
-    """Config: which item it shows, the kind, then where the item is, the scope by id or key."""
+    """Config: which item it shows, the kind, then where the item is, the scope by id or key, a row each."""
 
-    kind = nustd.ui.FieldRef.slot(label="Kind")
-    level = nustd.ui.FieldRef.slot(label="Scope")
-    scope = Scope.slot(gap=3, align="end", grow={"value": 1})
-    key = nustd.ui.InputRef.slot(label="Item key", placeholder=ITEM)
+    kind = nustd.ui.FieldRef.slot(label="Kind", **ROW)
+    level = nustd.ui.FieldRef.slot(label="Scope", **ROW)
+    scope = nustd.ui.FieldRef.slot(label="Identity", **ROW)
+    key = nustd.ui.FieldRef.slot(label="Key", **ROW)
 
 
 class Body(nustd.ui.Column):
     # Where the item drawn for its kind lands.
     item = nustd.ui.ColumnRef.slot()
     note = nustd.ui.TextRef.slot()
-    config = nustd.ui.AccordionRef.slot(sections=[{"id": "which", "label": "Config"}])
 
 
-class View(nu.Shape):
-    """The cell's root: its :class:`Body`, the parts spaced apart."""
+class Frame(Viewer):
+    """Its :class:`Body`, growing, beside the gear its Config opens from."""
 
     body = Body.slot(gap=3)
 
 
+class View(nu.Shape):
+    """The cell's root: its :class:`Frame`."""
+
+    frame = Frame.slot(gap=2, align="start", grow={"body": 1})
+
+
+#: The body beside its gear.
+FRAME = View.frame
+
 #: The running cell's surface.
-BODY = View.body
+BODY = FRAME.body
 
 
 #: The body's parts in the order they draw, whichever is written first.
-ORDER = nu.Sequential(*(BODY.insert(part) for part in ("item", "note", "config")))
+ORDER = nu.Sequential(
+    *(FRAME.insert(part) for part in ("body", "config")),
+    *(BODY.insert(part) for part in ("item", "note")),
+)
 
-#: The Config's one section.
-WHICH = BODY.config["which"].to(Which.slot(gap=3))
+#: The Config's one section, under the gear.
+WHICH = FRAME.config["which"].to(Which.slot(gap=ROWS))
 
 #: The kind select, in the Config.
 KINDS = WHICH.kind.control.to(KIND)
@@ -106,7 +118,7 @@ def _shown(held: nu.Nu) -> nu.Nu:
 
 def out() -> nu.Nu:
     """The item and its Config, for as long as the cell runs."""
-    asks = {"kind": KINDS, **scoped(WHICH.level, WHICH.scope), "key": WHICH.key}
+    asks = {"kind": KINDS, **scoped(WHICH)}
     show, reactions = where(asks, shown={"kind": DEFAULT_KIND})
     kinds = KINDS.set_options(kind_options())
     held = nuspace.atomic(TARGET.fallback({}))
