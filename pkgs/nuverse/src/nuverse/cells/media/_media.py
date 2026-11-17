@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-__all__ = ["BAR", "CONTROL", "DROP", "NOTE", "SHOWN", "Box", "cell"]
+__all__ = ["BAR", "CONTROL", "DROP", "NOTE", "SHOWN", "Box", "cell", "keeping"]
 
 
 class Box(nustd.ui.Column):
@@ -57,39 +57,52 @@ SHOWN = slots(
 ORDER = nu.Sequential(*(CONTROL.insert(part) for part in ("shown", "bar", "drop", "note")))
 
 
+def keeping(item: File, given: nu.Nu, bar: nu.Nu, note: nu.Nu) -> nu.Nu:
+    """A file handed to ``given`` streamed into the blob store and kept in ``item``, for as long as it runs.
+
+    ``given`` is any input whose value is one file and whose bytes read with
+    ``open()``: an upload drop zone, or a mic or camera capture whose take
+    reads as an upload. ``bar`` shows the bytes going up, ``note`` a failure.
+    Once kept, the input lets the file go and is reset.
+    """
+
+    def keep(f: nu.Dict) -> nu.Nu:
+        put = nuspace.Blobs.put_stream(given.open(), mime=f["mime"], name=f["name"])
+
+        def kept(bid: nu.Nu) -> nu.Nu:
+            fields = nu.Dict.of(blob=bid, name=f["name"], mime=f["mime"], size=f["size"])
+            return nuspace.atomic(item.set(fields))
+
+        going = note.set("") >> bar.set(0.0, caption=nu.Str("Uploading ") + f["name"])
+        stored = bar.display() >> going >> nu.let(put, kept)
+        done = bar.hide() >> given.discard() >> given.reset()
+
+        def failed(err: nu.Nu) -> nu.Nu:
+            return bar.hide() >> note.set(nu.Str("Could not keep the file: ") + nu.str(err))
+
+        return nu.TryCatch(stored >> done, catch=failed)
+
+    def moved(event: nu.Nu) -> nu.Nu:
+        ev = nu.Dict(event)
+        size = nu.Float(ev["size"])
+        return nu.IfDo(size > 0, bar.set_value(nu.Float(ev["sent"]) / size))
+
+    # A value cleared (a reset, a remove, a take deleted) reads NULL: nothing to keep.
+    picked = nu.IfDo(nu.IsNull(given), nu.Noop(), nu.let(given, lambda f: keep(nu.Dict(f))))
+    return nu.ParallelAsync(
+        nu.ReactLatest(given.on_change(), picked),
+        nu.ReactEvery(given.on_progress(), moved),
+    )
+
+
 def _edit(empty: str, filled: str) -> Callable[[File], nu.Nu]:
     """The body :func:`editor` runs over the item: the file shown, and a drop kept into it."""
 
     def edit(item: File) -> nu.Nu:
         held = nu.Str(item.blob.fallback(""))
         show = draw(item, SHOWN) >> DROP.set_prompt(nu.If(held == "", empty, filled))
-
-        def keep(f: nu.Dict) -> nu.Nu:
-            put = nuspace.Blobs.put_stream(DROP.open(), mime=f["mime"], name=f["name"])
-
-            def kept(bid: nu.Nu) -> nu.Nu:
-                fields = nu.Dict.of(blob=bid, name=f["name"], mime=f["mime"], size=f["size"])
-                return nuspace.atomic(item.set(fields))
-
-            going = NOTE.set("") >> BAR.set(0.0, caption=nu.Str("Uploading ") + f["name"])
-            stored = BAR.display() >> going >> nu.let(put, kept)
-            done = BAR.hide() >> DROP.discard() >> DROP.reset()
-
-            def failed(err: nu.Nu) -> nu.Nu:
-                return BAR.hide() >> NOTE.set(nu.Str("Could not keep the file: ") + nu.str(err))
-
-            return nu.TryCatch(stored >> done, catch=failed)
-
-        def moved(event: nu.Nu) -> nu.Nu:
-            ev = nu.Dict(event)
-            size = nu.Float(ev["size"])
-            return nu.IfDo(size > 0, BAR.set_value(nu.Float(ev["sent"]) / size))
-
-        # A selection cleared (a reset, a remove) reads NULL: nothing to keep.
-        picked = nu.IfDo(nu.IsNull(DROP), nu.Noop(), nu.let(DROP, lambda f: keep(nu.Dict(f))))
         return show >> nu.ParallelAsync(
-            nu.ReactLatest(DROP.on_change(), picked),
-            nu.ReactEvery(DROP.on_progress(), moved),
+            keeping(item, DROP, BAR, NOTE),
             nu.ReactEvery(item.on_change(), show),
         )
 

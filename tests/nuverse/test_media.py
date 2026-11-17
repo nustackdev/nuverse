@@ -24,7 +24,7 @@ from nuspace.web.env import session_env
 from nustd.ui.core import OP_NOTIFY, Frame, WsSession
 from nustd.ui.core.session import Session
 from nustd.ui.uploads import UploadView
-from nuverse.cells.media import audio, file, gallery, image, video
+from nuverse.cells.media import audio, camera, file, gallery, image, mic, video
 from nuverse.contents.file import FileContent, Hit, MimeIs, kind
 
 
@@ -43,12 +43,17 @@ PDF = b"%PDF-1.7\n" + b"x" * 3000
 
 
 class _Tab(WsSession):
-    """A tab with one drop zone: the files picked in it, and the browser's half of a pull."""
+    """A tab with one file input: the files picked in it, and the browser's half of a pull.
 
-    def __init__(self, root: Path, *, many: bool = False) -> None:
+    ``given`` names the input: the media cells' drop zone, or a capture
+    cell's ``take``, whose recorded file reads as a picked one.
+    """
+
+    def __init__(self, root: Path, *, many: bool = False, given: str = "drop") -> None:
         super().__init__(ws=None)
         self.root = root
         self.many = many
+        self.given = given
         self.frames: list[Frame] = []
         self.files: list[dict[str, Any]] = []
 
@@ -64,11 +69,11 @@ class _Tab(WsSession):
             gone = self._targets(frame.payload.get("key"))
             self.files = [f for f in self.files if f not in gone]
             asyncio.get_running_loop().call_soon(self.notify, frame.ref, {"event": "change"})
-        elif frame.ref and frame.ref[-1] == "drop" and frame.op != "write":
+        elif frame.ref and frame.ref[-1] == self.given and frame.op != "write":
             asyncio.get_running_loop().call_soon(self._handle, frame)
 
     async def aread(self, path: tuple[str, ...]) -> object:
-        if path[-1] != "drop":
+        if path[-1] != self.given:
             return None
         entries = [self._entry(f) for f in self.files]
         return entries if self.many else (entries[0] if entries else None)
@@ -112,7 +117,7 @@ class _Tab(WsSession):
             for n, m, d in files
         ]
         self.files = [*self.files, *picked] if self.many else picked[-1:]
-        self.notify(self.path("drop"), {"event": "change"})
+        self.notify(self.path(self.given), {"event": "change"})
 
     def written(self, name: str) -> list[object]:
         """Every write payload to the node ``name``, in order."""
@@ -377,6 +382,118 @@ async def test_each_single_file_cell_takes_its_kind_and_draws_it(
         bid = await _settles(store, _item().blob.fallback(""), bool)
         assert await _blob(store, blobs, bid) == PDF
         await _until(lambda: any(w.get("src") == f"/blobs/{bid}" for w in tab.written(slot)))
+    finally:
+        task.cancel()
+
+
+# --- the capture cells -------------------------------------------------------------------
+
+WEBM = b"\x1aE\xdf\xa3" + bytes(range(120))
+
+
+def _seen(tab: _Tab, name: str) -> bool | None:
+    """Whether ``name`` was last displayed (True) or hidden (False), None if neither yet."""
+    moves = [op for op in tab.ops(name) if op in ("display", "hide")]
+    return moves[-1] == "display" if moves else None
+
+
+def _shot(cell: str = "c") -> nu.Nu:
+    return nuspace.at.cell(id=cell).state(camera.Shot)
+
+
+async def test_a_mic_take_is_kept_in_the_blob_store_and_plays_above(store, tmp_path, blobs):
+    await _spec_cell(store, mic.CELL)
+    tab = _Tab(tmp_path / "area", given="take")
+    task = await _running(store, tab, blobs)
+    try:
+        # The recorder is drawn on start, before anything writes it.
+        await _until(lambda: "init" in tab.ops("take"))
+        await _listening()
+        tab.pick(("recording-2026-11-17-140322.webm", "audio/webm", WEBM))
+
+        bid = await _settles(store, _item().blob.fallback(""), bool)
+        assert await store.read(_item().name) == "recording-2026-11-17-140322.webm"
+        assert await store.read(_item().mime) == "audio/webm"
+        assert await _blob(store, blobs, bid) == WEBM
+        await _until(lambda: any(w.get("src") == f"/blobs/{bid}" for w in tab.written("audio")))
+        # The bar went up and away; the recorder let the take go, ready for the next.
+        assert tab.ops("bar")[-1] == "hide"
+        await _until(lambda: "reset" in tab.ops("take"))
+        assert "discard" in tab.ops("take")
+    finally:
+        task.cancel()
+
+
+async def test_a_mic_take_over_a_kept_one_replaces_it(store, tmp_path, blobs):
+    await _spec_cell(store, mic.CELL)
+    tab = _Tab(tmp_path / "area", given="take")
+    task = await _running(store, tab, blobs)
+    try:
+        await _until(lambda: tab.has("take"))
+        await _listening()
+        tab.pick(("one.webm", "audio/webm", WEBM))
+        first = await _settles(store, _item().blob.fallback(""), bool)
+        await _until(lambda: "reset" in tab.ops("take"))
+        tab.pick(("two.webm", "audio/webm", WEBM[::-1]))
+        second = await _settles(store, _item().blob.fallback(""), lambda b: b not in ("", first))
+        assert await store.read(_item().name) == "two.webm"
+        assert await _blob(store, blobs, second) == WEBM[::-1]
+        assert await _blob(store, blobs, first) == WEBM
+    finally:
+        task.cancel()
+
+
+async def test_a_camera_shows_at_once_with_nothing_kept(store, tmp_path, blobs):
+    await _spec_cell(store, camera.CELL)
+    tab = _Tab(tmp_path / "area", given="take")
+    task = await _running(store, tab, blobs)
+    try:
+        await _until(lambda: _seen(tab, "take") is True)
+        assert "init" in tab.ops("take")
+        assert _seen(tab, "again") is False
+        assert {"mode": "photo"} in tab.written("take")
+    finally:
+        task.cancel()
+
+
+async def test_a_camera_photo_is_kept_and_the_camera_waits_behind_a_button(store, tmp_path, blobs):
+    await _spec_cell(store, camera.CELL)
+    tab = _Tab(tmp_path / "area", given="take")
+    task = await _running(store, tab, blobs)
+    try:
+        await _until(lambda: "display" in tab.ops("take"))
+        await _listening()
+        tab.pick(("photo-2026-11-17-140322.jpg", "image/jpeg", PNG))
+
+        bid = await _settles(store, _item().blob.fallback(""), bool)
+        assert await store.read(_item().mime) == "image/jpeg"
+        assert await _blob(store, blobs, bid) == PNG
+        await _until(lambda: {"src": f"/blobs/{bid}"} in tab.written("image"))
+        # Kept: the camera goes behind the button.
+        await _until(lambda: _seen(tab, "take") is False and _seen(tab, "again") is True)
+
+        # The button brings it back; closed without a take, it goes back again.
+        await _listening()
+        tab.notify(tab.path("again"), {"event": "click"})
+        await _until(lambda: _seen(tab, "take") is True and _seen(tab, "again") is False)
+        await _listening()
+        tab.notify(tab.path("take"), {"event": "status", "status": "live", "error": ""})
+        tab.notify(tab.path("take"), {"event": "status", "status": "idle", "error": ""})
+        await _until(lambda: _seen(tab, "take") is False and _seen(tab, "again") is True)
+    finally:
+        task.cancel()
+
+
+async def test_a_camera_mode_is_kept_in_the_cell_and_names_its_button(store, tmp_path, blobs):
+    await _spec_cell(store, camera.CELL)
+    tab = _Tab(tmp_path / "area", given="take")
+    task = await _running(store, tab, blobs)
+    try:
+        await _until(lambda: {"mode": "photo"} in tab.written("take"))
+        await _listening()
+        await store.do(_shot().mode.set("video"))
+        await _until(lambda: {"mode": "video"} in tab.written("take"))
+        await _until(lambda: {"label": "New video"} in tab.written("again"))
     finally:
         task.cancel()
 

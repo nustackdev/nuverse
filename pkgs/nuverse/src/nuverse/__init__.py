@@ -52,7 +52,7 @@ def extension() -> Extension:
         text_input,
     )
     from .cells.items import item, item_picker, items
-    from .cells.media import audio, file, gallery, image, video
+    from .cells.media import audio, camera, file, gallery, image, mic, video
     from .cells.planes import plane
     from .cells.text import table, text_editor
     from .contents import date, flag, number, row, text
@@ -67,6 +67,8 @@ def extension() -> Extension:
         audio,
         file,
         gallery,
+        mic,
+        camera,
         text_input,
         number_input,
         slider,

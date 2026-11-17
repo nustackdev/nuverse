@@ -1,8 +1,9 @@
 """The Cells ``/`` inserts, one module each, by category.
 
 - :mod:`.text`: prose and a table.
-- :mod:`.media`: an image, a video, a sound or any file, and a gallery of
-  them, kept as file items (:mod:`nuverse.contents.file`).
+- :mod:`.media`: an image, a video, a sound or any file, a gallery of
+  them, and a mic and a camera recording in place, kept as file items
+  (:mod:`nuverse.contents.file`).
 - :mod:`.inputs`: one control each over a content item
   (:mod:`nuverse.contents`).
 - :mod:`.planes`: a new plane under the cell's own, and a link to it.
