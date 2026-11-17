@@ -8,6 +8,7 @@
   (:mod:`nuverse.contents`).
 - :mod:`.planes`: a new plane under the cell's own, and a link to it.
 - :mod:`.items`: show, list and link content items of any kind.
+- :mod:`.agents`: a chat with a coding agent, a view on its agent plane.
 - :mod:`.debugging`: lenses on the store and on content items.
 - :mod:`.examples`: small programs showing what a cell can do.
 

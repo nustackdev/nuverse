@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Chat cell talks to a coding agent: setup, live trace, permissions, plan, composer
 - Agent engine runs one turn at a time, folds replies, sleeps when idle
 - Agent planes hold a coding agent's chat, with terms to add, ask, cancel, answer
 - Mic and camera cells record in place, keeping each take in the blob store
