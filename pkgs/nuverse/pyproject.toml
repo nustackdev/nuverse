@@ -16,6 +16,10 @@ requires-python = ">=3.10"
 # below, the same one a third party uses.
 dependencies = []
 
+[project.optional-dependencies]
+# Agent chat: a coding agent (Claude Code, Codex) driven over ACP.
+agents = ["nustd[acp]"]
+
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"
 

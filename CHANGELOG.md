@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Agent planes hold a coding agent's chat, with terms to add, ask, cancel, answer
 - Mic and camera cells record in place, keeping each take in the blob store
 - Cell Config opens from a gear beside the label, no longer a box below
 - Release nuverse 0.3.12 on nu 0.8.0 and nuspace 0.7.4
