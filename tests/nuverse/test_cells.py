@@ -464,6 +464,19 @@ async def test_text_editor_shows_what_a_program_writes_and_keeps_what_is_typed(s
         task.cancel()
 
 
+async def test_text_editor_keeps_what_the_send_key_sent(store):
+    await _spec_cell(store, text_editor.CELL)
+    browser = _Inputs()
+    task = await _running(store, "p", "c", browser)
+    try:
+        await _until(_shown(browser, ""))
+        path = next(f.ref for f in browser.frames if f.ref[-1] == "text")
+        browser.notify(path, {"event": "submit", "value": "Basil likes sun"})
+        await _settles(store, _value(TextContent), lambda v: v == "Basil likes sun")
+    finally:
+        task.cancel()
+
+
 async def test_add_cell_hands_the_new_cell_to_what_follows(store):
     """The id is minted when the term runs; ``into`` holds it for the writes after."""
     await _plane(store)

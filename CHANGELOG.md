@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Prose cells keep their text when sent with shift+Enter, ready for submit flows
 - Mic and camera cells record in place, keeping each take in the blob store
 - Cell Config opens from a gear beside the label, no longer a box below
 - Release nuverse 0.3.12 on nu 0.8.0 and nuspace 0.7.4
