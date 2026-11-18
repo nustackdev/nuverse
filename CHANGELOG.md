@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Agent engine is one Nu program over the store, no hidden Python state
 - Chat cell built from plain kit parts, flat conversation, shift+Enter to send
 - Chat cell talks to a coding agent: setup, live trace, permissions, plan, composer
 - Agent engine runs one turn at a time, folds replies, sleeps when idle

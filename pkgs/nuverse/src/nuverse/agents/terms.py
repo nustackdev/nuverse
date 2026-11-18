@@ -66,6 +66,7 @@ def _codex(agent: nustd.acp.AgentRef, cwd: str) -> nu.Nu:
 
 #: The bind each agent runs under, by the name a Spec holds: ``bind(agent_ref, cwd)``.
 #: Always ``permissions="ask"``: the trace shows each request and a person answers it.
+#: The engine binds with ``cwd`` None and sends the Spec's with each new, load and resume.
 PRESETS: dict[str, Callable[[nustd.acp.AgentRef, str], nu.Nu]] = {
     "claude": _claude,
     "codex": _codex,

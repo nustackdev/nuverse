@@ -4,9 +4,8 @@ One agent plane per conversation does the work and holds the trace; cells
 are views on it. The plane runs one engine cell
 (:mod:`nuverse.agents.engine`) that binds ``nustd.acp`` under
 ``permissions="ask"``, owns the Agent process and the Session, takes asks
-one Prompt Turn at a time, and folds what the Agent says into the trace
-(:mod:`nuverse.agents.fold`). It sleeps after an idle timeout; the next ask
-wakes it.
+one Prompt Turn at a time, and folds what the Agent says into the trace.
+It sleeps after an idle timeout; the next ask wakes it.
 
 - :mod:`.shapes`: what the plane keeps, Spec, Session, Asks, Turn, Entry
   and Trace.
