@@ -6,21 +6,30 @@ The cell keeps one thing in its own state: the agent plane's id
 so two tabs on one chat are two views on one engine.
 
 - **Setup**, the first time: pick an agent among the installed ones,
-  preselected when there is one, an empty state when there is none. Start
-  makes the plane (:func:`nuverse.agents.add`), its folder the space's.
+  preselected when there is one, an empty state when there is none (one
+  for no agent CLI, another for no ACP SDK). Start makes the plane
+  (:func:`nuverse.agents.add`), its folder the space's.
 - **Header**: the title (or "New chat"), the agent, context used and
-  size, cost, status, and Stop while a turn runs.
-- **Entries**: one keyed child per trace entry, the newest :data:`PAGE`
-  first, older ones a page at a time from "Show earlier". Each redraws from
-  its own slots as the engine writes them.
-- **Permission**: the request's options as buttons, answered through
-  :func:`nuverse.agents.answer`; settled, one line.
-- **Plan** above the composer, and the **composer**, which asks.
+  size, cost and status.
+- **Entries**: one keyed child per trace entry, every one of them, flat:
+  the pane around the cell scrolls. Each redraws from its own slots as the
+  engine writes them. A user message is a quiet card on the right, an
+  agent reply markdown, a thought a quote, a tool call a collapsible with
+  its content, diffs and locations folded under a header row, a notice an
+  alert.
+- **Permission**: a card with the request's options as buttons, answered
+  through :func:`nuverse.agents.answer`; settled, the buttons go and a
+  badge says how.
+- **Plan** above the composer, and the **composer**, a form around an
+  editable markdown that asks on shift+Enter or Send, with Stop while a
+  turn runs.
 
-Everything drawn is a ui-kit component through its ``nustd.ui`` ref.
+Everything drawn is a generic ui-kit component through its ``nustd.ui`` ref.
 """
 
 from __future__ import annotations
+
+import importlib.util
 
 import nu
 import nuspace
@@ -33,18 +42,16 @@ from nuverse import agents
 from .. import source
 
 
-__all__ = ["CELL", "PAGE", "Chat", "View", "out"]
-
-
-#: How many entries show at first, and how many more each "Show earlier" adds.
-PAGE = 50
+__all__ = ["CELL", "Chat", "View", "out"]
 
 
 class Chat(nu.Shape):
-    """The cell's own state: its agent plane, and how many entries it shows."""
+    """The cell's own state: its agent plane."""
 
     plane = nustd.kv.StrRef.slot()
-    shown = nustd.kv.IntRef.slot()
+
+
+# --- what the cell draws -----------------------------------------------------------------------
 
 
 class Setup(nustd.ui.Card):
@@ -55,30 +62,120 @@ class Setup(nustd.ui.Card):
 
 
 class Header(nustd.ui.Row):
-    """The chat's title, agent, usage, cost, status and Stop."""
+    """The chat's title, agent, usage, cost and status."""
 
     title = nustd.ui.HeadingRef.slot(level=3)
     agent = nustd.ui.BadgeRef.slot(variant="secondary", size="sm")
-    usage = nustd.ui.TextRef.slot(value="")
-    cost = nustd.ui.TextRef.slot(value="")
+    usage = nustd.ui.TextRef.slot(value="", size="sm", tone="muted")
+    cost = nustd.ui.TextRef.slot(value="", size="sm", tone="muted")
     status = nustd.ui.StatusPillRef.slot()
+
+
+class Bubble(nustd.ui.Card):
+    """A user message's card: the text as markdown."""
+
+    text = nustd.ui.MarkdownRef.slot()
+
+
+class Said(nustd.ui.Column):
+    """A user message: its card, against the right edge."""
+
+    bubble = Bubble.slot(variant="sunken", size="sm", max_width="85%")
+
+
+class ThoughtHead(nustd.ui.Row):
+    """A thought's header line."""
+
+    icon = nustd.ui.IconRef.slot(name="brain", size="sm")
+    label = nustd.ui.TextRef.slot(value="Thinking", size="sm", weight="medium")
+
+
+class Thought(nustd.ui.Quote):
+    """A thought: a header line over the text, quiet."""
+
+    header = ThoughtHead.slot(gap=2)
+    text = nustd.ui.MarkdownRef.slot()
+
+
+class ToolHead(nustd.ui.Row):
+    """A tool call's trigger row: its kind's icon, its title cut to one line, its status."""
+
+    icon = nustd.ui.IconRef.slot(name="wrench", size="sm", tone="muted")
+    title = nustd.ui.TextRef.slot(size="sm", lines=1)
+    status = nustd.ui.BadgeRef.slot(size="sm")
+
+
+class ToolCall(nustd.ui.Collapsible):
+    """A tool call: the head row, its content pieces and the places it touched folded under it."""
+
+    header = ToolHead.slot(gap=2, grow={"title": 1})
+    content = nustd.ui.ColumnRef.slot(gap=2)
+    locations = nustd.ui.ListRef.slot()
+
+
+class DiffPiece(nustd.ui.Column):
+    """One diff in a tool call's content: the file, then the change."""
+
+    path = nustd.ui.TextRef.slot(size="sm", tone="muted", mono=True, lines=1)
+    code = nustd.ui.CodeRef.slot(original="", wrap=True)
+
+
+class PermissionHead(nustd.ui.Row):
+    """A permission card's header: a mark, the question, how it stands."""
+
+    icon = nustd.ui.IconRef.slot(name="shield-question", size="sm", tone="warn")
+    title = nustd.ui.TextRef.slot(weight="medium", lines=1)
+    state = nustd.ui.BadgeRef.slot(size="sm")
+
+
+class Permission(nustd.ui.Card):
+    """A permission request: the question, the tool it is for, the options while it is open."""
+
+    header = PermissionHead.slot(gap=2, grow={"title": 1})
+    details = nustd.ui.TextRef.slot(size="sm", tone="muted", mono=True)
+    options = nustd.ui.RowRef.slot(gap=2, wrap=True)
+
+
+class Step(nustd.ui.Row):
+    """One plan entry: a dot for its status, its text."""
+
+    dot = nustd.ui.StatusDotRef.slot()
+    text = nustd.ui.TextRef.slot(size="sm")
+
+
+class Plan(nustd.ui.Card):
+    """The agent's plan, one row per entry."""
+
+    steps = nustd.ui.ColumnRef.slot(gap=1)
+
+
+class Actions(nustd.ui.Row):
+    """The composer's buttons: Stop while a turn runs, then Send."""
+
     stop = nustd.ui.ButtonRef.slot(label="Stop", icon="square", variant="secondary", size="sm")
+    send = nustd.ui.ButtonRef.slot(label="Send", icon="arrow-up", size="sm", submit=True)
 
 
-class Body(nustd.ui.Column):
-    """The conversation: Show earlier, then one keyed child per entry."""
+class Composer(nustd.ui.Form):
+    """An editable markdown and its buttons: shift+Enter or Send asks, and the text clears."""
 
-    earlier = nustd.ui.ButtonRef.slot(label="Show earlier", variant="ghost", size="sm")
-    entries = nustd.ui.ColumnRef.slot(gap=3)
+    text = nustd.ui.MarkdownRef.slot(placeholder="Message the agent...", readonly=False)
+    actions = Actions.slot(gap=2, justify="end")
+
+
+class Input(nustd.ui.Card):
+    """The composer's frame, so the editable text reads as a box to type in."""
+
+    composer = Composer.slot(gap=2, clear_on_submit=True)
 
 
 class Conversation(nustd.ui.Column):
-    """The whole chat: header, entries, plan, composer."""
+    """The whole chat: header, entries, plan, composer. Flat: the pane scrolls."""
 
     header = Header.slot(gap=2, align="center", grow={"title": 1}, wrap=True)
-    body = Body.slot(gap=2, scroll="y", max_height="70vh")
-    plan = nustd.ui.PlanRef.slot()
-    composer = nustd.ui.ComposerRef.slot(placeholder="Message the agent...")
+    entries = nustd.ui.ColumnRef.slot(gap=3)
+    plan = Plan.slot(title="Plan", size="sm")
+    box = Input.slot(size="sm")
 
 
 class View(nu.Shape):
@@ -90,16 +187,22 @@ class View(nu.Shape):
         icon="bot",
         size="sm",
     )
+    no_sdk = nustd.ui.EmptyStateRef.slot(
+        label="Agent support not installed",
+        description="Install nuverse with the agents extra (the ACP SDK), then add this cell again.",
+        icon="bot",
+        size="sm",
+    )
     setup = Setup.slot(gap=3)
     chat = Conversation.slot(gap=3)
 
 
 HELD = nuspace.here(Chat)
 SETUP, CHAT = View.setup, View.chat
-HEADER, BODY, ENTRIES = CHAT.header, CHAT.body, CHAT.body.entries
+HEADER, ENTRIES, PLAN, COMPOSER = CHAT.header, CHAT.entries, CHAT.plan, CHAT.box.composer
 
 
-# --- text the header shows -----------------------------------------------------------------
+# --- text the cell shows -------------------------------------------------------------------------
 
 
 def _tokens(n: object) -> str:
@@ -138,14 +241,168 @@ def _tone(status: object) -> str:
     return _TONES.get(str(status), "neutral")
 
 
-def _permission_title(tool: object) -> str:
-    title = (tool if isinstance(tool, dict) else {}).get("title")
-    return f"Allow {title}?" if title else "Allow this tool call?"
-
-
 def _get(held: object, key: str, default: object = "") -> object:
     value = held.get(key) if isinstance(held, dict) else None
     return default if value is None else value
+
+
+#: ACP tool kinds, by the lucide icon each draws.
+_TOOL_ICONS = {
+    "read": "file-text",
+    "edit": "pencil",
+    "delete": "trash-2",
+    "move": "move",
+    "search": "search",
+    "execute": "terminal",
+    "think": "brain",
+    "fetch": "globe",
+    "switch_mode": "toggle-left",
+}
+
+#: ACP tool statuses, by the badge variant each draws.
+_TOOL_TONES = {"pending": "neutral", "in_progress": "info", "completed": "ok", "failed": "danger"}
+
+#: File suffixes, by the language name the code view highlights them with.
+_LANGUAGES = {
+    "py": "python",
+    "pyi": "python",
+    "ts": "typescript",
+    "tsx": "tsx",
+    "js": "javascript",
+    "jsx": "jsx",
+    "mjs": "javascript",
+    "md": "markdown",
+    "json": "json",
+    "yaml": "yaml",
+    "yml": "yaml",
+    "toml": "toml",
+    "sh": "shell",
+    "bash": "shell",
+    "zsh": "shell",
+    "rs": "rust",
+    "go": "go",
+    "css": "css",
+    "html": "html",
+    "sql": "sql",
+}
+
+
+def _tool_head(tool: object) -> dict[str, str]:
+    """What a tool call's header row shows: icon, title, status label and its tone."""
+    t = tool if isinstance(tool, dict) else {}
+    status = str(t.get("status") or "pending")
+    return {
+        "icon": _TOOL_ICONS.get(str(t.get("kind") or ""), "wrench"),
+        "title": str(t.get("title") or "Tool call"),
+        "status": status.replace("_", " "),
+        "tone": _TOOL_TONES.get(status, "dashed"),
+    }
+
+
+def _pieces(tool: object) -> list[dict[str, object]]:
+    """A tool call's content as the pieces drawn, each keyed by its kind and its place.
+
+    A diff (``kind`` ``diff``: path, old and new text, language) or a text
+    block (``kind`` ``text``); any other content draws nothing. The kind is
+    in the key, so a place whose piece changes kind gets a new child.
+    """
+    content = (tool if isinstance(tool, dict) else {}).get("content") or []
+    out: list[dict[str, object]] = []
+    for i, c in enumerate(content if isinstance(content, list) else []):
+        if not isinstance(c, dict):
+            continue
+        if c.get("type") == "diff":
+            path = str(c.get("path") or "")
+            suffix = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+            out.append(
+                {
+                    "key": f"diff:{i}",
+                    "kind": "diff",
+                    "path": path,
+                    "old": c.get("old_text") or "",
+                    "new": c.get("new_text") or "",
+                    "language": _LANGUAGES.get(suffix, ""),
+                }
+            )
+            continue
+        block = c.get("content") if isinstance(c.get("content"), dict) else {}
+        if block.get("type") == "text":
+            out.append({"key": f"text:{i}", "kind": "text", "text": str(block.get("text") or "")})
+    return out
+
+
+def _keys(pieces: object) -> list[str]:
+    return [str(p["key"]) for p in pieces or () if isinstance(p, dict)]
+
+
+def _locations(tool: object) -> list[str]:
+    """The places a tool call touched, ``path:line`` each."""
+    found = (tool if isinstance(tool, dict) else {}).get("locations") or []
+    out = []
+    for loc in found if isinstance(found, list) else []:
+        if isinstance(loc, dict) and loc.get("path"):
+            line = loc.get("line")
+            out.append(f"{loc['path']}:{line}" if line is not None else str(loc["path"]))
+    return out
+
+
+def _permission_view(permission: object, tool: object) -> dict[str, object]:
+    """What a permission card shows: the question, the tool's details, its state, open or not."""
+    p = permission if isinstance(permission, dict) else {}
+    t = tool if isinstance(tool, dict) else {}
+    title = t.get("title")
+    kind = str(t.get("kind") or "")
+    details = "  ".join(x for x in [kind, *_locations(t)] if x)
+    outcome, answer = str(p.get("outcome") or ""), str(p.get("answer") or "")
+    options = [o for o in p.get("options") or () if isinstance(o, dict)]
+    if outcome in ("cancelled", "expired"):
+        state, tone, open_ = outcome, "dashed", False
+    elif answer:
+        chosen = next((o for o in options if o.get("option_id") == answer), {})
+        state = str(chosen.get("name") or answer)
+        tone = "danger" if str(chosen.get("kind") or "").startswith("reject") else "ok"
+        open_ = False
+    else:
+        state, tone, open_ = "waiting", "warn", True
+    return {
+        "title": f"Allow {title}?" if title else "Allow this tool call?",
+        "details": details,
+        "state": state,
+        "tone": tone,
+        "open": open_,
+    }
+
+
+def _option_variant(option: object) -> str:
+    """An option button's look: allow once is the primary one, the rest step back."""
+    kind = str((option if isinstance(option, dict) else {}).get("kind") or "")
+    return "primary" if kind == "allow_once" else "secondary"
+
+
+#: ACP plan entry statuses, by the dot tone each draws.
+_STEP_TONES = {"completed": "ok", "in_progress": "info", "pending": "neutral"}
+
+
+def _steps(plan: object) -> list[dict[str, object]]:
+    """The plan's entries as rows: key, text, dot tone, and whether the dot pulses."""
+    out = []
+    for i, e in enumerate(plan if isinstance(plan, list) else []):
+        e = e if isinstance(e, dict) else {}
+        status = str(e.get("status") or "pending")
+        out.append(
+            {
+                "key": f"s{i}",
+                "text": str(e.get("content") or ""),
+                "tone": _STEP_TONES.get(status, "neutral"),
+                "label": status.replace("_", " "),
+                "pulse": status == "in_progress",
+            }
+        )
+    return out
+
+
+def _has_sdk() -> bool:
+    return importlib.util.find_spec("acp") is not None
 
 
 #: ``held[key]``, or ``default`` when it is missing or None.
@@ -153,7 +410,15 @@ Get = nu.host(_get, name="Get")
 UsageText = nu.host(_usage_text, name="UsageText")
 CostText = nu.host(_cost_text, name="CostText")
 Tone = nu.host(_tone, name="Tone")
-PermissionTitle = nu.host(_permission_title, name="PermissionTitle")
+ToolHeadOf = nu.host(_tool_head, name="ToolHeadOf")
+Pieces = nu.host(_pieces, name="Pieces")
+Keys = nu.host(_keys, name="Keys")
+Locations = nu.host(_locations, name="Locations")
+PermissionView = nu.host(_permission_view, name="PermissionView")
+OptionVariant = nu.host(_option_variant, name="OptionVariant")
+Steps = nu.host(_steps, name="Steps")
+#: Whether the ACP SDK is importable here: without it no agent is installed, whatever is on PATH.
+HasSdk = nu.host(_has_sdk, name="HasSdk")
 
 
 # --- setup ------------------------------------------------------------------------------------
@@ -177,10 +442,15 @@ def _setup() -> nu.Nu:
             >> SETUP.agent.set_options(found)
             >> SETUP.agent.set(nu.Str(found[0]))
         )
+        # No agent is installed without the SDK, so say which is missing.
+        none = nu.IfDo(HasSdk(), View.empty.init(), View.no_sdk.init())
         return nu.IfDo(
             found,
-            View.empty.erase() >> draw >> nu.ReactOnce(SETUP.start.on_click(), start),
-            View.empty.init(),
+            View.empty.erase()
+            >> View.no_sdk.erase()
+            >> draw
+            >> nu.ReactOnce(SETUP.start.on_click(), start),
+            none,
         )
 
     return CHAT.erase() >> nu.let(agents.installed(), shown)
@@ -190,12 +460,13 @@ def _setup() -> nu.Nu:
 
 
 def _header(plane: nu.Str) -> nu.Nu:
-    """The header and the composer's busy flag, redrawn when the Session moves."""
+    """The header, and Stop shown while a turn runs, redrawn when the Session moves."""
     session, spec = agents.session(plane), agents.spec(plane)
     status = nu.Str(session.status.fallback(agents.ASLEEP))
     title = nu.Str(session.title.fallback(""))
     usage = session.usage.fallback({})
     busy = (status == agents.PROMPTING).or_(status == agents.WAITING)
+    stop = COMPOSER.actions.stop
 
     def draw(held: nu.ObjectRef) -> nu.Nu:
         h = nu.Dict(held)
@@ -205,8 +476,7 @@ def _header(plane: nu.Str) -> nu.Nu:
             >> HEADER.usage.set(UsageText(h["usage"]))
             >> HEADER.cost.set(CostText(h["usage"]))
             >> HEADER.status.set(h["status"], tone=Tone(h["status"]))
-            >> HEADER.stop.set_disabled(nu.Not(h["busy"]))
-            >> CHAT.composer.set_busy(h["busy"])
+            >> nu.IfDo(h["busy"], stop.display(), stop.hide())
         )
 
     read = nu.Dict.of(
@@ -224,144 +494,188 @@ def _header(plane: nu.Str) -> nu.Nu:
 
 
 def _plan(plane: nu.Str) -> nu.Nu:
-    """The plan above the composer, replaced whole as the Agent sends it."""
+    """The plan above the composer, a row per entry, replaced whole as the Agent sends it; hidden while empty."""
     plan = agents.session(plane).plan
-    entries = nuspace.atomic(nu.If(plan.exists(), plan.extract(), []))
-    return nu.Reconcile(nuspace.atomic(plan.on_change()), CHAT.plan.set(entries))
-
-
-def _window(plane: nu.Str) -> nu.List:
-    """The newest entry keys the cell shows, oldest first."""
-    entries = agents.trace(plane).entries
-    limit = nu.Int(HELD.shown.fallback(PAGE))
-    return nu.List(nu.Collect(nu.Reversed(nu.list(entries.reversed_keys(limit=limit)))))
-
-
-def _tool(entry: agents.Entry, call: nustd.ui.ToolCallRef) -> nu.Nu:
-    """A tool entry: its row, then each piece of its content, a diff or text, keyed by place."""
-    tool = entry.tool
+    steps = PLAN.steps
 
     def draw(held: nu.ObjectRef) -> nu.Nu:
-        t = nu.Dict(held)
+        rows = nu.List(Steps(held))
 
-        def piece(e: nu.Nu) -> nu.Nu:
-            at, c = nu.Str("c") + nu.str(e[0]), nu.Dict(e[1])
-            diff = nustd.ui.DiffRef(at, parent_ref=call)
-            text = nustd.ui.MarkdownRef(at, parent_ref=call)
-            block = nu.Dict(Get(c, "content", {}))
-            return nu.IfDo(
-                nu.Str(Get(c, "type", "")) == "diff",
-                diff.set(c["new_text"], old_text=Get(c, "old_text", None), path=c["path"]),
-                nu.IfDo(nu.Str(Get(block, "type", "")) == "text", text.set(block["text"])),
+        def row(s: nu.Nu) -> nu.Nu:
+            d = nu.Dict(s)
+            step = steps[nu.Str(d["key"])].to(Step.slot(gap=2))
+            return step.dot.set(d["tone"], label=d["label"], pulse=d["pulse"]) >> step.text.set(
+                d["text"]
             )
 
-        content = nu.List(Get(t, "content", []))
-        row = call.set(title=Get(t, "title", ""), kind=Get(t, "kind", "other"), status=t["status"])
-        return row >> nu.ForEachDo(nu.Enumerate(content), piece)
+        shown = nu.ForEachDo(rows, row) >> steps.keep(Keys(rows)) >> PLAN.display()
+        return nu.IfDo(rows, shown, PLAN.hide())
+
+    redraw = nu.let(nuspace.atomic(nu.If(plan.exists(), plan.extract(), [])), draw)
+    return nu.Reconcile(nuspace.atomic(plan.on_change()), redraw)
+
+
+def _keys_of(plane: nu.Str) -> nu.List:
+    """Every entry key, oldest first."""
+    return nu.List(nu.list(agents.trace(plane).entries.keys()))
+
+
+def _tool(entry: agents.Entry, call: ToolCall) -> nu.Nu:
+    """A tool entry: its head row, then each piece of its content, a diff or text, and its locations."""
+    tool = entry.tool
+    head, content = call.header, call.content
+
+    def draw(held: nu.ObjectRef) -> nu.Nu:
+        h = nu.Dict(ToolHeadOf(held))
+        pieces = nu.List(Pieces(held))
+        places = nu.List(Locations(held))
+
+        def piece(p: nu.Nu) -> nu.Nu:
+            d = nu.Dict(p)
+            at = nu.Str(d["key"])
+            diff = content[at].to(DiffPiece.slot(gap=1))
+            text = content[at].to(nustd.ui.MarkdownRef.slot())
+            return nu.IfDo(
+                nu.Str(d["kind"]) == "diff",
+                diff.path.set(d["path"])
+                >> diff.code.set_language(d["language"])
+                >> diff.code.set(d["new"], original=d["old"]),
+                text.set(d["text"]),
+            )
+
+        drawn = (
+            head.icon.set(h["icon"])
+            >> head.title.set(h["title"])
+            >> head.status.set(h["status"], variant=h["tone"])
+        )
+        # Pieces gone from the content go from the view, and the rest keep its order.
+        keys = Keys(pieces)
+        listed = call.locations.set(places) >> call.locations.display()
+        return (
+            drawn
+            >> nu.ForEachDo(pieces, piece)
+            >> content.keep(keys)
+            >> content.set_order(keys)
+            >> nu.IfDo(places, listed, call.locations.hide())
+        )
 
     redraw = nu.let(nuspace.atomic(tool.extract()), draw)
-    return redraw >> nu.Reconcile(nuspace.atomic(tool.on_change()), redraw)
+    return nu.Reconcile(nuspace.atomic(tool.on_change()), redraw)
 
 
 def _permission(plane: nu.Str, key: nu.Str, entry: agents.Entry) -> nu.Nu:
-    """A permission entry: a card answered through ``agents.answer``; settled, one line."""
-    card = ENTRIES[key].to(nustd.ui.PermissionRequestRef.slot())
+    """A permission entry: a card answered through ``agents.answer``; settled, its state alone."""
+    card = ENTRIES[key].to(Permission.slot(size="sm", variant="outline"))
+    head = card.header
     entries = agents.trace(plane).entries
     permission = entry.permission
+    options = nu.List(nuspace.atomic(permission["options"].fallback([])))
 
     def draw(held: nu.ObjectRef) -> nu.Nu:
         p = nu.Dict(held)
         call = entries[nu.Str("tool:") + nu.Str(Get(p, "tool_call_id", ""))].tool
-        title = PermissionTitle(nuspace.atomic(nu.If(call.exists(), call.extract(), {})))
-        outcome, answer = nu.Str(Get(p, "outcome", "")), nu.Str(Get(p, "answer", ""))
-        state = nu.IfDo(
-            (outcome == "cancelled").or_(outcome == "expired"),
-            card.set_state(outcome),
-            nu.IfDo(answer != "", card.set_answer(answer), card.set_state("open")),
+        tool = nuspace.atomic(nu.If(call.exists(), call.extract(), {}))
+        v = nu.Dict(PermissionView(p, tool))
+        return (
+            head.title.set(v["title"])
+            >> head.state.set(v["state"], variant=v["tone"])
+            >> card.details.set(v["details"])
+            >> nu.IfDo(v["open"], card.options.display(), card.options.hide())
         )
-        return card.set(title, options=Get(p, "options", [])) >> state
 
     redraw = nu.let(nuspace.atomic(permission.extract()), draw)
 
-    def picked(event: nu.Nu) -> nu.Nu:
-        option = nu.Str(nu.Dict(event)["option_id"])
+    def button(o: nu.Nu) -> nustd.ui.ButtonRef:
+        oid = nu.Str(nu.Dict(o)["option_id"])
+        return card.options[oid].to(nustd.ui.ButtonRef.slot(size="sm"))
+
+    def offer(o: nu.Nu) -> nu.Nu:
+        d = nu.Dict(o)
+        return button(o).set(d["name"], variant=OptionVariant(d))
+
+    def listen(o: nu.Nu) -> nu.Nu:
+        oid = nu.Str(nu.Dict(o)["option_id"])
         # A request settled meanwhile refuses it; the redraw shows how it settled.
-        return nu.TryCatch(agents.answer(plane, key, option), catch=lambda _: redraw)
+        picked = nu.TryCatch(agents.answer(plane, key, oid), catch=lambda _: redraw)
+        return nu.ReactEvery(button(o).on_click(), lambda _: picked)
 
     return (
         ENTRIES.insert(card)
-        >> redraw
+        >> nu.ForEachDo(options, offer)
         >> nu.ParallelAsync(
             nu.Reconcile(nuspace.atomic(permission.on_change()), redraw),
-            nu.ReactEvery(card.on_select(), picked),
+            nu.ForEachParAsync(options, listen),
         )
     )
 
 
 def _entry(plane: nu.Str, at: nu.Nu) -> nu.Nu:
-    """One entry's arm: its child up while it is in the window, redrawn as the engine writes it."""
+    """One entry's arm: its child up while it is in the trace, redrawn as the engine writes it."""
     key = nu.Str(at)
     entry = agents.trace(plane).entries[key]
-    message = ENTRIES[key].to(nustd.ui.MessageRef.slot())
+    said = ENTRIES[key].to(Said.slot(align="end"))
+    reply = ENTRIES[key].to(nustd.ui.MarkdownRef.slot())
+    thought = ENTRIES[key].to(Thought.slot(gap=1))
     notice = ENTRIES[key].to(nustd.ui.AlertRef.slot(variant="warn"))
-    call = ENTRIES[key].to(nustd.ui.ToolCallRef.slot())
-    text = nu.Str(entry.text.fallback(""))
+    call = ENTRIES[key].to(ToolCall.slot(gap=2))
+    text = nuspace.atomic(nu.Str(entry.text.fallback("")))
+
+    def follow(child: nu.Nu, body: nustd.ui.MarkdownRef) -> nu.Nu:
+        # The text grows as chunks land: the whole of it again each time.
+        return ENTRIES.insert(child) >> nu.Reconcile(
+            nuspace.atomic(entry.text.on_change()), body.set(text)
+        )
 
     def by_kind(k: nu.ObjectRef) -> nu.Nu:
-        kind = nu.Str(k)
-        said = (
-            ENTRIES.insert(message)
-            >> message.set_role(kind)
-            >> nu.Reconcile(
-                nuspace.atomic(entry.text.on_change()), message.set(nuspace.atomic(text))
-            )
-        )
-        told = ENTRIES.insert(notice) >> notice.set_body(nuspace.atomic(text))
         return nu.SwitchDo(
-            kind,
+            nu.Str(k),
             {
-                "user": said,
-                "agent": said,
-                "thought": said,
-                "notice": told,
+                "user": follow(said, said.bubble.text),
+                "agent": follow(reply, reply),
+                "thought": follow(thought, thought.text),
+                "notice": ENTRIES.insert(notice) >> notice.set_body(text),
                 "tool": ENTRIES.insert(call) >> _tool(entry, call),
                 "permission": _permission(plane, key, entry),
             },
             default=nu.Noop(),
         )
 
-    # Placed in the window's order, whichever arm comes up first.
-    order = nu.let(nuspace.atomic(_window(plane)), ENTRIES.set_order)
+    # Placed in the trace's order, whichever arm comes up first.
+    order = nu.let(nuspace.atomic(_keys_of(plane)), ENTRIES.set_order)
     live = nu.let(nuspace.atomic(nu.Str(entry.kind.fallback(""))), by_kind)
     leave = nu.TryCatch(ENTRIES.remove(key), catch=lambda _: nu.Noop())
     return nu.TryCatch(nu.ParallelAsync(live, order), finally_=leave)
 
 
 def _entries(plane: nu.Str) -> nu.Nu:
-    """One arm per entry in the window, kept in step with the trace and the window's size."""
-    change = nu.OnAny(agents.trace(plane).entries.on_children_change(), HELD.shown.on_change())
-    keys = nuspace.atomic(_window(plane))
+    """One arm per entry, kept in step with the trace."""
+    change = agents.trace(plane).entries.on_children_change()
+    keys = nuspace.atomic(_keys_of(plane))
     return nu.ReconcileLatestEach(keys, nuspace.atomic(change), lambda k: _entry(plane, k))
 
 
 def _chat(plane: nu.Str) -> nu.Nu:
     """The chat on ``plane``: header, entries, plan, composer, all live."""
-    composer = CHAT.composer
 
     def ask(sub: nu.Nu) -> nu.Nu:
-        return agents.ask(plane, nu.Str(nu.Dict(sub)["value"]), by=Here.cell)
+        typed = nu.Str(nu.Dict(sub)["values"]["text"])
+        return nu.IfDo(typed.strip() != "", agents.ask(plane, typed, by=Here.cell))
 
     stop = agents.cancel(plane)
-    earlier = nuspace.atomic(HELD.shown.set(nu.Int(HELD.shown.fallback(PAGE)) + PAGE))
-    draw = View.empty.erase() >> SETUP.erase() >> CHAT.init()
+    draw = (
+        View.empty.erase()
+        >> View.no_sdk.erase()
+        >> SETUP.erase()
+        >> CHAT.init()
+        >> PLAN.hide()
+        >> COMPOSER.actions.stop.hide()
+    )
     return draw >> nu.ParallelAsync(
         _header(plane),
         _plan(plane),
         _entries(plane),
-        nu.ReactEvery(composer.on_submit(), ask),
-        nu.ReactEvery(composer.on_stop(), lambda _: stop),
-        nu.ReactEvery(HEADER.stop.on_click(), lambda _: stop),
-        nu.ReactEvery(BODY.earlier.on_click(), lambda _: earlier),
+        nu.ReactEvery(COMPOSER.on_submit(), ask),
+        nu.ReactEvery(COMPOSER.actions.stop.on_click(), lambda _: stop),
     )
 
 
