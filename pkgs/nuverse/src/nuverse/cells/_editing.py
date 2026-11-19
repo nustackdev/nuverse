@@ -490,10 +490,10 @@ class ForKind(ScalarQuery):
         build: Callable[..., nu.Nu],
     ) -> None:
         super().__init__(kind, under, *args)
-        self._payload["build"] = build
+        self.build = build
 
     def _term(self, kind: object, args: Sequence[object]) -> nu.Nu:
-        made = self._payload["build"](content_spec(str(kind)).kind, *args)
+        made = self.build(content_spec(str(kind)).kind, *args)
         return nuspace.bracketed(landed(made, self._children[1]))
 
     def _compile(self, nid: int, children: tuple[Callable, ...]) -> Callable:

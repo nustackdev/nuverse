@@ -44,7 +44,12 @@ def append(
     args: tuple[object, ...],
     extra: nu.DictArg[str, object] | None,
 ) -> nu.Nu:
-    """Build the Command tree that appends one entry to ``stream``, slot by slot."""
+    """Build the Command tree that appends one entry to ``stream``, slot by slot.
+
+    ``extra`` is a term yielding the fields dict, or a plain dict whose values
+    may be terms: it is built per run, never held as one shared dict.
+    """
+    fields = extra if isinstance(extra, nu.Nu) else nu.Dict.of(**(extra or {}))
 
     def write(key: nu.Attr) -> nu.Nu:
         entry = Messages.streams[stream].entries[nu.Str(key)]
@@ -52,7 +57,7 @@ def append(
             entry.ts_us.set(nustd.time.time_ns() // 1000)
             >> entry.level.set(level_name(level))
             >> entry.msg.set(percent_format(msg, *args))
-            >> entry.fields.set(extra or {})
+            >> entry.fields.set(fields)
         )
 
     return nu.let(nustd.uuid.uuid4().hex(), write)

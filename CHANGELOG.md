@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Log fields and test terms follow nu's frozen terms, config computed like values
 - Drop the nuagent package and the agents demo; nu acp covers coding agents
 - Prose cells keep their text when sent with shift+Enter, ready for submit flows
 - Mic and camera cells record in place, keeping each take in the blob store
