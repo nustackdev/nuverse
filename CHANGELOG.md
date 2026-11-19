@@ -2,16 +2,14 @@
 
 The full commit stream, every package. Newest first.
 
+- Agent planes run Claude Code or Codex over ACP and keep going with pages closed
+- An agent chat cell talks to a coding agent, second in the cell menu
 - Tests follow nuspace's moved store layout and the session env's address callable
 - Research and knowledge demos ask Claude Code over ACP, now nustd.cc is gone
 - Demo resources and the log store viewer open on nu's bracket and fabric bases
 - Log fields and test terms follow nu's frozen terms, config computed like values
 - Drop the nuagent package and the agents demo; nu acp covers coding agents
 - Prose cells keep their text when sent with shift+Enter, ready for submit flows
-- Chat cell built from plain kit parts, flat conversation, shift+Enter to send
-- Chat cell talks to a coding agent: setup, live trace, permissions, plan, composer
-- Agent engine runs one turn at a time, folds replies, sleeps when idle
-- Agent planes hold a coding agent's chat, with terms to add, ask, cancel, answer
 - Mic and camera cells record in place, keeping each take in the blob store
 - Cell Config opens from a gear beside the label, no longer a box below
 - Release nuverse 0.3.12 on nu 0.8.0 and nuspace 0.7.4
