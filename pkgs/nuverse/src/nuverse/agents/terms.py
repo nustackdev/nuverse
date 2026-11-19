@@ -13,14 +13,13 @@ these and nothing else:
   Shapes, for reading.
 
 Every term brackets itself, so call them bare. :data:`PRESETS` maps an
-agent name to the bind the engine runs it under.
+agent name to what it spawns, which the engine binds at run time.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import shutil
-from typing import TYPE_CHECKING
 
 import nu
 import nuspace
@@ -31,13 +30,10 @@ from nuspace.shapes import ROOT, Space
 from nuspace.specs import add_plane
 from nuspace.utils import MintId
 from nuspace.utils.checks import refuse
+from nustd.acp.presets import CLAUDE, CODEX
 from nuverse.planes.agent import PLANE
 
 from .shapes import ASLEEP, asks_of, session_of, spec_of, trace_of
-
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 __all__ = [
@@ -56,19 +52,13 @@ __all__ = [
 ]
 
 
-def _claude(agent: nustd.acp.AgentRef, cwd: str) -> nu.Nu:
-    return nustd.acp.claude(agent, cwd=cwd, permissions="ask")
-
-
-def _codex(agent: nustd.acp.AgentRef, cwd: str) -> nu.Nu:
-    return nustd.acp.codex(agent, cwd=cwd, permissions="ask")
-
-
-#: The bind each agent runs under, by the name a Spec holds: ``bind(agent_ref, cwd)``.
-#: Always ``permissions="ask"``: the trace shows each request and a person answers it.
-PRESETS: dict[str, Callable[[nustd.acp.AgentRef, str], nu.Nu]] = {
-    "claude": _claude,
-    "codex": _codex,
+#: What each agent spawns, by the name a Spec holds: ``command``, its argv, and
+#: optionally ``env``, set on top of this process's. The engine binds it at run
+#: time with the Spec's ``cwd`` and ``permissions="ask"``: the trace shows each
+#: request and a person answers it.
+PRESETS: dict[str, dict[str, object]] = {
+    "claude": {"command": list(CLAUDE)},
+    "codex": {"command": list(CODEX)},
 }
 
 #: The CLI each preset's adapter drives, which must be on PATH beside ``npx``.

@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any
 
 import nu
 import nuspace
-import nustd.acp
 from _support.made import MADE
 from nuspace.places import inside
 from nuspace.specs import SpecCells
@@ -36,15 +35,9 @@ FAKE = [sys.executable, str(Path(__file__).with_name("acp_agent.py"))]
 
 def fake_preset(
     env: Mapping[str, str] | None = None, command: list[str] | None = None
-) -> Callable[[nustd.acp.AgentRef, str], nu.Nu]:
-    """A preset binding the fake Agent, as the real ones bind theirs: ``permissions="ask"``."""
-
-    def bind(agent: nustd.acp.AgentRef, cwd: str) -> nu.Nu:
-        return nustd.acp.bind(
-            agent, command=command or FAKE, cwd=cwd, env=dict(env or {}), permissions="ask"
-        )
-
-    return bind
+) -> dict[str, object]:
+    """The fake Agent as a preset, the shape the real ones take: its argv, and env on top."""
+    return {"command": list(command or FAKE), "env": dict(env or {})}
 
 
 async def until(store, term: nu.Nu, pred: Callable[[Any], bool], timeout: float = 10.0) -> Any:

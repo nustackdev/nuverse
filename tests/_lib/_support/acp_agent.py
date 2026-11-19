@@ -33,6 +33,8 @@ The prompt's text picks what a turn does:
 - ``echo``: the prompt echoed as a ``user_message_chunk``, then an ``ok`` chunk.
 - ``tool-wait``: a pending ``tool_call``, then holds the turn until ``session/cancel``.
 - ``ids``: chunks ``a`` and ``b`` with message ids ``m1`` and ``m2``.
+- ``fail``: a ``partial`` chunk, then answers the prompt with JSON-RPC error -32603.
+- ``aside``: ``end_turn``, then 50ms after the response an ``aside`` chunk.
 
 Sessions are minted ``s1``, ``s2``, ...; ``old`` exists from the start with a
 two message history and is not active until loaded or resumed. ``list`` pages
@@ -403,6 +405,13 @@ class FakeAgent:
                 await self.send(session_id, update)
         elif text == "stats":
             await self.send(session_id, chunk(json.dumps(self.record)))
+        elif text == "fail":
+            await self.send(session_id, chunk("partial"))
+            raise RequestError(-32603, "Internal error", {"why": "boom"})
+        elif text == "aside":
+            asyncio.get_running_loop().call_later(
+                0.05, lambda: asyncio.ensure_future(self.send(session_id, chunk("aside")))
+            )
         return {"stopReason": "end_turn"}
 
 

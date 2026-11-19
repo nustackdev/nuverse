@@ -102,6 +102,55 @@ async def test_asks_queue_and_run_one_turn_at_a_time(store, tmp_path, monkeypatc
         await e.stop()
 
 
+async def test_updates_listen_before_the_first_prompt(store, tmp_path, monkeypatch):
+    use_fake(monkeypatch)
+    heard: list[int] = []
+    prompt = nustd.acp.AcpFabric.prompt
+
+    def counted(self, session_id, text):
+        heard.append(len(self._sessions[session_id].subscribers))
+        return prompt(self, session_id, text)
+
+    monkeypatch.setattr(nustd.acp.AcpFabric, "prompt", counted)
+    e = await start(store, str(tmp_path))
+    try:
+        await e.turn(await e.ask("hello"))
+        assert heard == [1]
+    finally:
+        await e.stop()
+
+
+async def test_a_failed_turn_ends_with_its_error_and_the_run_goes_on(store, tmp_path, monkeypatch):
+    use_fake(monkeypatch)
+    e = await start(store, str(tmp_path))
+    try:
+        pid = await e.ask("fail")
+        turn = await e.turn(pid)
+        assert "Internal error (-32603)" in turn["error"]
+        assert "stop_reason" not in turn
+        held = await entries(store, e.plane)
+        assert _texts(held) == [("user", "fail"), ("agent", "partial"), ("notice", turn["error"])]
+        assert await store.read(agents.session(e.plane).status) == "error"
+        assert (await e.turn(await e.ask("hello")))["stop_reason"] == "end_turn"
+        await e.status("idle")
+    finally:
+        await e.stop()
+
+
+async def test_what_comes_between_turns_folds_into_no_turn(store, tmp_path, monkeypatch):
+    use_fake(monkeypatch)
+    e = await start(store, str(tmp_path))
+    try:
+        pid = await e.ask("aside")
+        await e.turn(pid)
+        await until(store, nu.Int(nu.Len(agents.trace(e.plane).entries.keys())), lambda n: n == 2)
+        held = await entries(store, e.plane)
+        assert [(x["kind"], x["turn"]) for x in held] == [("user", f"turn:{pid}"), ("agent", "")]
+        assert held[1]["text"] == "aside"
+    finally:
+        await e.stop()
+
+
 async def test_a_permission_waits_for_its_answer(store, tmp_path, monkeypatch):
     use_fake(monkeypatch)
     e = await start(store, str(tmp_path))
