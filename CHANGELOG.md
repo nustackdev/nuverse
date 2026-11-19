@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nuverse 0.3.13, nulog 0.2.8, nudemos 0.1.10 on nu 0.9.0 and nuspace 0.8.0
 - Agent planes run Claude Code or Codex over ACP and keep going with pages closed
 - An agent chat cell talks to a coding agent, second in the cell menu
 - Tests follow nuspace's moved store layout and the session env's address callable

@@ -71,7 +71,7 @@ if TYPE_CHECKING:
     from nuspace.specs import Extension
 
 
-__version__ = "0.2.7"
+__version__ = "0.2.8"
 
 __all__ = [
     "CRITICAL",
