@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
+import sys
 
 import pytest
 from _support.made import MADE
@@ -134,3 +136,17 @@ async def test_installed_needs_npx_and_the_cli(monkeypatch, store):
     assert await store.read(agents.installed()) == ["claude", "codex"]
     on_path.discard("npx")
     assert await store.read(agents.installed()) == []
+
+
+def test_nuverse_loads_without_the_acp_sdk():
+    """The agent cell and plane are offered with no ACP SDK: the cell says so, nothing fails to load."""
+    script = (
+        "import sys; sys.modules['acp'] = None\n"
+        "import nuverse; nuverse.extension()\n"
+        "from nuverse import agents; print(sorted(agents.PRESETS))\n"
+    )
+    done = subprocess.run(  # noqa: S603 - our own interpreter on a fixed script
+        [sys.executable, "-c", script], capture_output=True, text=True, check=False
+    )
+    assert done.returncode == 0, done.stderr
+    assert "claude" in done.stdout

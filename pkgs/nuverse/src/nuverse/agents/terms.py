@@ -30,7 +30,6 @@ from nuspace.shapes import ROOT, Space
 from nuspace.specs import add_plane
 from nuspace.utils import MintId
 from nuspace.utils.checks import refuse
-from nustd.acp.presets import CLAUDE, CODEX
 from nuverse.planes.agent import PLANE
 
 from .shapes import ASLEEP, asks_of, session_of, spec_of, trace_of
@@ -57,8 +56,8 @@ __all__ = [
 #: time with the Spec's ``cwd`` and ``permissions="ask"``: the trace shows each
 #: request and a person answers it.
 PRESETS: dict[str, dict[str, object]] = {
-    "claude": {"command": list(CLAUDE)},
-    "codex": {"command": list(CODEX)},
+    "claude": {"command": list(nustd.acp.CLAUDE)},
+    "codex": {"command": list(nustd.acp.CODEX)},
 }
 
 #: The CLI each preset's adapter drives, which must be on PATH beside ``npx``.
