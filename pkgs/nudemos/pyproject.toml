@@ -23,10 +23,6 @@ mnist = [
 memes = [
     "nustd[http]",
 ]
-# The agents demo drives Claude Code through nustd.cc, on the local claude login.
-agents = [
-    "nustd[cc]",
-]
 # The design demo draws its release PNGs with Pillow and numpy.
 design = [
     "pillow",

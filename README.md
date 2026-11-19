@@ -18,7 +18,7 @@
 
 nuverse is everything you can add to your [nuspace](https://github.com/nustackdev/nuspace): whole spaces to open and use, and the pieces your own spaces are built from.
 
-- **Spaces**: full apps, ready to open. A movie tracker, a team of agents, a live meme market, a model you train and steer mid-run.
+- **Spaces**: full apps, ready to open. A movie tracker, a live meme market, a model you train and steer mid-run.
 - **Extensions**: new kinds of planes and cells. Tables, charts, forms, sliders, jobs, workers.
 
 Install a package and it shows up in your space, nothing to wire up. Build your own and it lives there like everything else.
@@ -26,8 +26,7 @@ Install a package and it shows up in your space, nothing to wire up. Build your 
 | Package | What |
 | --- | --- |
 | [nuverse](pkgs/nuverse) | The everyday planes and cells: runs, jobs and workers planes; tables, lenses, tickers, inputs |
-| [nudemos](pkgs/nudemos) | Ready-made spaces: a tour, a counter, a film base, MNIST trained live, a live meme market, Claude Code agents |
-| [nuagent](pkgs/nuagent) | Agents that answer in nu: the loop, Claude Code and LLM backends, a Chat plane |
+| [nudemos](pkgs/nudemos) | Ready-made spaces: a tour, a counter, a film base, MNIST trained live, a live meme market |
 | [nulog](pkgs/nulog) | Serverless logger and metrics store, with Log planes to watch it live |
 
 ## Install
@@ -37,7 +36,6 @@ nuverse comes with nuspace. Every other package installs on its own and brings n
 ```bash
 pip install nuspace          # a space, with nuverse's everyday planes and cells
 pip install nudemos          # demos
-pip install "nuagent[space,cc]"  # a Chat plane with LLMs and Claude Code support
 pip install "nulog[space]"   # a logger, and planes to watch it
 ```
 

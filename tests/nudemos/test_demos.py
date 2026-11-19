@@ -15,7 +15,6 @@ import nu.prog
 import nuspace
 import nustd.kv
 from nudemos import (
-    agents,
     counter,
     data,
     design,
@@ -56,9 +55,7 @@ def _every_cell(spec: PlaneSpec) -> list[tuple[str, str]]:
 #: built as the kernel builds them.
 KEYED = [ops, research, data]
 KEYED_SOURCES = list(
-    dict.fromkeys(
-        s for m in (*KEYED, agents, recipes, design, knowledge) for _, s in _every_cell(m.PLANE)
-    )
+    dict.fromkeys(s for m in (*KEYED, recipes, design, knowledge) for _, s in _every_cell(m.PLANE))
 )
 
 
@@ -139,7 +136,6 @@ def test_discovery_finds_the_tour_and_the_demos():
         "nudemos.movies",
         "nudemos.mnist",
         "nudemos.memes",
-        "nudemos.agents",
         "nudemos.knowledge",
         "nudemos.research",
         "nudemos.design",
@@ -164,7 +160,7 @@ def test_the_extension_loads_without_its_extras():
         [sys.executable, "-c", script], capture_output=True, text=True, timeout=60
     )
     assert done.returncode == 0, done.stderr
-    assert done.stdout.strip() == "13"
+    assert done.stdout.strip() == "12"
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.name)
@@ -191,7 +187,7 @@ def test_the_tour_nests_the_demos():
 def test_demos_meant_once_per_space_are_keyed_by_package():
     keys = [m.PLANE.key for m in KEYED]
     assert keys == ["nudemos_ops", "nudemos_research", "nudemos_data"]
-    assert all(not m.PLANE.key for m in (*DEMOS, tour, agents, recipes))
+    assert all(not m.PLANE.key for m in (*DEMOS, tour, recipes))
 
 
 # --- creating them ---------------------------------------------------------------------------
