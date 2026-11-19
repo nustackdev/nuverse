@@ -46,7 +46,7 @@ wakes it again. A failed turn the Agent answered (a JSON-RPC error, which
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import nu
 import nuspace
@@ -184,24 +184,24 @@ def _text(item: nu.Nu) -> nu.Str:
     return nu.Str(nu.If(kind == "text", nu.Str(block.get_item("text", "")), "\n[" + kind + "]\n"))
 
 
-def _sent(item: object) -> dict[str, Any]:
-    """The tool fields an item sends, those it leaves out or sends null left out."""
-    held = item if isinstance(item, dict) else {}
-    return {f: held[f] for f in _TOOL_FIELDS if held.get(f) is not None}
-
-
-ToolSent = nu.host(_sent, name="ToolSent")
-
-
 def _tool(item: nu.Nu) -> nu.Dict:
-    """A new tool entry's ``tool``: the defaults, under what the item sends."""
-    defaults = nu.Dict.of(
+    """A new tool entry's ``tool`` before the item's own fields land on it: the defaults."""
+    return nu.Dict.of(
         tool_call_id=nu.Str(_get(item, "tool_call_id", "")),
         title="",
         kind="other",
         status="pending",
     )
-    return defaults.merge(ToolSent(item))
+
+
+def _patched(tool: nu.Nu, item: nu.Nu) -> nu.Nu:
+    """Each tool field ``item`` sends lands on ``tool``; one it leaves out or sends null is kept."""
+    return nu.Sequential(
+        *(
+            nu.IfDo(nu.Not(nu.Object(_get(item, f)).is_(None)), tool.set_item(f, _get(item, f)))
+            for f in _TOOL_FIELDS
+        )
+    )
 
 
 def _permission(item: nu.Nu) -> nu.Dict:
@@ -216,58 +216,45 @@ def _permission(item: nu.Nu) -> nu.Dict:
     )
 
 
-def _restore_mode(init: object) -> str:
+def _restore_mode(init: nu.Nu) -> nu.Str:
     """How the Agent restores a stored Session: ``resume``, ``load``, or ``""`` for neither."""
-    caps = (init or {}).get("agent_capabilities") or {} if isinstance(init, dict) else {}
-    if (caps.get("session_capabilities") or {}).get("resume") is not None:
-        return "resume"
-    if caps.get("load_session"):
-        return "load"
-    return ""
+    caps = _get(init, "agent_capabilities", nu.Dict.create())
+    resume = _get(_get(caps, "session_capabilities", nu.Dict.create()), "resume")
+    load = nu.Bool(_get(caps, "load_session", False))
+    return nu.Str(nu.If(nu.Not(nu.Object(resume).is_(None)), "resume", nu.If(load, "load", "")))
 
 
-def _exception(err: object) -> BaseException:
-    """The exception a catch caught, or the one a failed turn's end carries."""
-    if isinstance(err, BaseException):
-        return err
-    exc = getattr(err, "exception", None)
-    return exc if isinstance(exc, BaseException) else RuntimeError(str(err))
+def _code(exc: nu.Nu) -> nu.Nu:
+    """An ``AcpError``'s JSON-RPC code: None when the connection itself failed."""
+    return nu.Object(nu.GetAttr(exc, "code", None))
 
 
-def _recoverable(err: object) -> bool:
-    """Restoring failed in a way a new Session answers: not found, or not offered."""
-    exc = _exception(err)
-    return isinstance(exc, AcpError) and exc.code in _RESTORE_FALLBACK
+def _caught(err: nu.Nu) -> nu.Nu:
+    """The exception a catch caught, as a failed turn's end carries it."""
+    return nu.GetAttr(err, "exception")
 
 
-def _lost(err: object) -> bool:
-    """The connection to the Agent is gone, not just the request."""
-    exc = _exception(err)
-    return isinstance(exc, AcpError) and exc.code is None
-
-
-def describe(exc: BaseException, agent: str) -> str:
-    """What a person reads when the engine fails: what happened, and what to do about it."""
-    if isinstance(exc, AcpError):
-        if exc.code == _AUTH_REQUIRED:
-            how = _LOGIN.get(agent, f"log {agent} in")
-            return f"The agent is not logged in: {how}, then ask again."
-        if exc.method == "spawn":
-            return (
-                f"The agent could not start ({exc}). It runs through npx: install Node.js"
-                f" and make sure npx and {CLIS.get(agent, agent)} are on PATH."
-            )
-    return str(exc) or type(exc).__name__
-
-
-def _describe(err: object, agent: object) -> str:
-    return describe(_exception(err), str(agent or ""))
-
-
-RestoreMode = nu.host(_restore_mode, name="RestoreMode")
-Recoverable = nu.host(_recoverable, name="Recoverable")
-Lost = nu.host(_lost, name="Lost")
-Describe = nu.host(_describe, name="Describe")
+def describe(exc: nu.Nu, agent: nu.StrArg) -> nu.Str:
+    """What a person reads when the engine fails on ``exc``: what happened, and what to do about it."""
+    name = nu.Str(agent)
+    said = nu.str(exc)
+    login = nu.Str(nu.Switch(name, _LOGIN, default=nu.Str("log ") + name + " in"))
+    cli = nu.Str(nu.Switch(name, CLIS, default=name))
+    spawn = (
+        nu.Str("The agent could not start (")
+        + said
+        + "). It runs through npx: install Node.js and make sure npx and "
+        + cli
+        + " are on PATH."
+    )
+    other = nu.If(said == "", nu.GetAttr(nu.GetAttr(exc, "__class__"), "__name__"), said)
+    return nu.Str(
+        nu.If(
+            _code(exc) == _AUTH_REQUIRED,
+            nu.Str("The agent is not logged in: ") + login + ", then ask again.",
+            nu.If(nu.Object(nu.GetAttr(exc, "method", None)) == "spawn", spawn, other),
+        )
+    )
 
 
 # --- entries --------------------------------------------------------------------------------------
@@ -349,24 +336,26 @@ def _chunk(plane: str, u: nu.Nu, kind: str) -> nu.Nu:
 def _tool_entry(plane: str, u: nu.Nu, *, create: bool) -> nu.Nu:
     """A tool call: a new tool entry, or an update patching only the fields it sends."""
     entries = trace_of(plane).entries
+    sent = nu.Str(_get(u, "status", ""))
 
     def held(got: nu.ObjectRef) -> nu.Nu:
         key = nu.Str(got)
-        sent = nu.Str(nu.Dict(ToolSent(u)).get_item("status", ""))
+        tool = entries[key].tool
 
         def track(status: nu.Str) -> nu.Nu:
             open_ = (status == _OPEN_TOOL[0]).or_(status == _OPEN_TOOL[1])
             closed = nu.IfDo(status != "", _Open.tools.del_item(key, missing_ok=True))
             return nu.IfDo(open_, _Open.tools.set_item(key, True), closed)
 
-        made = _starts(plane, key, "tool", tool=_tool(u)) >> track(nu.Str(_tool(u)["status"]))
+        made = _starts(plane, key, "tool", _patched(tool, u), tool=_tool(u)) >> track(
+            nu.Str(nu.If(sent == "", "pending", sent))
+        )
         if create:
             return made
-        patch = nuspace.atomic(entries[key].tool.update(ToolSent(u))) >> track(sent)
+        patch = nuspace.atomic(_patched(tool, u)) >> track(sent)
         return nu.IfDo(nuspace.atomic(entries.contains(key)), patch, made)
 
-    tid = nu.Str(nu.Dict(u).get_item("tool_call_id", ""))
-    return nu.let(nu.Str("tool:") + tid, held)
+    return nu.let(nu.Str("tool:") + nu.Str(_get(u, "tool_call_id", "")), held)
 
 
 def _permission_entry(plane: str, u: nu.Nu) -> nu.Nu:
@@ -449,31 +438,44 @@ def _ended(plane: str, slot: str, value: nu.StrArg, *also: nu.Nu) -> nu.Nu:
     """The running turn ends with ``slot`` (``stop_reason`` or ``error``) set to ``value``.
 
     Its text is written, its open tools and permissions are ``cancelled``,
-    and ``also`` lands in the same commit. Then nothing is open.
+    and ``also`` lands in the same commit. What is open is taken from the
+    memory and the memory cleared first, so once the turn's end is in the
+    trace nothing of it is open here any more: the trace alone says a turn
+    is over.
     """
     entries, turns = trace_of(plane).entries, trace_of(plane).turns
-    turn = turns[_Run.turn]
-    tools = nu.ForEachDo(
-        nu.list(_Open.tools.keys()),
-        lambda k: entries[nu.Str(k)].tool.set_item("status", "cancelled"),
+    open_ = nu.Dict.of(
+        turn=_Run.turn,
+        key=_Open.key,
+        text=_Open.text,
+        tools=nu.list(_Open.tools.keys()),
+        perms=nu.list(_Run.perms.keys()),
     )
-    commit = nuspace.atomic(
-        nu.Sequential(
-            _flush(plane),
-            tools,
-            _cancel_permissions(plane),
-            turn.ended_at.set(now_ms()),
-            getattr(turn, slot).set(value),
-            *also,
+
+    def close(got: nu.ObjectRef) -> nu.Nu:
+        held = nu.Dict(got)
+        key, turn = nu.Str(held["key"]), turns[nu.Str(held["turn"])]
+        tools = nu.ForEachDo(
+            held["tools"], lambda k: entries[nu.Str(k)].tool.set_item("status", "cancelled")
         )
-    )
-    return (
-        commit
-        >> _Open.key.set("")
-        >> _Open.tools.clear()
-        >> _Run.perms.clear()
-        >> _Run.turn.set("")
-    )
+        perms = nu.ForEachDo(
+            held["perms"],
+            lambda k: entries[nu.Str(k)].permission.set_item("outcome", "cancelled"),
+        )
+        commit = nuspace.atomic(
+            nu.Sequential(
+                nu.IfDo(key != "", entries[key].text.set(held["text"])),
+                tools,
+                perms,
+                turn.ended_at.set(now_ms()),
+                getattr(turn, slot).set(value),
+                *also,
+            )
+        )
+        forget = _Open.key.set("") >> _Open.tools.clear() >> _Run.perms.clear() >> _Run.turn.set("")
+        return forget >> commit
+
+    return nu.let(open_, close)
 
 
 def _turn_failed(plane: str, error: nu.Nu) -> nu.Nu:
@@ -490,7 +492,7 @@ def _turn_failed(plane: str, error: nu.Nu) -> nu.Nu:
 
         return _minted("notice", told)
 
-    return nu.let(Describe(error, _Run.agent), held)
+    return nu.let(describe(error, _Run.agent), held)
 
 
 def _begin(plane: str, pid: nu.Str, text: nu.Str) -> nu.Nu:
@@ -532,7 +534,7 @@ def _updates(plane: str, s: nustd.acp.SessionRef) -> nu.Nu:
     """
 
     def gone(err: nu.Nu) -> nu.Nu:
-        message = nu.Str(Describe(err, _Run.agent))
+        message = describe(_caught(err), _Run.agent)
         return nu.IfDo(_Run.turn != "", _ended(plane, "error", message)) >> nu.Raise(err)
 
     return _folding(plane, s.updates(), gone)
@@ -575,12 +577,11 @@ def _turns(plane: str, s: nustd.acp.SessionRef, idle: float) -> nu.Nu:
             drained = nu.TryCatch(
                 nu.ForEachDo(s.prompt(text), lambda _: nu.Noop()),
                 errors=AcpError,
-                catch=lambda err: nu.IfDo(Lost(err), nu.Park()),
+                catch=lambda err: nu.IfDo(nu.Object(_code(_caught(err))).is_(None), nu.Park()),
             )
+            ended = trace_of(plane).turns[nu.Str("turn:") + pid].ended_at
             folded = nu.WaitUntil(
-                nuspace.atomic(trace_of(plane).turns[nu.Str("turn:") + pid].ended_at.on_change()),
-                _Run.turn == "",
-                **_RECHECK,
+                nuspace.atomic(ended.on_change()), nuspace.atomic(ended.exists()), **_RECHECK
             )
             return _begin(plane, pid, text) >> drained >> folded
 
@@ -678,9 +679,13 @@ def _open(plane: str) -> nu.Nu:
         return nu.SwitchDo(nu.Str(mode), {"resume": resume, "load": load}, default=fresh())
 
     restored = nu.TryCatch(
-        nu.let(RestoreMode(AGENT.initialization()), restore),
+        nu.let(_restore_mode(AGENT.initialization()), restore),
         errors=AcpError,
-        catch=lambda err: nu.IfDo(Recoverable(err), fresh(), nu.Raise(err)),
+        catch=lambda err: nu.IfDo(
+            nu.Contains(nu.Literal(list(_RESTORE_FALLBACK)), _code(_caught(err))),
+            fresh(),
+            nu.Raise(err),
+        ),
     )
     return nu.IfDo(_Run.session_id == "", new(), restored)
 
@@ -804,7 +809,7 @@ def _failed(plane: str, err: nu.Nu) -> nu.Nu:
 
         return _minted("notice", told) >> nu.Raise(err)
 
-    return nu.let(Describe(err, _Run.agent), held)
+    return nu.let(describe(_caught(err), _Run.agent), held)
 
 
 def _claim(plane: str, won: nu.ObjectRef) -> nu.Nu:
