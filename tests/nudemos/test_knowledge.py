@@ -263,7 +263,7 @@ async def test_a_doc_page_links_the_pages_the_base_made(store) -> None:
     pages = await store.read(kit.base_at("k").planes.extract())
     pricing = pages["doc"]["pricing"]
     cell = await store.read(nuspace.at.plane(id=pricing).state(SpecCells).ids["page"])
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     load = Space.cells[cell].prog.load(scope={"plane": pricing, "cell": cell}, rewrite=env.rewrite)
     term = nuspace.places.inside(await store.run(nuspace.atomic(load)), plane=pricing, cell=cell)
     browser = Browser()

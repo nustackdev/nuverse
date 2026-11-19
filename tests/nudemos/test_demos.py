@@ -104,7 +104,7 @@ async def _cells(store, plane: str) -> dict:
 
 async def _load(store, plane: str, cell: str) -> nu.Nu:
     """The cell's program, loaded as the kernel loads it, through a session's rewrite."""
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=env.rewrite)
     return await store.read(load)
 

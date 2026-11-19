@@ -91,7 +91,7 @@ async def _names(store, plane: str) -> list[str]:
 
 async def _run(store, plane: str, cell: str, browser: _Browser) -> asyncio.Task:
     """The cell's program run as the kernel runs it, inside its ``Here`` frame."""
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=env.rewrite)
     term = nuspace.places.inside(await store.run(nuspace.atomic(load)), plane=plane, cell=cell)
     return asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))

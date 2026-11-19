@@ -142,7 +142,7 @@ def _state(cell: str, shape: type) -> object:
 
 async def _load(store, plane: str, cell: str) -> nu.Nu:
     """The cell's program, loaded through the session env's rewrite, as a cell run loads it."""
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     prog = Space.cells[cell].prog
     load = prog.load(scope={"plane": plane, "cell": cell}, rewrite=Rewrites(env.rewrite))
     return await store.run(nuspace.atomic(load))

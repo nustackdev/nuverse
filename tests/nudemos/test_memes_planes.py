@@ -108,7 +108,7 @@ async def _kids(store, plane: str) -> list[str]:
 async def _drive(store, plane: str, cell: str, quiet: float = 0.25, most: float = 8.0) -> _Browser:
     """Run the cell as the kernel would till it draws and goes quiet, then cancel it. Raises what it raised."""
     browser = _Browser()
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     load = Space.cells[cell].prog.load(scope={"plane": plane, "cell": cell}, rewrite=env.rewrite)
     term = nuspace.places.inside(await store.run(nuspace.atomic(load)), plane=plane, cell=cell)
     task = asyncio.create_task(nu.arun(term, store.ctx.bind(Session, browser)))

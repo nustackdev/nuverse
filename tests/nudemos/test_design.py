@@ -221,7 +221,7 @@ async def test_the_first_open_seeds_once(store):
 
     await _design(store)
     cell = await store.read(nuspace.at.plane(id="d").state(SpecCells).ids["welcome"])
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     load = Space.cells[cell].prog.load(scope={"plane": "d", "cell": cell}, rewrite=env.rewrite)
     s = kit.system("d")
 
