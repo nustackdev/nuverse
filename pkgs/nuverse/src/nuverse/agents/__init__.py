@@ -12,8 +12,8 @@ It sleeps after an idle timeout; the next ask wakes it.
 - :mod:`.terms`: what callers use, ``add``, ``ask``, ``cancel``,
   ``answer``, ``installed``, and the readers.
 
-Nothing here imports the ACP SDK: it rides the ``nuverse[agents]`` extra,
-and only the engine needs it, on the worker that runs it.
+Nothing here imports the ACP SDK at load: nuverse depends on it, but only
+the engine uses it, on the worker that runs it.
 """
 
 from __future__ import annotations

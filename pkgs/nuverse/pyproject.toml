@@ -13,12 +13,9 @@ requires-python = ">=3.10"
 # No nuspace here: nuspace depends on nuverse, not the other way round.
 # nuverse is a plugin the host installs. It imports nuspace, which is always
 # there when it loads, and nuspace finds it only through the entry point
-# below, the same one a third party uses.
-dependencies = []
-
-[project.optional-dependencies]
-# Agent chat: a coding agent (Claude Code, Codex) driven over ACP.
-agents = ["nustd[acp]"]
+# below, the same one a third party uses. The ACP SDK comes along: agent
+# planes and the chat cell are part of nuverse, driving Claude Code or Codex.
+dependencies = ["nustd[acp]"]
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"

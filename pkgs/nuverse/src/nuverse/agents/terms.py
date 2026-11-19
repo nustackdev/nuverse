@@ -235,6 +235,6 @@ Installed = nu.host(_installed, name="Installed")
 def installed() -> nu.Nu:
     """Which agents this machine can run, in :data:`CLIS` order: ``npx`` and the agent's CLI on PATH.
 
-    Empty without the ACP SDK (the ``nuverse[agents]`` extra). A read.
+    Empty without the ACP SDK, which nuverse depends on. A read.
     """
     return Installed()

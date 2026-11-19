@@ -189,7 +189,7 @@ class View(nu.Shape):
     )
     no_sdk = nustd.ui.EmptyStateRef.slot(
         label="Agent support not installed",
-        description="Install nuverse with the agents extra (the ACP SDK), then add this cell again.",
+        description="The ACP SDK nuverse depends on is missing: reinstall nuverse, then add this cell again.",
         icon="bot",
         size="sm",
     )
