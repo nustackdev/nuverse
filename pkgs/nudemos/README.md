@@ -10,8 +10,8 @@ The Nu demos as [nuspace](https://github.com/nustackdev/nuspace) Planes `+` crea
 - **Design**: the nustack design system as one live spec: tokens, the mark, a component gallery, mocks and contrast checks all drawn from it, teammates proposing changes, and releases cut by a job that draws the assets. Needs the `design` extra.
 - **Ops**: a storefront run from a space: a real HTTP server and shoppers, scheduled jobs, logs, deploys, incidents, runbooks and alert rules written in a few lines. Needs the `ops` extra.
 - **Data**: a coffee roaster's books as live dashboards: orders streaming in, a million web events queried in milliseconds, exports loaded by a job, a forecast that follows every price. Needs the `data` extra.
-- **Research**: an LLM research desk: real papers weighed against claims, our own small evals on Claude, and a probe that keeps asking. Needs the `research` extra and a logged-in `claude` CLI.
-- **Knowledge**: a team wiki and handbook where pages query the base, facts are cited everywhere, meeting notes write themselves and Claude answers from the whole base. Needs the `knowledge` extra and a logged-in `claude` CLI.
+- **Research**: an LLM research desk: real papers weighed against claims, our own small evals on Claude, and a probe that keeps asking. Needs the `research` extra, Node and a Claude login.
+- **Knowledge**: a team wiki and handbook where pages query the base, facts are cited everywhere, meeting notes write themselves and Claude answers from the whole base. Needs the `knowledge` extra, Node and a Claude login.
 - **Nu demos**: all three at once, nested under one plane.
 
 ```

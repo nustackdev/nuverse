@@ -172,10 +172,9 @@ def asking(probe: dict | None, ask: dict) -> dict:
 RUN = """\
 import nu
 import nuspace
-import nustd.cc
 import nustd.time
 from nudemos.research import evals, job
-from nudemos.research.claude import Claude, options
+from nudemos.research.claude import ask, bind
 from nudemos.research.kit import DESK
 
 #: The run, baked in at launch. The desk is found by its key, the run's page in it.
@@ -198,7 +197,7 @@ def one(qid):
 
     def asked(t0):
         took = lambda r: kept(lambda run: answered(run, q, r, nustd.time.time() - nu.Float(t0)))
-        return nu.TryCatch(nu.let(Claude.ask(prompt(q, RUN["context"])), took), catch=lambda e: kept(lambda run: failed(run, q, nu.Str(e))))
+        return nu.TryCatch(nu.let(ask(prompt(q, RUN["context"]), RUN["model"], evals.SYSTEM[RUN["style"]]), took), catch=lambda e: kept(lambda run: failed(run, q, nu.Str(e))))
 
     return nu.let(nustd.time.time(), asked)
 
@@ -214,7 +213,7 @@ def out(cell):
         kept(started) >> icon("lucide:timer") >> nu.ForEachDo(nuspace.atomic(todo(ME.fallback({}))), one)
         >> kept(finished) >> icon("lucide:chart-column")
     )
-    asking = nu.With(nustd.cc.bind(Claude, **options(RUN["model"], evals.SYSTEM[RUN["style"]])), body=work)
+    asking = nu.With(bind(), body=work)
     return nu.IfDo(done, nu.Noop(), asking)
 """
 
@@ -222,10 +221,9 @@ def out(cell):
 PROBE = """\
 import nu
 import nuspace
-import nustd.cc
 import nustd.time
 from nudemos.research import evals, job
-from nudemos.research.claude import Claude, options
+from nudemos.research.claude import ask as claude, bind
 from nudemos.research.kit import DESK
 
 due, probe_next, probed, asking = nu.host(job.due), nu.host(job.probe_next), nu.host(job.probed), nu.host(job.asking)
@@ -251,7 +249,7 @@ def ask():
             write = lambda v: DESK.probe.set(nu.Dict(v)["probe"]) >> DESK.probes.set(nu.Dict(v)["probes"])
             return nuspace.atomic(nu.let(after, write))
 
-        reply = nu.TryCatch(Claude.ask(prompt(ask["q"], ask["context"])), catch=lambda e: nu.Dict.of(text=nu.Str("Error: ") + nu.Str(e)))
+        reply = nu.TryCatch(claude(prompt(ask["q"], ask["context"]), job.PROBE_MODEL, evals.SYSTEM["direct"]), catch=lambda e: nu.Dict.of(text=nu.Str("Error: ") + nu.Str(e)))
         return mark >> nu.let(reply, landed)
 
     nxt = nuspace.atomic(probe_next(DESK.probe.fallback({})))
@@ -259,8 +257,7 @@ def ask():
 
 
 def out(cell):
-    bound = nustd.cc.bind(Claude, **options(job.PROBE_MODEL, evals.SYSTEM["direct"]))
-    return nu.With(bound, body=nu.ForeverDo(wait() >> ask()))
+    return nu.With(bind(), body=nu.ForeverDo(wait() >> ask()))
 """
 
 
