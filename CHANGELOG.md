@@ -2,6 +2,8 @@
 
 The full commit stream, every package. Newest first.
 
+- Agent planes run Claude Code or Codex over ACP and keep going with pages closed
+- An agent chat cell talks to a coding agent, second in the cell menu
 - Tests follow nuspace's moved store layout and the session env's address callable
 - Research and knowledge demos ask Claude Code over ACP, now nustd.cc is gone
 - Demo resources and the log store viewer open on nu's bracket and fabric bases

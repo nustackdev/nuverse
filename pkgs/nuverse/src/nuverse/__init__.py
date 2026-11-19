@@ -3,7 +3,9 @@
 - :mod:`.planes`: what ``+`` creates beside nuspace's empty plane: ``quickstart``,
   ``jobs``, ``runs``, ``workers``, ``planes``.
 - :mod:`.cells`: what ``/`` inserts, one module each, by category:
-  prose, media, inputs, planes, items, lenses, examples.
+  prose, agents, media, inputs, planes, items, lenses, examples.
+- :mod:`.agents`: a coding agent run on a headless plane, which the
+  agents cells view.
 - :mod:`.contents`: the content kinds the Cells keep their findable data
   in, Text, Number, Flag, Date, Row and File.
 
@@ -33,6 +35,7 @@ def extension() -> Extension:
     """
     from nuspace.specs import Extension
 
+    from .cells.agents import chat
     from .cells.debugging import (
         cell_content_lens,
         cell_lens,
@@ -62,6 +65,7 @@ def extension() -> Extension:
     cells = (
         text_editor,
         table,
+        chat,
         image,
         video,
         audio,
