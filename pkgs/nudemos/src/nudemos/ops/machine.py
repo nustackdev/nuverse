@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import nu
+
 
 __all__ = ["Machine"]
 
@@ -48,7 +50,7 @@ def _proc(pid: int) -> tuple[float, float, float] | None:
     )
 
 
-class Machine:
+class Machine(nu.Fabric):
     """Reads the box and the jobs' processes; remembers the last read to make rates of it."""
 
     def __init__(self) -> None:

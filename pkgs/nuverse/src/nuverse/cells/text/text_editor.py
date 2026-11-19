@@ -34,6 +34,8 @@ def _edit(item: Text) -> nu.Nu:
             # This tab typed: keep it. Every other tab, and every program
             # reading the text, hears it through the store.
             nu.ReactEvery(body.on_change(), text.set(nu.Str(body))),
+            # The send key (shift+Enter): keep the text it sent, as typed.
+            nu.ReactEvery(body.on_submit(), lambda sub: text.set(nu.Str(sub["value"]))),
             # Somebody else typed, or a program set it: show it. The echo
             # back to the author is a no-op, the text is already what it says.
             nu.ReactEvery(text.on_change(), body.set(nu.str(text))),

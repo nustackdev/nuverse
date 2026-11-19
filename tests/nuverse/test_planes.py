@@ -151,7 +151,7 @@ def _page(pid: str, title: str, icon: str = "file-text") -> dict:
 
 def _columns(table: nu.Nu) -> list[str]:
     """A table's declared column keys."""
-    return [c["key"] for c in table._payload["props"]["columns"]]
+    return [c["key"] for c in table._props["columns"]]
 
 
 # --- runs and workers --------------------------------------------------------------------

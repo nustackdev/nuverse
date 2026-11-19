@@ -937,7 +937,7 @@ def out(plane):
         return nu.Sequential(*(launch(base, s, c, i) for i, (s, c) in enumerate(arms)))
 
     if not READY:
-        return about.set("**Runs need the Claude Agent SDK.** Install the `cc` extra of nustd.") >> nu.ForeverDo(nu.Delay(3600.0))
+        return about.set("**Runs need the ACP SDK.** Install the `acp` extra of nustd, and Node for Claude Code.") >> nu.ForeverDo(nu.Delay(3600.0))
     shown = model.init() >> style.init() >> context.init() >> one.init() >> four.init() >> note.set("Runs go on the leaderboard below as they start.")
     return about.set(ABOUT) >> shown >> kit.on_desk(plane, lambda base: nu.ParallelAsync(
         nu.ReactEvery(one.on_click(), run_one(base)),

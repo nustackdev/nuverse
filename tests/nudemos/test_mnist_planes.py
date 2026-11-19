@@ -57,7 +57,7 @@ async def test_each_cell_loads_through_the_kernel_rewrites(store, name):
     source = SOURCES[name]
     await store.do(nuspace.plane.add("p", backend="async"))
     await store.do(nuspace.cell.add("p", source, id="c"))
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     load = Space.cells["c"].prog.load(scope={"plane": "p", "cell": "c"}, rewrite=env.rewrite)
     term = await store.run(nuspace.atomic(load))
     assert isinstance(term, nu.Nu)

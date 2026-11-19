@@ -23,10 +23,6 @@ mnist = [
 memes = [
     "nustd[http]",
 ]
-# The agents demo drives Claude Code through nustd.cc, on the local claude login.
-agents = [
-    "nustd[cc]",
-]
 # The design demo draws its release PNGs with Pillow and numpy.
 design = [
     "pillow",
@@ -40,12 +36,13 @@ ops = [
 data = [
     "numpy",
 ]
-# The research and knowledge demos ask Claude through nustd.cc, on the local claude login.
+# The research and knowledge demos ask Claude Code over ACP (nustd.acp), on the local
+# Claude login; the adapter runs through npx, so Node must be on PATH.
 research = [
-    "nustd[cc]",
+    "nustd[acp]",
 ]
 knowledge = [
-    "nustd[cc]",
+    "nustd[acp]",
 ]
 
 [project.urls]

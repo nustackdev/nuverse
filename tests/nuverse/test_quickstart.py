@@ -396,13 +396,12 @@ async def test_where_next_draws_a_card_per_demo_and_two_link_tiles(store):
         name: [p[2] for p in seen if p[:2] == ("where", name) and len(p) == 3]
         for name in ("demos", "links")
     }
-    assert places == {"demos": ["0", "1", "2"], "links": ["0", "1"]}
+    assert places == {"demos": ["0", "1"], "links": ["0", "1"]}
     labels = _texts(frames)
     for words in (
         "Where next",
         "Make a page",
         "Your personal movie tracker.",
-        "A team of agents, run from one space.",
         "Pages to poke at",
         "https://nustack.dev/docs/nuspace",
         "https://discord.gg/tCa8YE7XVr",

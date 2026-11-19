@@ -38,13 +38,6 @@ __all__ = [
 ]
 
 
-def _literal_value(term: nu.Nu) -> object | nu.Nu:
-    """Return the Python value if ``term`` is a ``Literal``, else the term."""
-    if isinstance(term, nu.Literal):
-        return term._payload.get("value")
-    return term
-
-
 def from_std_logging(tree: nu.Nu) -> nu.Nu:
     """Swap every ``nustd.logging.Log`` in ``tree`` for a persistent write.
 
@@ -57,15 +50,13 @@ def from_std_logging(tree: nu.Nu) -> nu.Nu:
         if not isinstance(node, nustd.logging.Log):
             return node
 
-        # Log children: [LOGGING, level, logger, msg, *args].
-        # Slot 0 is the fabric ref -- dropped by the persistent path.
+        # Log children: [LOGGING, level, logger, msg, *args, extra].
+        # Slot 0 is the fabric ref, dropped by the persistent path. Every
+        # other child is carried over as a term and runs at write time:
+        # never looked into. extra is always last, a DictOf or any Nu.
         children = cast("tuple[nu.Nu, ...]", node._children)
-        level = _literal_value(children[1])
-        stream = _literal_value(children[2])
-        msg: object | nu.Nu = _literal_value(children[3])
-        args: tuple[nu.Nu, ...] = tuple(children[4:])
-        extra = cast("dict[str, object] | None", node._payload.get("extra")) or None
-
-        return append(stream, level, msg, args, extra)
+        level, stream, msg = children[1], children[2], children[3]
+        args: tuple[nu.Nu, ...] = tuple(children[4:-1])
+        return append(stream, level, msg, args, children[-1])
 
     return nu.tree.map_nodes(tree, _rewrite, order="bottom_up")

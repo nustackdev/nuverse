@@ -1,19 +1,19 @@
 """Ask Larkspur: a question answered by Claude from the base as it is now, citing its pages.
 
-One prompt, one ``claude`` process (``nustd.cc``), no tools: the whole base
+One prompt, one Claude Code session over ACP (``nustd.acp``), no tools: the whole base
 goes in the prompt (each page with its facts filled in, tasks with their
 dates), and the answer cites pages as ``[[slug]]``, drawn as links here like
 any page. Ask again after a fact changes and the answer follows the fact.
 
-Importing :data:`Asker` needs the ``claude-agent-sdk`` package; the Ask page
-checks :data:`READY` before it offers the box.
+Asking needs the ACP SDK (the ``acp`` extra of nustd); the Ask page checks
+:data:`READY` before it offers the box. The session and the agent are the
+research desk's helpers (:mod:`nudemos.research.claude`).
 """
 
 from __future__ import annotations
 
 import importlib.util
 import re
-import tempfile
 import time
 from typing import Any
 
@@ -39,11 +39,11 @@ def cited(md: str) -> str:
     return CITES.sub(aside, md)
 
 
-__all__ = ["MODEL", "OPTIONS", "READY", "SYSTEM", "answered", "asked", "cited", "prompt", "shown"]
+__all__ = ["MODEL", "READY", "SYSTEM", "answered", "asked", "cited", "prompt", "shown"]
 
 
-#: Whether the Claude Agent SDK is here to talk to Claude Code with.
-READY = importlib.util.find_spec("claude_agent_sdk") is not None
+#: Whether the ACP SDK is here to talk to Claude Code with.
+READY = importlib.util.find_spec("acp") is not None
 
 MODEL = "claude-sonnet-5"
 
@@ -54,26 +54,14 @@ Cite the pages you use inline as [[slug]], with the slug exactly as given. Never
 Be brief and concrete: two to five sentences, or a short list. Plain markdown, no headings, no tables.
 Write dates like Oct 24. Never use the em dash character."""
 
-#: The one agent: Sonnet, no tools, one turn, our own system prompt in place of Claude Code's,
-#: run from the temp dir so no project around it is read.
-OPTIONS = {
-    "model": MODEL,
-    "system_prompt": SYSTEM,
-    "allowed_tools": [],
-    "max_turns": 1,
-    "cwd": tempfile.gettempdir(),
-}
-
-
 if READY:
-    import nustd.cc
+    from nudemos.research.claude import ask, bind
 
-    class Asker(nu.Service):
-        """The base's one question endpoint."""
+    def answer(question: nu.StrArg) -> nu.Nu:
+        """The base's one question endpoint: Sonnet, no tools, one turn, :data:`SYSTEM` added to its prompt."""
+        return ask(question, MODEL, SYSTEM)
 
-        answer = nustd.cc.PromptRef.method()
-
-    __all__ += ["Asker"]
+    __all__ += ["answer", "bind"]
 
 
 def prompt(docs: dict, facts: dict, question: str, now: float) -> str:

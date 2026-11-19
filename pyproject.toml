@@ -27,7 +27,6 @@ members = ["pkgs/*"]
 virtuals-py = { path = "../virtuals", editable = true }
 nuverse = { workspace = true }
 nudemos = { workspace = true }
-nuagent = { workspace = true }
 nulog = { workspace = true }
 nuspace = { path = "../nuspace", editable = true }
 nuspace-ui = { path = "../nuspace/pkgs/ts/nuspace-ui", editable = true }
@@ -38,8 +37,7 @@ nuskills = { path = "../nuskills", editable = true }
 [dependency-groups]
 dev = [
     "nuverse[agents]",
-    "nudemos[mnist,memes,agents,design,ops,data,research,knowledge]",
-    "nuagent[cc,llm,space]",
+    "nudemos[mnist,memes,design,ops,data,research,knowledge]",
     "nulog[space]",
     "ruff>=0.8.0",
     "pre-commit>=3.0.0",
@@ -139,7 +137,6 @@ convention = "google"
 known-first-party = [
     "nuverse",
     "nudemos",
-    "nuagent",
     "nulog",
     "nuspace",
     "nu",

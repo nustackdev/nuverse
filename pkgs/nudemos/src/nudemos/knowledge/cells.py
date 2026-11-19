@@ -1055,8 +1055,7 @@ def out(plane):
 
 
 ASK = cell("""\
-import nustd.cc
-from nudemos.knowledge.ask import OPTIONS, Asker, answered, asked, shown
+from nudemos.knowledge.ask import answer, answered, asked, bind, shown
 
 TRIES = ("What is still blocking the launch?", "Why did we pick LoRa?", "What is Theo working on this week?")
 
@@ -1092,7 +1091,7 @@ def out(plane):
         def ask(question):
             def call(started):
                 prompt = asked(B.docs.extract(), B.facts.extract(), question)
-                reply = Asker.answer(prompt=prompt)
+                reply = answer(prompt)
                 return nu.let(reply, lambda r: B.asks.set(answered(B.asks.fallback([]), r, question, started)))
 
             reading = nu.Str("Reading ") + nu.ToStr(nu.Dict(B.docs.extract()).len()) + " pages..."
@@ -1114,7 +1113,7 @@ def out(plane):
             nu.ReactEvery(b.on_submit(), lambda sub: ask(nu.Str(sub["values"]["line"]["q"]).strip())),
             *(tried(ref, q) for ref, q in zip(TRY, TRIES, strict=True)),
         )
-        return nu.With(nustd.cc.bind(Asker, **OPTIONS), body=body)
+        return nu.With(bind(), body=body)
 
     shown_first = (
         View.note.set(NOTE) >> b.init() >> LEAD.set("Try")

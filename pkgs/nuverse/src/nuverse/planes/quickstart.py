@@ -242,7 +242,6 @@ def out():
 NEXT = """\
 import importlib
 import importlib.util
-import shutil
 import nu
 import nustd.ui
 import nuspace
@@ -252,7 +251,6 @@ from nuspace.specs import EMPTY_PLANE
 from nuverse.planes import quickstart
 
 HAS_DEMOS = importlib.util.find_spec("nudemos") is not None
-HAS_CC = shutil.which("claude") is not None
 
 
 class Missing(nustd.ui.Column):
@@ -287,8 +285,6 @@ W = View.where
 DEMOS = (
     ("movies", "film", "Your personal movie tracker.",
      "A film base you run yourself. Films, people and timelines, all linked."),
-    ("agents", "bot", "A team of agents, run from one space.",
-     "Brief, watch and steer Claude Code sessions."),
     ("recipes", "layout-dashboard", "Pages to poke at",
      "A dashboard, a catalog, a settings page. Whole pages built from the kit, each one live."),
 )
@@ -310,14 +306,10 @@ def fill(raw):
     drawn = []
     for i, (name, icon, title, line) in enumerate(DEMOS):
         card = demo(i)
-        if name == "agents" and not HAS_DEMOS:
-            line += ' Also needs pip install "nudemos[agents]".'
         drawn.append(card.set_title(title) >> card.set_subtitle(line)
                      >> card.media[0].to(nustd.ui.IconRef.slot(framed=True)).set(icon))
         if HAS_DEMOS:
             drawn.append(card.footer[0].to(OPEN).init())
-        if name == "agents" and HAS_DEMOS and not HAS_CC:
-            drawn.append(card.set_caption("Needs Claude Code"))
     drawn.append(W.install.hide() if HAS_DEMOS else W.install.again.set(quickstart.again(raw)))
     drawn += [W.links[i].to(link).init() for i, link in enumerate(LINKS)]
     return nu.Sequential(*drawn)

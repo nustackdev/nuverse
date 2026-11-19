@@ -18,8 +18,11 @@ class Connection(nu.Shape):
     sid = nu.StrRef.slot()
 
 
-class Unseen(WsSession):
-    """A ui session no browser is on: what a cell draws goes nowhere. Made on the worker."""
+class Unseen(WsSession, nu.Fabric):
+    """A ui session no browser is on: what a cell draws goes nowhere. Made on the worker.
+
+    A ``nu.Fabric`` too, so ``Provide`` takes it; it binds under ``Session`` as a ``WsSession`` does.
+    """
 
     def __init__(self) -> None:
         super().__init__(ws=None)

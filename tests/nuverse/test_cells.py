@@ -142,7 +142,7 @@ def _state(cell: str, shape: type) -> object:
 
 async def _load(store, plane: str, cell: str) -> nu.Nu:
     """The cell's program, loaded through the session env's rewrite, as a cell run loads it."""
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     prog = Space.cells[cell].prog
     load = prog.load(scope={"plane": plane, "cell": cell}, rewrite=Rewrites(env.rewrite))
     return await store.run(nuspace.atomic(load))
@@ -459,6 +459,19 @@ async def test_text_editor_shows_what_a_program_writes_and_keeps_what_is_typed(s
         await _write(store, _value(TextContent).set("Water the basil"))
         await _until(_shown(browser, "Water the basil"))
         browser.type("text", value="Basil likes sun")
+        await _settles(store, _value(TextContent), lambda v: v == "Basil likes sun")
+    finally:
+        task.cancel()
+
+
+async def test_text_editor_keeps_what_the_send_key_sent(store):
+    await _spec_cell(store, text_editor.CELL)
+    browser = _Inputs()
+    task = await _running(store, "p", "c", browser)
+    try:
+        await _until(_shown(browser, ""))
+        path = next(f.ref for f in browser.frames if f.ref[-1] == "text")
+        browser.notify(path, {"event": "submit", "value": "Basil likes sun"})
         await _settles(store, _value(TextContent), lambda v: v == "Basil likes sun")
     finally:
         task.cancel()

@@ -26,6 +26,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import nu
+
 from .gateway import PRODUCTS, QUERIES
 
 
@@ -130,7 +132,7 @@ class _Conn:
         self.reader = self.writer = None
 
 
-class Shoppers:
+class Shoppers(nu.Fabric):
     """The traffic job's shoppers: a pool of keep-alive connections, one per shopper."""
 
     def __init__(self) -> None:
@@ -140,11 +142,8 @@ class Shoppers:
         self.calls = 0
         self.window = {"sent": 0, "failed": 0, "refused": 0, "orders": 0}
 
-    def setup(self, ctx: object) -> None:
-        """Nothing: shoppers connect on their first call."""
-
-    async def acleanup(self) -> None:
-        """Close every shopper's connection."""
+    def cleanup(self) -> None:
+        """Close every shopper's connection. Nothing to set up: shoppers connect on their first call."""
         for c in self.conns:
             c.drop()
 
@@ -246,11 +245,8 @@ class Shoppers:
         return {**tally, "users": users, "totals": dict(self.totals), "lines": lines}
 
 
-class Worker:
+class Worker(nu.Fabric):
     """The scheduled jobs: :meth:`run` does one run of one, for real, on files in the space's folder."""
-
-    def setup(self, ctx: object) -> None:
-        """Nothing to open."""
 
     async def run(self, name: str, ask: dict[str, Any]) -> dict[str, Any]:
         """One run of job ``name``, with what the space told it (``data`` folder, gateway ``port``, ``state``)."""

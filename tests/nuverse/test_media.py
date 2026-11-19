@@ -210,7 +210,7 @@ async def _spec_cell(store, spec: object, cell: str = "c", plane: str = "p") -> 
 
 async def _running(store, tab: _Tab, blobs: nu.Nu, cell: str = "c", plane: str = "p"):
     """The cell's program, loaded as the kernel loads it, run with the tab, its uploads and the store."""
-    env = session_env("127.0.0.1:9")("s1")
+    env = session_env(lambda: "127.0.0.1:9")("s1")
     prog = Space.cells[cell].prog
     load = prog.load(scope={"plane": plane, "cell": cell}, rewrite=Rewrites(env.rewrite))
     term = inside(await store.run(nuspace.atomic(load)), plane=plane, cell=cell)

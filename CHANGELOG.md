@@ -2,6 +2,12 @@
 
 The full commit stream, every package. Newest first.
 
+- Tests follow nuspace's moved store layout and the session env's address callable
+- Research and knowledge demos ask Claude Code over ACP, now nustd.cc is gone
+- Demo resources and the log store viewer open on nu's bracket and fabric bases
+- Log fields and test terms follow nu's frozen terms, config computed like values
+- Drop the nuagent package and the agents demo; nu acp covers coding agents
+- Prose cells keep their text when sent with shift+Enter, ready for submit flows
 - Chat cell built from plain kit parts, flat conversation, shift+Enter to send
 - Chat cell talks to a coding agent: setup, live trace, permissions, plan, composer
 - Agent engine runs one turn at a time, folds replies, sleeps when idle
