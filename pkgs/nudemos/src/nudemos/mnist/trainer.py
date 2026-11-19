@@ -27,6 +27,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import nu
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -126,7 +128,7 @@ def _png(image: torch.Tensor, scale: int = 4) -> str:
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-class Trainer:
+class Trainer(nu.Fabric):
     """A CNN, its optimizer and MNIST in memory, stepped a chunk at a time.
 
     Args:

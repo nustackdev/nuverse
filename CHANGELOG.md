@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Demo resources and the log store viewer open on nu's bracket and fabric bases
 - Log fields and test terms follow nu's frozen terms, config computed like values
 - Drop the nuagent package and the agents demo; nu acp covers coding agents
 - Prose cells keep their text when sent with shift+Enter, ready for submit flows

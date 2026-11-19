@@ -32,6 +32,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+import nu
+
 
 #: Where the traffic's and the latency's randomness comes from: no seed, every run differs.
 _rng = random.Random()  # noqa: S311
@@ -183,8 +185,13 @@ class OutOfMemory(RuntimeError):  # noqa: N818  # what the log says when it dies
     """The gateway holds more than it was sized for, and stops."""
 
 
-class Gateway:
-    """The storefront API, provided per job run; :meth:`open` starts it serving."""
+class Gateway(nu.Fabric):
+    """The storefront API, provided per job run; :meth:`open` starts it serving.
+
+    Async only: nothing opens until :meth:`open`, and closing the server awaits.
+    """
+
+    async_only = True
 
     def __init__(self) -> None:
         self.port, self.release, self.spec = 0, "", RELEASES["1.8.3"]
@@ -235,9 +242,6 @@ class Gateway:
         if self.spec["drops"]:
             self._app("info", "help center reorganised", removed=", ".join(self.spec["drops"]))
         return self.drain()
-
-    def setup(self, ctx: object) -> None:
-        """Nothing until :meth:`open`: the port and the release are read from the space first."""
 
     async def acleanup(self) -> None:
         """Stop serving."""

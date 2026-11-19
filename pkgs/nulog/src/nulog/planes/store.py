@@ -28,7 +28,6 @@ from virtuals import Navigator
 
 import nu
 import nustd.kv
-from nu.core.spans.bracket import _LifecycleBracket
 
 from ..messages import Messages
 from ..metrics import Metrics
@@ -36,10 +35,10 @@ from .fmt import look_of
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Iterator
-    from contextlib import AbstractContextManager
+    from collections.abc import AsyncIterator, Iterator
+    from contextlib import AbstractAsyncContextManager, AbstractContextManager
 
-    from nu.lang.runtime import Context, Runtime
+    from nu.lang.runtime import Context
 
 
 __all__ = ["TAGS", "NotAStore", "Opened", "aopened", "opened"]
@@ -76,7 +75,7 @@ def opened(ctx: Context, path: object) -> Iterator[None]:
     where = _checked(path)
     secondary = tempfile.mkdtemp(prefix="nulog-view-")
     try:
-        with _stack(where, secondary)._open(ctx):
+        with _stack(where, secondary)._enter(ctx):
             nav = ctx.fabrics.get(Navigator, TAGS[0])
             with _also(ctx, nav):
                 yield
@@ -90,7 +89,7 @@ async def aopened(ctx: Context, path: object) -> AsyncIterator[None]:
     where = _checked(path)
     secondary = tempfile.mkdtemp(prefix="nulog-view-")
     try:
-        async with _stack(where, secondary)._aopen(ctx):
+        async with _stack(where, secondary)._aenter(ctx):
             nav = ctx.fabrics.get(Navigator, TAGS[0])
             with _also(ctx, nav):
                 yield
@@ -103,7 +102,7 @@ def _also(ctx: Context, nav: Navigator) -> AbstractContextManager[None]:
     return ctx.fabrics.bind(Navigator, nav, TAGS[1])
 
 
-class Opened(_LifecycleBracket):
+class Opened(nu.Bracket):
     """Runs ``body`` with the nulog store at ``path`` open, read only.
 
     Args:
@@ -118,7 +117,7 @@ class Opened(_LifecycleBracket):
             :func:`~nulog.planes.fmt.look` first to say so instead.
 
     Notes:
-        - The body is a scalar: a stream body is not held open across its drain.
+        - A stream body holds the store open across its whole drain.
         - Read only: a write in the body fails.
 
     Yields:
@@ -126,22 +125,10 @@ class Opened(_LifecycleBracket):
     """
 
     def __init__(self, path: nu.StrArg, body: nu.Nu) -> None:
-        super().__init__(body, nu.Str(path) if isinstance(path, str) else path)
+        super().__init__(body, path)
 
-    def _compile(self, nid: int, children: tuple[Callable, ...]) -> Callable:
-        body, path = children
+    def _open(self, ctx: Context, path: object) -> AbstractContextManager[None]:
+        return opened(ctx, path)
 
-        def thunk(rt: Runtime) -> object:
-            with opened(rt.ctx, path(rt)):
-                return body(rt)
-
-        return thunk
-
-    def _acompile(self, nid: int, children: tuple[Callable, ...]) -> Callable:
-        body, path = children
-
-        async def athunk(rt: Runtime) -> object:
-            async with aopened(rt.ctx, await path(rt)):
-                return await body(rt)
-
-        return athunk
+    def _aopen(self, ctx: Context, path: object) -> AbstractAsyncContextManager[None]:
+        return aopened(ctx, path)

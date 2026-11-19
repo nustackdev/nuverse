@@ -21,6 +21,8 @@ import random
 from collections import OrderedDict
 from typing import TYPE_CHECKING
 
+import nu
+
 from .trainer import MEAN, STD, _png, build, data_dir, load
 
 
@@ -44,7 +46,7 @@ def image_png(pixels: list | None) -> str:
     return _png(torch.tensor(pixels, dtype=torch.float32))
 
 
-class Reader:
+class Reader(nu.Fabric):
     """Models read out of runs' states, kept by key, and the one in use.
 
     Args:
@@ -60,21 +62,10 @@ class Reader:
 
     # -- lifecycle -----------------------------------------------------------------
 
-    def setup(self, ctx: object = None) -> None:
-        """Nothing up front: torch loads with the first model."""
-
     def cleanup(self) -> None:
-        """Let the models and the test digits go."""
+        """Let the models and the test digits go. Nothing to set up: torch loads with the first model."""
         self.models.clear()
         self.tests = None
-
-    async def asetup(self, ctx: object = None) -> None:
-        """Async lifecycle: :meth:`setup`."""
-        self.setup(ctx)
-
-    async def acleanup(self) -> None:
-        """Async lifecycle: :meth:`cleanup`."""
-        self.cleanup()
 
     # -- models --------------------------------------------------------------------
 

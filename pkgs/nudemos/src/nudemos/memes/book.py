@@ -34,6 +34,8 @@ import time
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
+import nu
+
 from . import curve
 from .chain import SOL, decode_block
 
@@ -201,7 +203,7 @@ def token_record(mint: str, *, quote: str = SOL, now: float = 0.0) -> dict[str, 
     }
 
 
-class Book:
+class Book(nu.Fabric):
     """The sync's memory and its policy. One per job run, provided with ``nu.Provide``.
 
     Args:
