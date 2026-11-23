@@ -57,15 +57,18 @@ def _cell(body: str) -> str:
 
 HEAD = _cell("""\
 class View(nu.Shape):
-    head = nustd.ui.RowRef.slot(gap=5, align="start", grow={"who": 1})
+    head = nustd.ui.CardRef.slot(size="md")
 
 
-face = View.head["face"].to(nustd.ui.ImageRef.slot(width=96, height=96, radius="md", fit="contain"))
-who = View.head["who"].to(nustd.ui.ColumnRef.slot(gap=2))
-title = who["title"].to(nustd.ui.HeadingRef.slot(level=2))
+body = View.head["body"].to(nustd.ui.RowRef.slot(gap=5, align="center", grow={"who": 1}, basis={"face": 112}))
+face = body["face"].to(nustd.ui.ImageRef.slot(width=112, height=112, radius="lg", fit="cover"))
+who = body["who"].to(nustd.ui.ColumnRef.slot(gap=2))
+name = who["name"].to(nustd.ui.RowRef.slot(gap=2, align="center"))
+title = name["title"].to(nustd.ui.HeadingRef.slot(level=2))
+ticker = name["ticker"].to(nustd.ui.BadgeRef.slot(size="sm"))
+state = name["state"].to(nustd.ui.StatusPillRef)
 facts = who["facts"].to(nustd.ui.MarkdownRef)
-links = who["links"].to(nustd.ui.RowRef.slot(gap=3, wrap=True))
-state = View.head["state"].to(nustd.ui.StatusPillRef)
+links = who["links"].to(nustd.ui.RowRef.slot(gap=4, wrap=True))
 
 
 def link(l):
@@ -78,7 +81,8 @@ def draw(v):
     keys = nu.List(v["link_keys"])
     found = (
         face.set(v["src"], alt=v["symbol"])
-        >> title.set(v["title"]) >> facts.set(v["facts"])
+        >> title.set(v["title"]) >> nu.IfDo(nu.Bool(v["ticker"]), ticker.set(v["ticker"]))
+        >> name.keep(nu.List(v["name_keys"])) >> name.set_order(nu.List(v["name_keys"])) >> facts.set(v["facts"])
         >> nu.ForEachDo(nu.List(v["links"]), link) >> links.keep(keys) >> links.set_order(keys)
         >> state.set(v["state"], tone=v["tone"])
     )

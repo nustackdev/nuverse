@@ -414,6 +414,8 @@ def token_view_of(
     tone = "ok" if r.get("complete") else "info"
     buys, sells = r.get("buys", 0), r.get("sells", 0)
     mint, creator = r["mint"], r.get("creator") or ""
+    sym = (r.get("symbol") or "").strip()
+    ticker = f"${sym}" if sym and (r.get("name") or "").strip().lower() != sym.lower() else ""
     facts = [
         f"`{mint[:10]}…`",
         f"launched {ago(r.get('created'), now)} ago"
@@ -456,6 +458,9 @@ def token_view_of(
         "found": True,
         "title": r.get("name") or label(r),
         "symbol": label(r),
+        # the ticker beside the name, only when it tells something the name does not
+        "ticker": ticker,
+        "name_keys": ["title", "ticker", "state"] if ticker else ["title", "state"],
         "src": picture(r.get("image"), mint, r.get("symbol") or "", images),
         "state": state,
         "tone": tone,
