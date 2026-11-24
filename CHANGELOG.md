@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nudemos 0.1.11 on nuspace 0.8.1, with the demo reshoot fixes
 - Demo spaces fixed for the 0.8 reshoots: fresh pages, searches and rules hold up
 - Meme coin pages open on a card: picture, name, ticker, status and links
 - Release nuverse 0.3.13, nulog 0.2.8, nudemos 0.1.10 on nu 0.9.0 and nuspace 0.8.0
