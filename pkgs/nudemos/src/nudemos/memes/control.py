@@ -8,7 +8,8 @@ the root's ``stop`` flag: the job ends its loop at the next turn, writes
 again clears the flag and supervises it again.
 
 A token page is made on demand (:func:`open_token`), the first time someone
-clicks the token, never for every token seen: there are thousands.
+clicks the token, never for every token seen: there are thousands. A block
+of the user's can make one without opening it (:func:`make_token`).
 """
 
 from __future__ import annotations
@@ -23,14 +24,14 @@ import nuspace.web
 
 from .. import bases
 from .job import SYNC
-from .state import JOB, TOKEN, control_at, made_at, overview_of
+from .state import JOB, TOKEN, control_at, made_at, memes_at, overview_of
 
 
 if TYPE_CHECKING:
     import nustd.ui
 
 
-__all__ = ["live", "open_token", "restart", "start", "stop"]
+__all__ = ["live", "make_token", "open_token", "restart", "start", "stop"]
 
 
 def live(root: nu.StrArg) -> nu.Bool:
@@ -85,12 +86,13 @@ def restart(root: nu.StrArg, slot: nu.IntArg) -> nu.Nu:
     return nuspace.atomic(over) >> start(root)
 
 
-def open_token(root: nu.StrArg, mint: nu.StrArg, history: nustd.ui.HistoryRef) -> nu.Nu:
-    """Open ``mint``'s page on ``history``, made under the Overview if the root holds none yet.
+def make_token(root: nu.StrArg, mint: nu.StrArg, name: nu.StrArg | None = None) -> nu.Nu:
+    """Make ``mint``'s page under the Overview if the root holds none yet, without opening it.
 
     A new page is a row of commits: the plane with its cells and its web row,
     its meta (its mint), then its id kept in the root's state and the root
-    in its own (:mod:`nudemos.bases`).
+    in its own (:mod:`nudemos.bases`). It is named ``name`` (the mint when
+    none) until its first run names it by its ticker.
     """
     from .token import CELLS
 
@@ -108,15 +110,31 @@ def open_token(root: nu.StrArg, mint: nu.StrArg, history: nustd.ui.HistoryRef) -
         pid = nu.Str(page)
         meta = nu.Dict.of(mint=mint)
         return (
-            nuspace.specs.add_plane(spec, parent=nu.Str(under), name=mint, into=page)
+            nuspace.specs.add_plane(
+                spec, parent=nu.Str(under), name=mint if name is None else name, into=page
+            )
             >> nuspace.atomic(nuspace.plane.set_meta(pid, meta))
             >> nuspace.atomic(held.set(pid) >> bases.belongs(pid, root))
         )
 
-    def opened(page: nu.ObjectRef) -> nu.Nu:
+    def made(page: nu.ObjectRef) -> nu.Nu:
         new = nu.let(nuspace.atomic(overview_of(root)), lambda under: make(page, under))
-        return nu.IfDo(nu.Str(page) == "", new) >> history.push(
-            nuspace.web.href(nuspace.atomic(held))
-        )
+        return nu.IfDo(nu.Str(page) == "", new)
 
-    return nu.let(nuspace.atomic(held.fallback("")), opened)
+    return nu.let(nuspace.atomic(held.fallback("")), made)
+
+
+def open_token(root: nu.StrArg, mint: nu.StrArg, history: nustd.ui.HistoryRef) -> nu.Nu:
+    """Open ``mint``'s page on ``history``, made under the Overview first if needed (:func:`make_token`).
+
+    A new page is named by the token's ticker when the sync knows it, so it
+    never shows its mint while it opens.
+    """
+    held = made_at(root).token_planes[mint]
+
+    def opened(rec: nu.ObjectRef) -> nu.Nu:
+        symbol = nu.Str(nu.Dict(rec).get_item("symbol", "")).strip()
+        name = nu.Str(nu.If(symbol == "", mint, symbol))
+        return make_token(root, mint, name) >> history.push(nuspace.web.href(nuspace.atomic(held)))
+
+    return nu.let(nuspace.atomic(memes_at(root).tokens[mint].fallback({})), opened)

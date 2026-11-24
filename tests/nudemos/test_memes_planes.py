@@ -173,10 +173,24 @@ async def test_opening_a_token_makes_its_page_once_under_the_overview(store):
     assert await store.read(Space.planes[page].parent) == overview
     assert await store.read(Space.planes[page].spec) == TOKEN
     assert await store.read(Space.planes[page].meta.extract()) == {"mint": CAP}
+    assert await store.read(nuspace.plane.title(page)) == "cap"
     assert await store.read(Space.planes[page].icon) == "lucide:coins"
     assert await store.read(nuspace.web.Web.planes[page].width) == "board"
     assert await store.read(root_of(page)) == "m"
     await nu.arun(control.open_token("m", CAP, history), session)
+    assert await _kids(store, overview) == [page]
+
+
+async def test_a_block_makes_a_token_page_without_opening_it(store):
+    await _seed(store)
+    await nu.arun(control.make_token("m", CAP, name="CAP"), store.ctx.bind(Session, _Browser()))
+    page = await store.read(made_at("m").token_planes[CAP])
+    overview = await store.read(overview_of("m"))
+    assert await store.read(Space.planes[page].parent) == overview
+    assert await store.read(Space.planes[page].spec) == TOKEN
+    assert await store.read(nuspace.plane.title(page)) == "CAP"
+    assert await store.read(root_of(page)) == "m"
+    await nu.arun(control.make_token("m", CAP, name="CAP"), store.ctx.bind(Session, _Browser()))
     assert await _kids(store, overview) == [page]
 
 

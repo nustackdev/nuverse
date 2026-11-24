@@ -534,7 +534,7 @@ COLUMNS = [
     {"key": "time", "label": "Time", "width": 120, "cell": ui.TextRef.slot(mono=True, size="sm")},
     {"key": "level", "label": "Level", "width": 100, "cell": ui.BadgeRef.slot(size="sm")},
     {"key": "message", "label": "Message"},
-    {"key": "detail", "label": "Detail", "wrap": "truncate", "hide_below": 900},
+    {"key": "detail", "label": "Detail", "wrap": "truncate", "hide_below": 600},
 ]
 LEVELS = ["debug", "info", "warning", "error"]
 
@@ -553,21 +553,26 @@ lines = View.explorer[2].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key",
 
 
 @nu.host
-def told(name, counts, shown, took, needle):
+def told(name, counts, shown, took, needle, floor):
     total = (counts or {}).get(name, 0)
-    what = f"matching '{needle}' in the newest 4,000" if needle else "newest"
+    if needle:
+        what = f"matching '{needle}' in the newest 4,000"
+    elif floor in ("warning", "error"):
+        what = f"{floor} or worse in the newest 4,000"
+    else:
+        what = "newest"
     return f"{total:,} lines in {name}. Showing {len(shown)} {what}, read in {took * 1000:.0f} ms."
 
 
 def out(plane):
     def build(root):
         name, floor, needle = nu.Str(stream), nu.Str(level), nu.Str(find).strip()
-        # A search scans the newest 4,000 lines, a plain look reads 80: either way the read stays the size of what is asked.
-        n = nu.Int(nu.If(needle == "", 80, 4000))
+        # A search or a level above info scans the newest 4,000 lines, a plain look reads 80: the read stays the size of what is asked.
+        n = nu.Int(nu.If(nu.And(needle == "", nu.Or(floor == "debug", floor == "info")), 80, 4000))
 
         def show(t0):
             def drew(rows):
-                line = told(name, OPS.counts.fallback({}), rows, nustd.time.time() - nu.Float(t0), needle)
+                line = told(name, OPS.counts.fallback({}), rows, nustd.time.time() - nu.Float(t0), needle, floor)
                 return lines.set_rows(rows) >> said.set(line)
             return nu.let(views.log_rows(kit.tail(name, n), floor, needle, 80), drew)
 
@@ -1177,12 +1182,12 @@ from nudemos.ops.state import OPS
 
 COLUMNS = [
     {"key": "rule", "label": "Rule", "width": 150, "editable": False},
-    {"key": "when", "label": "When", "editable": False},
+    {"key": "when", "label": "When", "editable": False, "hide_below": 520},
     {"key": "then", "label": "Then", "editable": False, "hide_below": 900},
     {"key": "state", "label": "Now", "width": 100, "editable": False, "cell": ui.StatusPillRef},
     {"key": "fired", "label": "Fired", "width": 80, "kind": "number", "align": "end", "editable": False},
     {"key": "last", "label": "Last", "width": 100, "editable": False, "cell": ui.RelativeTimeRef},
-    {"key": "on", "label": "On", "kind": "bool", "width": 70},
+    {"key": "on", "label": "On", "kind": "bool", "width": 70, "hide_below": 520},
 ]
 INTRO = "Each rule is a cell on the watchdog job, checked every 2 seconds against the live numbers. Turn one off here; read its code below."
 

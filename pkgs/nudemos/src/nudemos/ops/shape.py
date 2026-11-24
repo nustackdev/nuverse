@@ -325,7 +325,9 @@ def log_rows(rows: list | None, level: str, text: str, n: int = 80) -> list[dict
             continue
         msg = r.get("msg", "")
         fields = r.get("fields") or {}
-        if needle and needle not in msg.lower() and needle not in str(fields).lower():
+        # The fields' own items: a field mapping read off the store need not print as a dict.
+        said = " ".join(f"{k}={v}" for k, v in fields.items()).lower()
+        if needle and needle not in msg.lower() and needle not in said:
             continue
         extra = (
             fields.get("error")
@@ -525,11 +527,14 @@ def components(gw: dict | None, jobs: dict | None, release: dict | None) -> list
     def route(key: str, names: list[str], name: str, note: str) -> dict[str, Any]:
         rs = [routes[n] for n in names if n in routes]
         err = max((r["err"] for r in rs), default=0.0)
+        # Requests that failed, not just a share: a fresh gateway's minute holds a few seconds, where one
+        # timeout on a quiet route reads as several percent.
+        fails = sum(r["err"] * r.get("rpm", 0) / 100 for r in rs)
         if not up:
             return part(key, name, "Major outage", "danger", "not answering")
         if err > 20:
             return part(key, name, "Partial outage", "danger", f"{err:.0f}% of requests failing")
-        if err > 2:
+        if err > 2 and fails >= 3:
             return part(key, name, "Degraded", "warn", f"{err:.1f}% of requests failing")
         p95 = max((r["p95"] for r in rs), default=0)
         return part(key, name, "Operational", "ok", note.format(p95=p95))

@@ -19,7 +19,7 @@ import nuspace
 
 from .ink import sample, strokes_of, strokes_to_image
 from .reader import image_png
-from .state import Made, job_of, run_at, runs_of, status_of
+from .state import Made, job_of, run_at, runs_of, sampled, status_of
 from .trainer import LAYERS
 
 
@@ -348,7 +348,7 @@ def series(root: nu.StrArg) -> nu.Nu:
         run = nu.List(r)
         job = nu.Str(run[1])
         return nu.List.of(
-            run[0], run[2], run_at(job).test_acc.sample(POINTS), run_at(job).loss.sample(POINTS)
+            run[0], run[2], sampled(run_at(job).test_acc, POINTS), sampled(run_at(job).loss, POINTS)
         )
 
     return runs_of(root).iter().map(row).to_list()

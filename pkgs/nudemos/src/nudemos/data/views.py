@@ -35,16 +35,16 @@ def status(stream: dict, live: bool, index: dict, pace: str, now: float) -> dict
 
 #: The pages, in the order the overview lists them: key, what it is for.
 PAGES = [
-    ("revenue", "By day, channel and category."),
-    ("funnel", "From session to purchase."),
+    ("revenue", "By day and channel."),
+    ("funnel", "Session to purchase."),
     ("cohorts", "Who comes back."),
-    ("customers", "The best ones, a page each."),
+    ("customers", "A page per customer."),
     ("products", "The catalog as a sheet."),
-    ("forecast", "The next twelve months, with what-ifs."),
+    ("forecast", "Twelve months ahead."),
     ("metrics", "A cell per metric."),
     ("events", "Every web event, queried."),
-    ("imports", "Exports dropped in the inbox."),
-    ("sources", "The tables and the stream."),
+    ("imports", "Exports in the inbox."),
+    ("sources", "Tables and stream."),
 ]
 
 

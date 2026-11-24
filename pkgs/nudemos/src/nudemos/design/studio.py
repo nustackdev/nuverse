@@ -165,7 +165,12 @@ def arrive(inbox: list, cursor: int, now: float) -> list:
 @nu.host
 def wait(pace: float, first: bool) -> float:
     """Seconds until the next arrival: soon on a fresh start, then about ``pace``, never on the beat."""
-    return 6.0 if first else max(4.0, pace * random.uniform(0.8, 1.2))  # noqa: S311
+    return FIRST if first else max(4.0, pace * random.uniform(0.8, 1.2))  # noqa: S311
+
+
+#: Seconds from the studio's start to its first arrival. The supervisor starts the studio with the kernel, often 10 to 20s
+#: before the web is up, so a page opened at boot still sees the first proposal land.
+FIRST = 20.0
 
 
 #: Arrivals the studio starts with, seconds apart, before it settles into its pace.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import tarfile
+from collections.abc import Iterator, Mapping
 
 import pytest
 
@@ -106,6 +107,35 @@ def test_log_rows_filter_by_level_and_text() -> None:
     ]
 
 
+def test_log_rows_find_a_field_off_a_mapping_that_is_no_dict() -> None:
+    # A stream's fields come back as a mapping that need not print as a dict: find reads its items.
+    class Fields(Mapping):
+        def __init__(self, d: dict) -> None:
+            self.d = d
+
+        def __getitem__(self, k: str) -> object:
+            return self.d[k]
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(self.d)
+
+        def __len__(self) -> int:
+            return len(self.d)
+
+        def __repr__(self) -> str:
+            return "<Fields>"
+
+    rows = [
+        {
+            "ts_us": 1,
+            "level": "error",
+            "msg": "GET /api/search 500",
+            "fields": Fields({"error": "ranking: x"}),
+        }
+    ]
+    assert [r["detail"] for r in shape.log_rows(rows, "info", "ranking")] == ["ranking: x"]
+
+
 def test_status_components_follow_the_routes() -> None:
     gw = {
         "rps": 20,
@@ -125,6 +155,19 @@ def test_status_components_follow_the_routes() -> None:
     assert len(parts) == 5
     down = shape.components(gw, {"gateway": {"status": "crashed"}}, {})
     assert down[0]["status"]["label"] == "Major outage"
+
+
+def test_one_timeout_on_a_quiet_route_is_no_degraded() -> None:
+    # A fresh gateway's minute: 25 order lookups, one timed out, is 4% but a single request.
+    jobs = {"gateway": {"status": "running"}}
+    quiet = {"rps": 20, "routes": [{"route": "/api/orders/:id", "rpm": 25, "err": 4.0, "p95": 20}]}
+    busy = {"rps": 20, "routes": [{"route": "/api/orders/:id", "rpm": 200, "err": 4.0, "p95": 20}]}
+    assert {p["key"]: p for p in shape.components(quiet, jobs, {})}["checkout"]["status"][
+        "tone"
+    ] == "ok"
+    assert {p["key"]: p for p in shape.components(busy, jobs, {})}["checkout"]["status"][
+        "label"
+    ] == "Degraded"
 
 
 def test_job_rows_link_each_job_to_its_page_and_carry_times() -> None:

@@ -73,3 +73,40 @@ def test_lr_text_reads_like_people_write_it():
         "0.03",
         "-",
     ]
+
+
+async def test_compare_ticks_are_made_once_and_kept(store):
+    from nudemos.mnist.state import Pick, picks_made
+
+    await store.run(nuspace.specs.add_plane(PLANE, "m"))
+    kids = await store.read(nu.list(Space.planes["m"].children.keys()))
+    specs = [await store.read(Space.planes[k].spec) for k in kids]
+    c = kids[specs.index("mnist_compare")]
+    ticks = nuspace.at.plane(id=c).state(Pick).planes
+    read = nuspace.atomic(nu.list(ticks.fallback([])))
+    # A fresh Compare has no ticks container: its table and overlay read them first.
+    with pytest.raises(Exception, match="Container does not exist"):
+        await store.read(read)
+    await store.run(nuspace.atomic(picks_made(nuspace.at.plane(id=c).state(Pick))))
+    assert await store.read(read) == []
+    await store.run(nuspace.atomic(ticks.set(["r"])))
+    await store.run(nuspace.atomic(picks_made(nuspace.at.plane(id=c).state(Pick))))
+    assert await store.read(read) == ["r"]
+
+
+@pytest.mark.parametrize("cell", ["table", "overlay"])
+def test_compare_makes_its_ticks_before_reading_them(cell):
+    source = dict(compare.PLANE.cells)[cell]
+    assert "return TICKS >> " in source
+
+
+async def test_a_series_never_written_samples_as_empty(store):
+    from nudemos.mnist.state import Run, sampled
+
+    await store.do(nuspace.plane.add("j", backend="async"))
+    await store.do(nuspace.cell.add("j", "def out(cell):\n    return None\n", id="c"))
+    run = nuspace.at.cell(id="c").state(Run)
+    # A fresh run has no test scores before its first eval: the curves read nothing, not fail.
+    assert await store.read(nuspace.atomic(nu.list(sampled(run.test_loss, 10)))) == []
+    await store.run(nuspace.atomic(run.test_loss.set_item(200, 0.5)))
+    assert len(await store.read(nuspace.atomic(nu.list(sampled(run.test_loss, 10))))) == 1

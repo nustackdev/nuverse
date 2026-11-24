@@ -107,13 +107,13 @@ is a small program you can open and change.
 
 class View(nustd.ui.Column):
     about = nustd.ui.MarkdownRef.slot()
-    ways = nustd.ui.GridRef.slot(max_columns=3, min_cell_width=220, gap=3)
+    ways = nustd.ui.GridRef.slot(max_columns=5, min_cell_width=170, gap=2)
 
 
 def out(plane):
     def tiles(pages):
         # A tile per page, titled and marked off the store, with what it is for.
-        tile = lambda key, what: nuspace.atomic(web.link(View.ways[key].to(nustd.ui.PageLinkRef.slot(variant="tile")), nu.Str(pages[key]), description=what))
+        tile = lambda key, what: nuspace.atomic(web.link(View.ways[key].to(nustd.ui.PageLinkRef.slot(variant="row")), nu.Str(pages[key]), description=what))
         return nu.Sequential(*(tile(key, what) for key, what in views.PAGES))
 
     def build(root):

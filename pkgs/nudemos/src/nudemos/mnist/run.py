@@ -25,7 +25,7 @@ import nustd.ui
 import nuspace
 import nuspace.system.supervisor
 from nudemos.mnist import views
-from nudemos.mnist.state import run_at
+from nudemos.mnist.state import run_at, sampled
 from nudemos.mnist.views import with_job
 """
 
@@ -163,7 +163,7 @@ charts = {k: View.charts[k].to(nustd.ui.CardRef.slot(title=title, size="sm"))[k]
 
 def paint(job):
     r = run_at(job)
-    read = views.curves(*(s.sample(POINTS) for s in (r.loss, r.test_loss, r.acc, r.test_acc, r.lrs)))
+    read = views.curves(*(sampled(s, POINTS) for s in (r.loss, r.test_loss, r.acc, r.test_acc, r.lrs)))
     return nu.let(nuspace.atomic(read), lambda d: nu.Sequential(*(c.set(d[k]) for k, c in charts.items())))
 
 
@@ -253,7 +253,7 @@ def paint(job):
     def draw(h):
         return nu.Sequential(*(MAPS[k][l].merge(h[k][l]) for k in "wg" for l in LAYERS))
 
-    return nu.let(nuspace.atomic(views.heatmaps(run_at(job).hists.sample(SNAPSHOTS))), draw)
+    return nu.let(nuspace.atomic(views.heatmaps(sampled(run_at(job).hists, SNAPSHOTS))), draw)
 
 
 def follow(job):

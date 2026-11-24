@@ -46,9 +46,11 @@ __all__ = [
     "Runs",
     "job_cell",
     "job_of",
+    "picks_made",
     "run_at",
     "runs_change",
     "runs_of",
+    "sampled",
     "status_of",
 ]
 
@@ -113,6 +115,11 @@ class Pick(nu.Shape):
     planes = nustd.kv.ListRef.slot(str)
 
 
+def picks_made(pick: Pick) -> nu.Nu:
+    """The Compare plane's ticks, made where missing: a fresh Compare reads them before any tick. Unbracketed."""
+    return pick.planes.init(nu.List.create())
+
+
 class Runs(nu.Shape):
     """The MNIST plane's, in its plane's state: its run planes, oldest first."""
 
@@ -138,6 +145,14 @@ def job_cell(job: nu.StrArg) -> nu.Str:
 def run_at(job: nu.StrArg) -> Run:
     """A run's state, at its job's cell, typed as :class:`Run`."""
     return nuspace.at.cell(id=job_cell(job)).state(Run)
+
+
+def sampled(series: nustd.kv.Kh57Ref, n: int) -> nu.Nu:
+    """``n`` points sampled from a run's series, ``[]`` before its first write. Bare read.
+
+    A series is made by its first write: a fresh run has no test scores until its first eval.
+    """
+    return nu.If(series.exists(), series.sample(n), [])
 
 
 def runs_of(root: nu.StrArg) -> nu.List:

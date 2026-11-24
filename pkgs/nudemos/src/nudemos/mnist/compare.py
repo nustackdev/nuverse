@@ -24,10 +24,12 @@ import nuspace
 import nuspace.web
 import nustd.ui
 from nudemos.mnist import views
-from nudemos.mnist.state import Pick, runs_change
+from nudemos.mnist.state import Pick, picks_made, runs_change
 
 #: The runs ticked, in this plane's state.
 PICK = nuspace.at.plane.state(Pick)
+#: The ticks made, once, before any read: a fresh Compare has none yet.
+TICKS = nuspace.atomic(picks_made(PICK))
 """
 
 
@@ -100,7 +102,7 @@ def out(plane):
             nu.ReactEvery(t.on_edit(), plot),
         )
 
-    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
+    return TICKS >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
 """)
 
 
@@ -130,7 +132,7 @@ def out(plane):
         read = views.overlay(views.series(nu.Str(root)), nu.list(PICK.planes.fallback([])))
         return nu.Reconcile(nuspace.atomic(PICK.planes.on_change()), nu.let(nuspace.atomic(read), draw), every=2.0)
 
-    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
+    return TICKS >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
 """)
 
 
