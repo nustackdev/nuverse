@@ -74,7 +74,7 @@ class _Browser(WsSession):
         if frame.ref[-1] == self.select and isinstance(frame.payload, str):
             self.selected = frame.payload
 
-    async def aread(self, path: tuple[str, ...]) -> object:
+    async def aread(self, path: tuple[str, ...], field: str | None = None) -> object:
         assert path[-1] == self.select
         return self.selected
 
@@ -84,7 +84,7 @@ class _Browser(WsSession):
     def pick(self, cell_id: str) -> None:
         """What the dropdown does: select locally, notify a change."""
         self.selected = cell_id
-        self.notify(self.path(self.select), {"event": "change"})
+        self.notify(self.path(self.select), {"event": "change", "value": cell_id})
 
     def path(self, name: str) -> tuple[str, ...]:
         return next(f.ref for f in self.frames if f.ref[-1] == name)
@@ -223,7 +223,7 @@ async def test_cell_lens_follows_the_select(store):
 
         # Moving the cursor reads the picked cell, not the first one.
         before = len(browser.frames)
-        browser.notify(browser.path("lens"), ["meta"])
+        browser.notify(browser.path("lens"), {"event": "change", "value": ["meta"]})
         await _until(lambda: any(f.ref[-1] == "lens" for f in browser.frames[before:]))
         meta = browser.last("lens")["columns"][1]["entries"]
         assert [(e["key"], e["preview"]) for e in meta] == [("marker", "1")]
@@ -270,7 +270,7 @@ class _Lens(_Browser):
     async def nav(self, cursor: list[str]) -> None:
         """What a click does: the whole new cursor sent, then its cascade painted."""
         before = len(self.frames)
-        self.notify(self.path("lens"), cursor)
+        self.notify(self.path("lens"), {"event": "change", "value": cursor})
         await _until(
             lambda: (
                 any(f.ref[-1] == "lens" for f in self.frames[before:])
@@ -594,7 +594,7 @@ class _Inputs(_Browser):
         super().__init__()
         self.values: dict[tuple[str, ...], object] = {}
 
-    async def aread(self, path: tuple[str, ...]) -> object:
+    async def aread(self, path: tuple[str, ...], field: str | None = None) -> object:
         typed = [k for k in self.values if path[-len(k) :] == k]
         if typed:
             return self.values[max(typed, key=len)]
@@ -607,7 +607,8 @@ class _Inputs(_Browser):
         """What an input does: hold the value locally, notify a change."""
         self.values[names] = value
         self.notify(
-            next(f.ref for f in self.frames if f.ref[-len(names) :] == names), {"event": "change"}
+            next(f.ref for f in self.frames if f.ref[-len(names) :] == names),
+            {"event": "change", "value": value},
         )
 
     def shown(self, *names: str) -> list:

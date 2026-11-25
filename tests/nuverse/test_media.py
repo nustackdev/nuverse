@@ -72,7 +72,7 @@ class _Tab(WsSession):
         elif frame.ref and frame.ref[-1] == self.given and frame.op != "write":
             asyncio.get_running_loop().call_soon(self._handle, frame)
 
-    async def aread(self, path: tuple[str, ...]) -> object:
+    async def aread(self, path: tuple[str, ...], field: str | None = None) -> object:
         if path[-1] != self.given:
             return None
         entries = [self._entry(f) for f in self.files]

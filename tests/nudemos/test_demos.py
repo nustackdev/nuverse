@@ -82,7 +82,7 @@ class _Browser(WsSession):
     async def send(self, frame: Frame) -> None:
         self.frames.append(frame)
 
-    async def aread(self, path: tuple[str, ...]) -> object:
+    async def aread(self, path: tuple[str, ...], field: str | None = None) -> object:
         return self.values[path[-1]]
 
     def drawn(self, name: str) -> list:

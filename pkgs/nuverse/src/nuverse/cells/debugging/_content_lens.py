@@ -215,7 +215,7 @@ def browse(level: str, scope_id: nu.StrArg) -> nu.Nu:
 
     def live(cursor: nu.Nu, pending: nu.Nu) -> nu.Nu:
         moved = nu.ReactEvery(
-            lens.on_nav(), cursor.set(nu.Attr(NAV)) >> paint(cursor), changed_key=NAV
+            lens.on_change(), cursor.set(nu.Attr(NAV)["value"]) >> paint(cursor), changed_key=NAV
         )
         written = nu.ReactEvery(
             nuspace.atomic(nu.OnAny(*changes)),

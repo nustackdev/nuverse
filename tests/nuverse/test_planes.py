@@ -54,7 +54,7 @@ class _Answering(_Recording):
         super().__init__()
         self.values = values
 
-    async def aread(self, path: tuple) -> object:
+    async def aread(self, path: tuple, field: str | None = None) -> object:
         return self.values[path[-1]]
 
 
