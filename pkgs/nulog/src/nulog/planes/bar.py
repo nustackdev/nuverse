@@ -49,7 +49,7 @@ def live(s: nu.Dict) -> nu.Nu:
         counts = nu.List(reads.streams()).len(), nu.List(reads.series()).len()
         return fmt.status(fmt.look(s["path"]), *counts, s["every"])
 
-    return nu.ForeverDo(nu.let(read(), draw) >> nu.Delay(s["every"]))
+    return nu.ForeverDo(nu.let(draw, said=read()) >> nu.Delay(s["every"]))
 
 
 def link(plane: nu.StrArg, root: nu.Str) -> nu.Nu:
@@ -60,7 +60,7 @@ def link(plane: nu.StrArg, root: nu.Str) -> nu.Nu:
         go = nuspace.atomic(web.link(to_config, there, label="Config"))
         return nu.IfDo((there != "").and_(there != plane), go)
 
-    return nu.let(nuspace.atomic(child(root, "nulog_config")), to)
+    return nu.let(to, p=nuspace.atomic(child(root, "nulog_config")))
 
 
 def out(plane: nu.StrArg) -> nu.Nu:
@@ -71,4 +71,4 @@ def out(plane: nu.StrArg) -> nu.Nu:
         body = following(root, lambda s: with_store(s, lambda: live(s), off))
         return first >> link(plane, root) >> body
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))

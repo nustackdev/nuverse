@@ -173,7 +173,7 @@ def on_shop(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
         )
         return ready >> nuspace.bracketed(build(r))
 
-    return nu.let(nuspace.atomic(ROOT_ID), landed)
+    return nu.let(landed, root=nuspace.atomic(ROOT_ID))
 
 
 # --- shards ---------------------------------------------------------------------------------
@@ -391,10 +391,10 @@ def seed(root: nu.Str) -> nu.Nu:
 
     def first(mine: nu.ObjectRef) -> nu.Nu:
         take = nu.IfDo(SHOP.seeded.is_null(), SHOP.seeded.set(True) >> mine.set(True))
-        build = nu.let(opening(time.time()), write) >> start(root)
+        build = nu.let(write, o=opening(time.time())) >> start(root)
         return nuspace.atomic(take) >> nu.IfDo(nu.Bool(mine), build)
 
-    return nu.let(False, first)
+    return nu.let(first, mine=False)
 
 
 # --- the jobs -------------------------------------------------------------------------------
@@ -418,7 +418,7 @@ def _job(root: nu.StrArg, name: str, source: str) -> nu.Nu:
         return headless.once(jid, make) >> headless.supervise(jid)
 
     claimed = nuspace.atomic(held.init(MintId("p")))
-    return claimed >> nu.let(nuspace.atomic(held), made)
+    return claimed >> nu.let(made, job=nuspace.atomic(held))
 
 
 def start(root: nu.StrArg) -> nu.Nu:
@@ -485,7 +485,7 @@ def open_customer(
         return headless.once(pid, make) >> history.push(web.href(pid))
 
     claimed = nuspace.atomic(held.init(MintId("p")))
-    return claimed >> nu.let(nuspace.atomic(held), opened)
+    return claimed >> nu.let(opened, page=nuspace.atomic(held))
 
 
 def subject(plane: nu.StrArg) -> nu.Str:

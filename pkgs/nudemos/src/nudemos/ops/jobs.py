@@ -57,8 +57,8 @@ def out(plane):
         opened = Open(cfg["settings"]["port"], cfg["release"]["version"], cfg["settings"]["data"])
         up = nuspace.atomic(kit.job_started("gateway"))
         # Once a second, what it served: lines, numbers, a point per series. Out of memory, Drain raises.
-        loop = nu.ForeverDo(nu.Delay(1.0) >> nu.let(Drain(), lambda d: flush(root, d)))
-        return up >> nu.Provide(Gateway, kwargs={}, body=nu.let(opened, lambda d: flush(root, d)) >> loop)
+        loop = nu.ForeverDo(nu.Delay(1.0) >> nu.let(lambda d: flush(root, d), d=Drain()))
+        return up >> nu.Provide(Gateway, kwargs={}, body=nu.let(lambda d: flush(root, d), d=opened) >> loop)
 
     return kit.on_root(plane, serve)
 """
@@ -81,9 +81,9 @@ def tallied(load, shop):
 
 def turn(root):
     knobs = nuspace.atomic(nu.Dict.of(users=OPS.load.fallback({})["users"], port=OPS.settings.fallback({})["port"]))
-    shop = nu.let(knobs, lambda k: Shop(nu.Dict(k)["port"], nu.Dict(k)["users"]))
+    shop = nu.let(lambda k: Shop(nu.Dict(k)["port"], nu.Dict(k)["users"]), k=knobs)
     write = lambda s: nuspace.atomic(OPS.load.set(tallied(OPS.load.fallback({}), s)) >> kit.logged("traffic", nu.Dict(s)["lines"]))
-    return nu.let(shop, write)
+    return nu.let(write, s=shop)
 
 
 def out(plane):
@@ -142,7 +142,7 @@ def write(root, m):
 def out(plane):
     def watch(root):
         asked = nuspace.atomic(nu.Dict.of(pids=pids(nu.Dict(OPS.jobs.extract())), disk=OPS.settings.fallback({})["data"]))
-        read = nu.let(asked, lambda a: nu.let(Read(nu.Dict(a)["pids"], nu.Dict(a)["disk"]), lambda m: write(root, m)))
+        read = nu.let(lambda a: nu.let(lambda m: write(root, m), m=Read(nu.Dict(a)["pids"], nu.Dict(a)["disk"])), a=asked)
         up = nuspace.atomic(kit.job_started("telemetry"))
         return up >> nu.Provide(Machine, kwargs={}, body=nu.ForeverDo(read >> nu.Delay(EVERY)))
 
@@ -287,8 +287,8 @@ def out(plane):
         # The very first run waits for the gateway to take some orders: there is nothing to back up before.
         first = nuspace.atomic(nu.Dict(OPS.jobs[NAME].fallback({})).get_item("runs_ok", -1) < 0)
         up = nu.IfDo(first, nu.Delay(WARMUP)) >> nuspace.atomic(kit.job_started(NAME))
-        work = nu.let(nuspace.atomic(kit.ask()), lambda a: Work(NAME, a))
-        return up >> nu.Provide(Worker, kwargs={}, body=nu.let(work, lambda r: nuspace.atomic(kit.job_finished(NAME, r))))
+        work = nu.let(lambda a: Work(NAME, a), a=nuspace.atomic(kit.ask()))
+        return up >> nu.Provide(Worker, kwargs={}, body=nu.let(lambda r: nuspace.atomic(kit.job_finished(NAME, r)), r=work))
 
     return kit.on_root(plane, once)
 """

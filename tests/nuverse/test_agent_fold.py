@@ -17,7 +17,7 @@ def _chunk(text: str, kind: str = "agent_message_chunk", **kw) -> dict:
 
 def _run(body: nu.Nu) -> nu.Nu:
     """``body`` in a run's memory, its keys minted ``<kind>:n-<i>``."""
-    return nu.Frame(
+    return nu.let(
         engine._Run,
         body,
         nonce="n",

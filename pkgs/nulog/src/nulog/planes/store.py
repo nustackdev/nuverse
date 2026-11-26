@@ -66,8 +66,8 @@ def _checked(path: object) -> str:
 
 
 @contextmanager
-def opened(ctx: Context, path: object) -> Iterator[None]:
-    """The store at ``path`` bound on ``ctx`` for the ``with`` body, closed after. Sync.
+def opened(ctx: Context, path: object) -> Iterator[Context]:
+    """``ctx`` with the store at ``path`` bound, for the ``with`` body, closed after. Sync.
 
     Raises:
         NotAStore: Nothing at ``path``, or something other than a store.
@@ -75,31 +75,27 @@ def opened(ctx: Context, path: object) -> Iterator[None]:
     where = _checked(path)
     secondary = tempfile.mkdtemp(prefix="nulog-view-")
     try:
-        with _stack(where, secondary)._enter(ctx):
-            nav = ctx.fabrics.get(Navigator, TAGS[0])
-            with _also(ctx, nav):
-                yield
+        with _stack(where, secondary)._enter(ctx) as inner:
+            yield _also(inner)
     finally:
         shutil.rmtree(secondary, ignore_errors=True)
 
 
 @asynccontextmanager
-async def aopened(ctx: Context, path: object) -> AsyncIterator[None]:
+async def aopened(ctx: Context, path: object) -> AsyncIterator[Context]:
     """:func:`opened`, under the async runtime."""
     where = _checked(path)
     secondary = tempfile.mkdtemp(prefix="nulog-view-")
     try:
-        async with _stack(where, secondary)._aenter(ctx):
-            nav = ctx.fabrics.get(Navigator, TAGS[0])
-            with _also(ctx, nav):
-                yield
+        async with _stack(where, secondary)._aenter(ctx) as inner:
+            yield _also(inner)
     finally:
         shutil.rmtree(secondary, ignore_errors=True)
 
 
-def _also(ctx: Context, nav: Navigator) -> AbstractContextManager[None]:
-    """The one navigator bound under :class:`Metrics` too, so both roots find it."""
-    return ctx.fabrics.bind(Navigator, nav, TAGS[1])
+def _also(ctx: Context) -> Context:
+    """``ctx`` with its one navigator bound under :class:`Metrics` too, so both roots find it."""
+    return ctx.bind(Navigator, ctx.get(Navigator, TAGS[0]), TAGS[1])
 
 
 class Opened(nu.Bracket):
@@ -127,8 +123,8 @@ class Opened(nu.Bracket):
     def __init__(self, path: nu.StrArg, body: nu.Nu) -> None:
         super().__init__(body, path)
 
-    def _open(self, ctx: Context, path: object) -> AbstractContextManager[None]:
+    def _open(self, ctx: Context, path: object) -> AbstractContextManager[Context]:
         return opened(ctx, path)
 
-    def _aopen(self, ctx: Context, path: object) -> AbstractAsyncContextManager[None]:
+    def _aopen(self, ctx: Context, path: object) -> AbstractAsyncContextManager[Context]:
         return aopened(ctx, path)

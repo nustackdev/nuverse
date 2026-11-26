@@ -121,14 +121,16 @@ async def test_a_reader_reads_the_models_a_run_stored(store):
 
         def classify(key: nu.Nu) -> nu.Nu:
             used = nu.let(
-                Use(key, blob), lambda k: nu.let(Classify(image), lambda r: nu.List.of(k, r))
+                lambda k: nu.let(lambda r: nu.List.of(k, r), r=Classify(image)), k=Use(key, blob)
             )
             # Asked again for a key it holds, it answers without the bytes.
-            return nu.let(used, lambda u: nu.let(Holds(key), lambda h: nu.List.of(u[0], u[1], h)))
+            return nu.let(
+                lambda u: nu.let(lambda h: nu.List.of(u[0], u[1], h), h=Holds(key)), u=used
+            )
 
-        return nu.let(job + "/" + slot + "/" + nu.str(step), classify)
+        return nu.let(classify, key=job + "/" + slot + "/" + nu.str(step))
 
-    body = nu.let(read("latest"), lambda a: nu.let(read("best"), lambda b: nu.List.of(a, b)))
+    body = nu.let(lambda a: nu.let(lambda b: nu.List.of(a, b), b=read("best")), a=read("latest"))
     (latest, best), _ = await nu.arun(
         nu.Provide(Reader, kwargs={"data": "synthetic"}, body=body), store.ctx
     )

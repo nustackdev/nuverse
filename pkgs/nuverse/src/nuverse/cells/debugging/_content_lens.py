@@ -39,9 +39,6 @@ if TYPE_CHECKING:
 __all__ = ["ContentColumns", "Item", "View", "browse", "content_columns", "picked"]
 
 
-#: Where a lens arm parks the cursor the browser sent. One lens per cell.
-NAV = "_content_lens_nav"
-
 #: How long a burst of writes is waited out before the lens repaints once.
 REPAINT_DELAY = 0.25
 
@@ -73,12 +70,12 @@ def _specs() -> dict[str, ContentSpec]:
 def _column(kind: str, rows: nu.Nu, max_rows: int) -> nu.Nu:
     """One column of ``rows``, capped at ``max_rows``, its total beside them."""
     return nu.let(
-        rows,
         lambda held: nu.Dict.of(
             kind=nu.Str(kind),
             entries=nu.GetItem(held, nu.Slice(None, max_rows, None)),
             total=nu.Len(held),
         ),
+        held=rows,
     )
 
 
@@ -215,7 +212,7 @@ def browse(level: str, scope_id: nu.StrArg) -> nu.Nu:
 
     def live(cursor: nu.Nu, pending: nu.Nu) -> nu.Nu:
         moved = nu.ReactEvery(
-            lens.on_change(), cursor.set(nu.Attr(NAV)["value"]) >> paint(cursor), changed_key=NAV
+            lens.on_change(), lambda moved_to: cursor.set(moved_to["value"]) >> paint(cursor)
         )
         written = nu.ReactEvery(
             nuspace.atomic(nu.OnAny(*changes)),
@@ -223,7 +220,10 @@ def browse(level: str, scope_id: nu.StrArg) -> nu.Nu:
         )
         return paint(cursor) >> nu.ParallelAsync(moved, written)
 
-    return nu.let(nu.List.of(), lambda cursor: nu.let(None, lambda pending: live(cursor, pending)))
+    return nu.let(
+        lambda cursor: nu.let(lambda pending: live(cursor, pending), pending=None),
+        cursor=nu.List.of(),
+    )
 
 
 def picked(
@@ -245,7 +245,9 @@ def picked(
     pick = View.pick
     listed = pick.set_options(nuspace.atomic(options))
     lens_on_pick = nu.ReactLatest(
-        pick.on_change(), nu.let(nu.Str(pick), lambda at: browse(level, nu.Str(at))), initial=True
+        pick.on_change(),
+        nu.let(lambda at: browse(level, nu.Str(at)), at=nu.Str(pick)),
+        initial=True,
     )
     relisted = nu.ReactEvery(nuspace.atomic(moved), listed)
     return listed >> pick.set(first) >> nu.ParallelAsync(lens_on_pick, relisted)

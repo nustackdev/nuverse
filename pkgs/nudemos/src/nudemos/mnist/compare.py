@@ -52,11 +52,11 @@ def out(plane):
     # On the MNIST plane, or on Compare under it: the runs hang from the root either way.
     def follow(root):
         runs = runs_change(nu.Str(root))
-        return nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.leader(views.board(nu.Str(root)))), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(runs), nu.let(draw, d=nuspace.atomic(views.leader(views.board(nu.Str(root))))), every=2.0)
 
     row = nuspace.Space.planes[plane]
     root = nuspace.atomic(nu.If(row.spec.fallback("") == "mnist_compare", row.parent, plane))
-    return nu.let(root, follow)
+    return nu.let(follow, root=root)
 """)
 
 
@@ -98,11 +98,11 @@ def out(plane):
         runs = [runs_change(nu.Str(root)), PICK.planes.on_change()]
         read = pages.linked(views.rows(views.board(nu.Str(root)), nu.list(PICK.planes.fallback([]))), "run")
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*runs)), nu.let(nuspace.atomic(read), t.set_rows), every=2.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*runs)), nu.let(lambda held: t.set_rows(held), held=nuspace.atomic(read)), every=2.0),
             nu.ReactEvery(t.on_edit(), plot),
         )
 
-    return TICKS >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
+    return TICKS >> nu.let(follow, root=nuspace.atomic(nuspace.Space.planes[plane].parent))
 """)
 
 
@@ -130,9 +130,9 @@ def draw(d):
 def out(plane):
     def follow(root):
         read = views.overlay(views.series(nu.Str(root)), nu.list(PICK.planes.fallback([])))
-        return nu.Reconcile(nuspace.atomic(PICK.planes.on_change()), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(PICK.planes.on_change()), nu.let(draw, d=nuspace.atomic(read)), every=2.0)
 
-    return TICKS >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
+    return TICKS >> nu.let(follow, root=nuspace.atomic(nuspace.Space.planes[plane].parent))
 """)
 
 

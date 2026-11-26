@@ -70,7 +70,7 @@ def draw(s):
 
 def follow(job):
     moves = [run_at(job).step.on_change(), run_at(job).status.on_change()]
-    return nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(views.summary(views.run_view(job))), draw), every=3.0)
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(draw, s=nuspace.atomic(views.summary(views.run_view(job)))), every=3.0)
 
 
 def out(plane):
@@ -116,7 +116,7 @@ def press(job):
     halt = nuspace.atomic(run.stop.set(True) >> run.status.set("stopping"))
     up = nuspace.system.supervisor.supervise(job, policy=nuspace.system.supervisor.ON_FAILURE, exists_ok=True)
     resume = nuspace.atomic(run.stop.set(False) >> run.status.set("resuming")) >> nuspace.atomic(up)
-    return nu.let(status, lambda s: nu.IfDo(nu.Str(s) == "stopped", resume, nu.IfDo(nu.Str(s) == "training", halt)))
+    return nu.let(lambda s: nu.IfDo(nu.Str(s) == "stopped", resume, nu.IfDo(nu.Str(s) == "training", halt)), s=status)
 
 
 def show(lr):
@@ -126,11 +126,11 @@ def show(lr):
 def follow(job):
     # The slider writes the run's lr; the job reads it on its next chunk. Every tab follows.
     lr = run_at(job).lr
-    steer = nu.let(lr_of(lr_slider), lambda v: nuspace.atomic(lr.set(nu.Float(v))))
+    steer = nu.let(lambda v: nuspace.atomic(lr.set(nu.Float(v))), v=lr_of(lr_slider))
     status = run_at(job).status
     return stop.init() >> nu.ParallelAsync(
-        nu.Reconcile(nuspace.atomic(lr.on_change()), nu.let(nuspace.atomic(lr.fallback(0.0)), show)),
-        nu.Reconcile(nuspace.atomic(status.on_change()), nu.let(nuspace.atomic(status.fallback("")), button)),
+        nu.Reconcile(nuspace.atomic(lr.on_change()), nu.let(show, lr=nuspace.atomic(lr.fallback(0.0)))),
+        nu.Reconcile(nuspace.atomic(status.on_change()), nu.let(button, status=nuspace.atomic(status.fallback("")))),
         nu.ReactEvery(lr_slider.on_change(), steer),
         nu.ReactEvery(stop.on_click(), press(job)),
     )
@@ -164,7 +164,7 @@ charts = {k: View.charts[k].to(nustd.ui.CardRef.slot(title=title, size="sm"))[k]
 def paint(job):
     r = run_at(job)
     read = views.curves(*(sampled(s, POINTS) for s in (r.loss, r.test_loss, r.acc, r.test_acc, r.lrs)))
-    return nu.let(nuspace.atomic(read), lambda d: nu.Sequential(*(c.set(d[k]) for k, c in charts.items())))
+    return nu.let(lambda d: nu.Sequential(*(c.set(d[k]) for k, c in charts.items())), d=nuspace.atomic(read))
 
 
 def follow(job):
@@ -209,7 +209,7 @@ def draw(v):
 def follow(job):
     # Each look the job takes moves ``looked``: the digits and what it reads in them.
     read = views.cards(run_at(job).digits.fallback([]), run_at(job).preds.fallback([]))
-    return nu.Reconcile(nuspace.atomic(nu.OnAny(*[run_at(job).looked.on_change()])), nu.let(nuspace.atomic(read), draw))
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*[run_at(job).looked.on_change()])), nu.let(draw, v=nuspace.atomic(read)))
 
 
 def out(plane):
@@ -253,7 +253,7 @@ def paint(job):
     def draw(h):
         return nu.Sequential(*(MAPS[k][l].merge(h[k][l]) for k in "wg" for l in LAYERS))
 
-    return nu.let(nuspace.atomic(views.heatmaps(sampled(run_at(job).hists, SNAPSHOTS))), draw)
+    return nu.let(draw, h=nuspace.atomic(views.heatmaps(sampled(run_at(job).hists, SNAPSHOTS))))
 
 
 def follow(job):

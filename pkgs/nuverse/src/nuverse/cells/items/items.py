@@ -181,13 +181,13 @@ def _listing(kind: type[Content[Any]], level: str, scope_id: str) -> nu.Nu:
 
     return nu.ParallelAsync(
         # Items made or removed: the lines kept in step, each with its buttons.
-        nu.ReactLatest(items.on_children_change(), nu.let(keys, listed), initial=True),
+        nu.ReactLatest(items.on_children_change(), nu.let(listed, got=keys), initial=True),
         # An item edited: the hits again, the lines kept.
-        nu.ReactEvery(items.on_change(), nu.let(keys, hits)),
+        nu.ReactEvery(items.on_change(), nu.let(hits, got=keys)),
         # A time ordered key: a scope's keys sort the way its items were added.
-        nu.ReactEvery(Listing.actions.on_click(), nu.let(MintId("i"), add)),
+        nu.ReactEvery(Listing.actions.on_click(), nu.let(add, minted=MintId("i"))),
         nu.ReactLatest(
-            OPENED.on_change(), nu.let(nuspace.atomic(OPENED.fallback("")), detail), initial=True
+            OPENED.on_change(), nu.let(detail, at=nuspace.atomic(OPENED.fallback(""))), initial=True
         ),
     )
 
@@ -217,7 +217,7 @@ def out() -> nu.Nu:
     )
     kinds = KINDS.set_options(kind_options())
     held = nuspace.atomic(TARGET.fallback({}))
-    shown = nu.ReactLatest(TARGET.on_change(), nu.let(held, _shown), initial=True)
+    shown = nu.ReactLatest(TARGET.on_change(), nu.let(_shown, held=held), initial=True)
     return nuspace.bracketed(ORDER >> kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 

@@ -126,13 +126,13 @@ def about(plane: nu.StrArg) -> nu.Str:
 def on_desk(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     """``build(base)``, the desk plane's id read once, bracketed step by step: a cell's body over :data:`DESK`."""
     del plane
-    return nu.let(nuspace.atomic(BASE_ID), lambda base: nuspace.bracketed(build(nu.Str(base))))
+    return nu.let(lambda base: nuspace.bracketed(build(nu.Str(base))), base=nuspace.atomic(BASE_ID))
 
 
 def on_page(plane: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
     """``build(base, subject)`` on an item page, as :func:`on_desk`."""
     return nu.let(
-        nuspace.atomic(about(plane)), lambda s: on_desk(plane, lambda b: build(b, nu.Str(s)))
+        lambda s: on_desk(plane, lambda b: build(b, nu.Str(s))), s=nuspace.atomic(about(plane))
     )
 
 
@@ -240,7 +240,9 @@ def _page(
             >> nuspace.atomic(held.set(pid))
         )
 
-    new = nu.let("", lambda made: nu.let(nuspace.atomic(parent), lambda under: make(made, under)))
+    new = nu.let(
+        lambda made: nu.let(lambda under: make(made, under), under=nuspace.atomic(parent)), made=""
+    )
     return nu.IfDo(nu.Bool(nuspace.atomic(held.exists())).not_(), new)
 
 
@@ -314,7 +316,7 @@ def add_source(base: nu.Str, source: nu.Nu) -> nu.Nu:
         kept = _keep(base, nu.IfDo(DESK.sources.contains(key).not_(), DESK.sources[key].set(src)))
         return kept >> _source_page(base, key, src["title"], src["status"])
 
-    return nu.let(source, add)
+    return nu.let(add, s=source)
 
 
 def add_claim(base: nu.Str, claim: nu.Nu) -> nu.Nu:
@@ -326,12 +328,12 @@ def add_claim(base: nu.Str, claim: nu.Nu) -> nu.Nu:
         kept = _keep(base, nu.IfDo(DESK.claims.contains(key).not_(), DESK.claims[key].set(cl)))
         return kept >> _claim_page(base, key, cl["label"])
 
-    return nu.let(claim, add)
+    return nu.let(add, c=claim)
 
 
 def add_evidence(base: nu.Str, ev: nu.Nu) -> nu.Nu:
     """A piece of evidence (``source``, ``claim``, ``stance``, ``weight``, ``note``) into the desk."""
-    return nu.let(ev, lambda e: _keep(base, DESK.evidence[nu.Str(nu.Dict(e)["key"])].set(e)))
+    return nu.let(lambda e: _keep(base, DESK.evidence[nu.Str(nu.Dict(e)["key"])].set(e)), e=ev)
 
 
 opening = nu.host(views.opening, name="Opening")
@@ -380,20 +382,22 @@ def seed(base: nu.Str) -> nu.Nu:
             >> DESK.seeded.set(True)
         )
 
-    content = _keep(base, nu.IfDo(DESK.seeded.is_null(), nu.let(opening(nustd.time.time()), store)))
+    content = _keep(
+        base, nu.IfDo(DESK.seeded.is_null(), nu.let(store, o=opening(nustd.time.time())))
+    )
 
     def pages(due: nu.ObjectRef) -> nu.Nu:
         d = nu.Dict(due)
 
-        def src(s: nu.Attr) -> nu.Nu:
+        def src(s: nu.Nu) -> nu.Nu:
             row = nu.List(s)
             return _source_page(base, nu.Str(row[0]), row[1], row[2])
 
-        def claim(c: nu.Attr) -> nu.Nu:
+        def claim(c: nu.Nu) -> nu.Nu:
             row = nu.List(c)
             return _claim_page(base, nu.Str(row[0]), row[1], row[2])
 
-        def run(r: nu.Attr) -> nu.Nu:
+        def run(r: nu.Nu) -> nu.Nu:
             row = nu.List(r)
             return _run_page(base, nu.Str(row[0]), row[1])
 
@@ -412,7 +416,7 @@ def seed(base: nu.Str) -> nu.Nu:
         >> section("evals", "Evals", "lucide:gauge", cells.EVALS)
         >> section("watch", "Watch", "lucide:activity", cells.WATCH)
         >> section("notebook", "Notebook", "lucide:notebook-pen", cells.NOTEBOOK)
-        >> nu.let(held, pages)
+        >> nu.let(pages, due=held)
         >> start_probe(base)
     )
 
@@ -462,10 +466,10 @@ def launch_run(base: nu.Str, run: nu.Nu) -> nu.Nu:
             _keep(base, DESK.runs[key].set(rd))
             >> _run_page(base, key, run_title(rd))
             >> claimed
-            >> nu.let(ids, job)
+            >> nu.let(job, ids=ids)
         )
 
-    return nu.let(run, made)
+    return nu.let(made, r=run)
 
 
 def start_probe(base: nu.Str) -> nu.Nu:
@@ -487,7 +491,7 @@ def start_probe(base: nu.Str) -> nu.Nu:
     # Its id minted once and kept on the desk, then the job under Watch.
     claimed = _keep(base, DESK.planes.probe.init(MintId("p")))
     ids = nuspace.atomic(nu.List.of(DESK.planes.probe, section_plane("watch")))
-    return claimed >> nu.let(ids, made)
+    return claimed >> nu.let(made, ids=ids)
 
 
 # --- what is typed ---------------------------------------------------------------------------

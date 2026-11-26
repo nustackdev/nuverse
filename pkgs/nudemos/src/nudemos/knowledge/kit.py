@@ -171,14 +171,14 @@ def on_base(plane: str, build: Callable[[nu.Str, Base], nu.Nu]) -> nu.Nu:
         base = nu.Str(at)
         return nuspace.bracketed(build(base, base_at(base)))
 
-    return nu.let(nuspace.atomic(base_of(plane)), landed)
+    return nu.let(landed, at=nuspace.atomic(base_of(plane)))
 
 
 def on_doc(plane: str, build: Callable[[nu.Str, Base, nu.Str], nu.Nu]) -> nu.Nu:
     """``build(base, b, slug)`` on a doc page, as :func:`on_base`."""
     return nu.let(
-        nuspace.atomic(about(plane)),
         lambda s: on_base(plane, lambda base, b: build(base, b, nu.Str(s))),
+        s=nuspace.atomic(about(plane)),
     )
 
 
@@ -257,11 +257,11 @@ def tick(b: Base, key: nu.StrArg, done: nu.BoolArg) -> nu.Nu:
         slug = nu.Str(s)
         doc = b.docs[slug]
         return nu.let(
-            _task_at(key, doc.body.fallback(""), done),
             lambda r: doc.body.set(nu.Dict(r)["body"]) >> touched(b, doc, slug, nu.Dict(r)["what"]),
+            r=_task_at(key, doc.body.fallback(""), done),
         )
 
-    return nu.let(_slug_of(key), at)
+    return nu.let(at, s=_slug_of(key))
 
 
 def set_fact(b: Base, key: nu.StrArg, value: nu.StrArg) -> nu.Nu:
@@ -354,7 +354,9 @@ def _page(
             >> nuspace.atomic(held.set(pid) >> bases.belongs(pid, base))
         )
 
-    new = nu.let("", lambda made: nu.let(nuspace.atomic(parent), lambda under: make(made, under)))
+    new = nu.let(
+        lambda made: nu.let(lambda under: make(made, under), under=nuspace.atomic(parent)), made=""
+    )
     return nu.IfDo(nu.Bool(nuspace.atomic(held.exists())).not_(), new)
 
 
@@ -440,7 +442,8 @@ def ensure_pages(base: nu.Str) -> nu.Nu:
     """A page for every doc that has none yet. Pages there already are left alone."""
     docs = nuspace.atomic(base_at(base).docs.extract())
     return nu.let(
-        _pages(docs), lambda rows: nu.ForEachDo(nu.List(rows), lambda p: _any_doc_page(base, p))
+        lambda rows: nu.ForEachDo(nu.List(rows), lambda p: _any_doc_page(base, p)),
+        rows=_pages(docs),
     )
 
 
@@ -454,7 +457,7 @@ def add_doc(base: nu.Str, slug: nu.Nu, doc: nu.Nu, what: nu.StrArg = "created") 
         row = nu.Dict.of(slug=k, title=doc["title"], kind=doc["kind"], folder=doc["folder"])
         return keep >> _any_doc_page(base, row)
 
-    return nu.let(slug, lambda s: nu.let(doc, lambda d: add(s, d)))
+    return nu.let(lambda s: nu.let(lambda d: add(s, d), d=doc), s=slug)
 
 
 @nu.host
@@ -491,11 +494,15 @@ def seed(base: nu.Str) -> nu.Nu:
         # the root reads as the team's own wiki, not the category it is registered under
         named = nuspace.atomic(nuspace.plane.rename(base, "Larkspur"))
         build = (
-            named >> views >> nu.let(opening(), write) >> ensure_pages(base) >> start_checker(base)
+            named
+            >> views
+            >> nu.let(write, o=opening())
+            >> ensure_pages(base)
+            >> start_checker(base)
         )
         return nuspace.atomic(take) >> nu.IfDo(nu.Bool(mine), build)
 
-    return nu.let(False, first)
+    return nu.let(first, mine=False)
 
 
 # --- the jobs -------------------------------------------------------------------------------
@@ -539,8 +546,8 @@ def _job(base: nu.Str, name: str, source: nu.StrArg) -> nu.Nu:
         return nuspace.atomic(nuspace.cell.set_prog(cell, source, fabrics=[]))
 
     return nu.let(
-        nuspace.atomic(held.fallback("")),
         lambda job: nu.IfDo(nu.Str(job) == "", make(job), again(job)),
+        job=nuspace.atomic(held.fallback("")),
     )
 
 
@@ -548,10 +555,10 @@ def _supervised(base: nu.Str, name: str) -> nu.Nu:
     """The job put under the supervisor, restarted on a failure. Running again if its last run is over."""
     policy = nuspace.system.supervisor.ON_FAILURE
     return nu.let(
-        nuspace.atomic(job_of(base, name)),
         lambda job: nuspace.atomic(
             nuspace.system.supervisor.supervise(nu.Str(job), policy=policy, exists_ok=True)
         ),
+        job=nuspace.atomic(job_of(base, name)),
     )
 
 

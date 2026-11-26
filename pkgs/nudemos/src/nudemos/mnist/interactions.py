@@ -68,7 +68,7 @@ class _Call(ScalarQuery):
         resource, method = self.resource, self.method
 
         def thunk(rt: Runtime) -> object:
-            held = rt.ctx.fabrics.get(resource)
+            held = rt.ctx.get(resource)
             return getattr(held, method)(*(c(rt) for c in children))
 
         return thunk
@@ -77,7 +77,7 @@ class _Call(ScalarQuery):
         resource, method = self.resource, self.method
 
         async def athunk(rt: Runtime) -> object:
-            held = rt.ctx.fabrics.get(resource)
+            held = rt.ctx.get(resource)
             args = [await c(rt) for c in children]
             return await asyncio.to_thread(getattr(held, method), *args)
 

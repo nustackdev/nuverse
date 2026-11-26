@@ -75,7 +75,7 @@ def with_job(plane: nu.StrArg, body: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     found = nuspace.atomic(job_of(plane) != "")
     made = nuspace.at.plane(id=plane).state(Made).job.on_change()
     wait = nu.WaitUntil(nuspace.atomic(made), found, every=2.0)
-    return wait >> nu.let(nuspace.atomic(job_of(plane)), lambda job: body(nu.Str(job)))
+    return wait >> nu.let(lambda job: body(nu.Str(job)), job=nuspace.atomic(job_of(plane)))
 
 
 def run_view(job: nu.StrArg) -> nu.Nu:

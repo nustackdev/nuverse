@@ -63,15 +63,15 @@ def append(start):
 def feed(now):
     # Due only when no tab fed in the last interval, so two tabs still feed one.
     due = nu.Float(now) - series.at.fallback(0.0) >= EVERY * 0.9
-    step = nu.let(series.cursor.fallback(0), append) >> series.at.set(nu.Float(now))
+    step = nu.let(append, start=series.cursor.fallback(0)) >> series.at.set(nu.Float(now))
     return nu.IfDo(due, step)
 
 
 def show():
-    return nu.let(nuspace.atomic(series.cursor.fallback(0)), lambda n: tile.set_value(nu.str(n)))
+    return nu.let(lambda n: tile.set_value(nu.str(n)), n=nuspace.atomic(series.cursor.fallback(0)))
 
 
-step = nuspace.atomic(nu.let(nustd.time.time(), feed)) >> show()
+step = nuspace.atomic(nu.let(feed, now=nustd.time.time())) >> show()
 out = tile.set_label("Points in the series") >> nu.ForeverDo(nu.DelayedDo(EVERY, step))
 """
 
@@ -104,7 +104,7 @@ class View(nustd.ui.Column):
 def paint():
     # Nothing to draw before the first batch lands: the series is made by its first write.
     sample = nuspace.atomic(nu.sorted(series.nums.sample(SAMPLE)))
-    drawn = nu.let(sample, lambda points: View.chart.set(points))
+    drawn = nu.let(lambda points: View.chart.set(points), points=sample)
     return nu.IfDo(nuspace.atomic(series.nums.exists()), drawn)
 
 

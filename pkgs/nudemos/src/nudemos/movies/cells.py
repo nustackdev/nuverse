@@ -111,7 +111,7 @@ def draw(t):
 def out(plane):
     def build(base):
         films = kit.catalog(base).films
-        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(tally(films.extract())), draw))
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(draw, t=nuspace.atomic(tally(films.extract()))))
 
     return kit.on_catalog(plane, build)
 """
@@ -191,7 +191,7 @@ def out(plane):
         cat = kit.catalog(base)
         read = pages.linked(rows(cat.films.extract(), cat.planes.extract()), "title")
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), table.set_rows)),
+            nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read))),
             nu.ReactEvery(table.on_edit(), lambda ev: edit(cat.films, ev)),
         )
 
@@ -227,7 +227,7 @@ def out(plane):
     def build(base):
         cat = kit.catalog(base)
         read = tiles(cat.films.extract(), cat.planes.extract())
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), lambda t: kit.wall(posters, t)))
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(lambda t: kit.wall(posters, t), t=nuspace.atomic(read)))
 
     return kit.on_catalog(plane, build)
 """
@@ -300,7 +300,7 @@ def out(plane):
     def build(base, key):
         cat = kit.catalog(base)
         read = front(cat.films.extract(), key, cat.planes.extract())
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), lambda v: draw(v, base)))
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(lambda v: draw(v, base), v=nuspace.atomic(read)))
 
     return kit.on_page(plane, "film", build)
 """
@@ -336,7 +336,7 @@ def out(plane):
         shown = nu.Dict.of(rating=film.rating.fallback(0.0), watched=film.watched.fallback(False), rank=rank(films.extract(), key))
         draw = lambda v: ours.rating.set(v["rating"]) >> ours.watched.set(v["watched"]) >> ours.rank.set_value(v["rank"])
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(shown), draw)),
+            nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(draw, v=nuspace.atomic(shown))),
             nu.ReactEvery(ours.rating.on_change(), film.rating.set(nu.ToFloat(ours.rating))),
             nu.ReactEvery(ours.watched.on_change(), film.watched.set(nu.ToBool(ours.watched))),
         )
@@ -421,7 +421,7 @@ def out(plane):
     def build(base, key):
         cat = kit.catalog(base)
         read = connected(cat.films.extract(), key, cat.planes.extract())
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), draw))
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(draw, v=nuspace.atomic(read)))
 
     return kit.on_page(plane, "film", build)
 """
@@ -519,7 +519,7 @@ def out(plane):
         draw = lambda v: role.set(v["role"]) >> kit.wall(films, v["tiles"])
         cat = kit.catalog(base)
         read = profile(cat.films.extract(), name, cat.planes.extract())
-        return face.set_name(name) >> nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), draw))
+        return face.set_name(name) >> nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(draw, v=nuspace.atomic(read)))
 
     return kit.on_page(plane, "person", build)
 """
@@ -569,7 +569,7 @@ def out(plane):
     def build(base, name):
         cat = kit.catalog(base)
         read = circle(cat.films.extract(), name, cat.planes.extract())
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), draw))
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(draw, v=nuspace.atomic(read)))
 
     return kit.on_page(plane, "person", build)
 """
@@ -632,7 +632,7 @@ def out(plane):
 
     def build(base):
         cat = kit.catalog(base)
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(faces(cat.films.extract(), cat.planes.extract())), draw))
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(draw, rows=nuspace.atomic(faces(cat.films.extract(), cat.planes.extract()))))
 
     return said >> kit.on_catalog(plane, build)
 """
@@ -672,7 +672,7 @@ def points(films):
 def out(plane):
     def build(base):
         films = kit.catalog(base).films
-        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(points(films.extract())), chart.set))
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(lambda held: chart.set(held), held=nuspace.atomic(points(films.extract()))))
 
     return kit.on_catalog(plane, build)
 """
@@ -716,7 +716,7 @@ def out(plane):
     def build(base):
         cat = kit.catalog(base)
         read = pages.linked(decades(cat.films.extract(), cat.planes.extract()), "film")
-        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(nuspace.atomic(read), table.set_rows))
+        return nu.Reconcile(nuspace.atomic(cat.on_change()), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read)))
 
     return kit.on_catalog(plane, build)
 """
@@ -752,7 +752,7 @@ def flows(films):
 def out(plane):
     def build(base):
         films = kit.catalog(base).films
-        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(nuspace.atomic(flows(films.extract())), sankey.set))
+        return nu.Reconcile(nuspace.atomic(films.on_change()), nu.let(lambda held: sankey.set(held), held=nuspace.atomic(flows(films.extract()))))
 
     return kit.on_catalog(plane, build)
 """
@@ -769,7 +769,7 @@ def out(plane):
     # The whole cinematheque is this one store: browse it as it lies, and watch it change.
     lens = nustd.ui.lens.LensRef("store")
     store = lambda base: nustd.ui.lens.browse(lens, kit.Catalog, prefix=nuspace.State.planes[nu.Str(base)])
-    return nu.let(nuspace.atomic(kit.base_of(plane)), store)
+    return nu.let(store, base=nuspace.atomic(kit.base_of(plane)))
 """
 
 

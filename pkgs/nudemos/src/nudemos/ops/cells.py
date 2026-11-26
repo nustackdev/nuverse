@@ -99,7 +99,7 @@ def out(plane):
     def build(root):
         read = views.pulse(OPS.gw.fallback({}), OPS.release.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({}),
                            nu.Dict(OPS.incidents.extract()).fallback({}), OPS.load.fallback({}))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change(), OPS.incidents.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change(), OPS.incidents.on_change()])), nu.let(draw, t=nuspace.atomic(read)), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -134,7 +134,7 @@ def out(plane):
             err=views.named("failing %", OPS.err.range(since, since + WINDOW + 5), 100.0),
         )
         draw = lambda v: traffic.set(v["rps"]) >> errors.set(v["err"])
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -164,7 +164,7 @@ table = View.feed[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", den
 def out(plane):
     def build(root):
         read = views.feed_rows(OPS.events.fallback([]), 14)
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.events.on_change()])), nu.let(nuspace.atomic(read), table.set_rows))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.events.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read)))
 
     return kit.on_ops(plane, build)
 """
@@ -207,7 +207,7 @@ table = View.board[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", de
 def out(plane):
     def build(root):
         rows = views.job_rows(nu.Dict(OPS.jobs.extract()).fallback({}), nu.Dict(OPS.made.views.extract()).fallback({}), nustd.time.time())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.jobs.on_change()])), nu.let(nuspace.atomic(pages.linked(rows, "job")), table.set_rows), every=5.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.jobs.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(pages.linked(rows, "job"))), every=5.0)
 
     return kit.on_ops(plane, build)
 """
@@ -242,7 +242,7 @@ def bars(runs):
 
 def out(plane):
     def build(root):
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs.on_change()])), nu.let(nuspace.atomic(bars(nu.Dict(OPS.runs.extract()).fallback({}))), bars_of.set), every=10.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs.on_change()])), nu.let(lambda held: bars_of.set(held), held=nuspace.atomic(bars(nu.Dict(OPS.runs.extract()).fallback({})))), every=10.0)
 
     return kit.on_ops(plane, build)
 """
@@ -286,7 +286,7 @@ def out(plane):
         head = views.job_head(OPS.jobs[name].fallback({}), name, nustd.time.time())
         flip = nu.IfDo(kit.paused(name), kit.resume(root, name), kit.pause(root, name))
         return View.head.set_title(name) >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.jobs.on_change()])), nu.let(nuspace.atomic(head), draw), every=1.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.jobs.on_change()])), nu.let(draw, h=nuspace.atomic(head)), every=1.0),
             nu.ReactEvery(run.on_click(), kit.run_now(root, name)),
             nu.ReactEvery(pause.on_click(), flip),
             nu.ReactEvery(restart.on_click(), kit.restart(root, name)),
@@ -323,7 +323,7 @@ table = View.runs[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", den
 def out(plane):
     def build(root, name):
         rows = views.job_runs(OPS.runs[name].fallback([]), OPS.jobs[name].fallback({}), nustd.time.time())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs[name].on_change(), OPS.jobs[name].on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=5.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.runs[name].on_change(), OPS.jobs[name].on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows)), every=5.0)
 
     return kit.on_subject(plane, "job", build)
 """
@@ -355,7 +355,7 @@ def out(plane):
     def build(root, name):
         # Its own stream, newest 25 lines: a read the size of what is shown, however long the stream.
         rows = views.log_rows(kit.tail(name, 25), "debug", "", 25)
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=3.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows)), every=3.0)
 
     return kit.on_subject(plane, "job", build)
 """
@@ -399,7 +399,7 @@ def out(plane):
     def build(root):
         moved = OPS.load.set(kit.merged(OPS.load.fallback({}), nu.Dict.of(users=nu.ToInt(users))))
         return users.set(nu.Float(OPS.load.fallback({})["users"])) >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.load.on_change()])), nu.let(nuspace.atomic(shown(OPS.load.fallback({}))), draw), every=2.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.load.on_change()])), nu.let(draw, v=nuspace.atomic(shown(OPS.load.fallback({})))), every=2.0),
             nu.ReactEvery(users.on_change(), nuspace.atomic(moved)),
         )
 
@@ -442,7 +442,7 @@ def out(plane):
             rss=views.named("gateway MB", OPS.gw_rss.range(since, end)),
         )
         draw = lambda v: load.set(v["load"]) >> latency.set(v["latency"]) >> memory.set(v["rss"])
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -478,7 +478,7 @@ def out(plane):
         gw = OPS.gw.fallback({})
         read = nu.Dict.of(rows=views.route_rows(gw), codes=nu.Dict(gw).get_item("codes", {}))
         draw = lambda v: routes.set_rows(v["rows"]) >> codes.set(v["codes"])
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -509,7 +509,7 @@ table = View.access[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", d
 def out(plane):
     def build(root):
         rows = views.log_rows(kit.tail("gateway", 12), "debug", "", 12)
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=2.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows)), every=2.0)
 
     return kit.on_ops(plane, build)
 """
@@ -574,9 +574,9 @@ def out(plane):
             def drew(rows):
                 line = told(name, OPS.counts.fallback({}), rows, nustd.time.time() - nu.Float(t0), needle, floor)
                 return lines.set_rows(rows) >> said.set(line)
-            return nu.let(views.log_rows(kit.tail(name, n), floor, needle, 80), drew)
+            return nu.let(drew, rows=views.log_rows(kit.tail(name, n), floor, needle, 80))
 
-        once = nu.let(nustd.time.time(), show)
+        once = nu.let(show, t0=nustd.time.time())
         follow = nu.Reconcile(nuspace.atomic(OPS.counts.on_change()), nu.IfDo(nu.Bool(live), once) >> nu.Delay(1.0), every=5.0)
         # A pick looks again at once; a search runs on Enter.
         picked = [nu.ReactEvery(ev, once) for ev in (stream.on_change(), level.on_change(), find.on_submit())]
@@ -607,7 +607,7 @@ def bars(counts):
 
 
 def out(plane):
-    return kit.on_ops(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(nuspace.atomic(bars(OPS.counts.fallback({}))), bars_of.set), every=5.0))
+    return kit.on_ops(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.counts.on_change()])), nu.let(lambda held: bars_of.set(held), held=nuspace.atomic(bars(OPS.counts.fallback({})))), every=5.0))
 """
 
 
@@ -657,7 +657,7 @@ def out(plane):
         read = nu.Dict.of(m=m, t=views.machine_tiles(m))
         note = View.note.set("The machine this space runs on, read from the kernel every 2 seconds by the telemetry job.")
         # Nothing to show before the telemetry job's first reading.
-        shown = nu.IfDo(nuspace.atomic(OPS.machine.exists()), nu.let(nuspace.atomic(read), draw))
+        shown = nu.IfDo(nuspace.atomic(OPS.machine.exists()), nu.let(draw, v=nuspace.atomic(read)))
         return note >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), shown, every=4.0)
 
     return kit.on_ops(plane, build)
@@ -695,7 +695,7 @@ def out(plane):
             load=views.named("load", OPS.load1.range(since, end)),
         )
         draw = lambda v: use.set(v["use"]) >> load.set(v["load"])
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), nu.let(nuspace.atomic(read), draw), every=4.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=4.0)
 
     return kit.on_ops(plane, build)
 """
@@ -728,7 +728,7 @@ table = View.procs[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", de
 def out(plane):
     def build(root):
         rows = views.proc_rows(OPS.machine.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({}))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), nu.let(nuspace.atomic(rows), table.set_rows), every=4.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.tick.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows)), every=4.0)
 
     return kit.on_ops(plane, build)
 """
@@ -778,7 +778,7 @@ def out(plane):
         back = kit.deploy(root, STABLE[-1], "you", "rollback")
         draw = lambda v: live.set(v["label"], tone=v["tone"]) >> line.set(v["line"])
         return version.set("1.9.0") >> deploy.init() >> rollback.init() >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.gw.on_change(), OPS.jobs.on_change()])), nu.let(nuspace.atomic(serving(OPS.release.fallback({}), OPS.gw.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({}))), draw), every=2.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.gw.on_change(), OPS.jobs.on_change()])), nu.let(draw, v=nuspace.atomic(serving(OPS.release.fallback({}), OPS.gw.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({})))), every=2.0),
             nu.ReactEvery(deploy.on_click(), shipping),
             nu.ReactEvery(rollback.on_click(), back),
         )
@@ -816,7 +816,7 @@ def out(plane):
     def build(root):
         read = nu.Dict.of(rows=views.deploy_rows(OPS.deploys.fallback([])), notes=views.release_notes(nu.Str(OPS.release.fallback({})["version"])))
         draw = lambda v: history.set_rows(v["rows"]) >> notes.set(v["notes"])
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.deploys.on_change()])), nu.let(nuspace.atomic(read), draw), every=30.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.deploys.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=30.0)
 
     return kit.on_ops(plane, build)
 """
@@ -864,7 +864,7 @@ def out(plane):
     def build(root):
         rows = views.incident_rows(nu.Dict(OPS.incidents.extract()).fallback({}), nu.Dict(OPS.made.incidents.extract()).fallback({}), nustd.time.time())
         draw = lambda r: table.set_rows(pages.linked(r, "incident")) >> View.board.set_caption(said(r))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents.on_change()])), nu.let(nuspace.atomic(rows), draw), every=10.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents.on_change()])), nu.let(draw, r=nuspace.atomic(rows)), every=10.0)
 
     return kit.on_ops(plane, build)
 """
@@ -897,7 +897,7 @@ rota = View.both[0, 1].to(ui.CardRef.slot(title="On call"))[0].to(
 
 def out(plane):
     def build(root):
-        return rota.set_rows(OPS.oncall.fallback([])) >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.pager.on_change()])), nu.let(nuspace.atomic(views.page_rows(OPS.pager.fallback([]))), sent.set_rows))
+        return rota.set_rows(OPS.oncall.fallback([])) >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.pager.on_change()])), nu.let(lambda held: sent.set_rows(held), held=nuspace.atomic(views.page_rows(OPS.pager.fallback([])))))
 
     return kit.on_ops(plane, build)
 """
@@ -954,7 +954,7 @@ def out(plane):
         first = ack.init() >> resolve.init() >> text.init() >> add.init()
         linked = nuspace.atomic(web.link(runbook, folder_of("runbooks"), label="Open the runbook"))
         return first >> linked >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents[iid].on_change()])), nu.let(nuspace.atomic(read), draw), every=5.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.incidents[iid].on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=5.0),
             nu.ReactEvery(ack.on_click(), kit.settle_incident(root, iid, "acked")),
             nu.ReactEvery(resolve.on_click(), kit.settle_incident(root, iid, "resolved")),
             nu.ReactEvery(say.on_submit(), note),
@@ -997,7 +997,7 @@ def out(plane):
         w = nu.List(window(OPS.incidents[iid].fallback({}), nustd.time.time()))
         read = nu.Dict.of(err=views.named("failing %", OPS.err.sample(400, nu.Int(w[0]), nu.Int(w[1])), 100.0), rss=views.named("gateway MB", OPS.gw_rss.sample(400, nu.Int(w[0]), nu.Int(w[1]))))
         draw = lambda v: err.set(v["err"]) >> rss.set(v["rss"])
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(read), draw), every=3.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=3.0)
 
     return kit.on_subject(plane, "incident", build)
 """
@@ -1080,11 +1080,11 @@ def out(plane):
             return nuspace.atomic(kit.ran(name, said))
 
         url = nu.Str("http://127.0.0.1:") + nu.str(OPS.settings.fallback({})["port"]) + "/health"
-        probe = nu.TryCatch(nu.let(Health.get(url=url), lambda r: step("Check health", healthy(r))),
+        probe = nu.TryCatch(nu.let(lambda r: step("Check health", healthy(r)), r=Health.get(url=url)),
                             catch=lambda e: step("Check health", nu.List.of(False, "The gateway does not answer: connection refused.")))
         moves = {
             "health": nu.With(nustd.http.bind(Health, timeout=2.0), body=probe),
-            "errors": nu.let(kit.tail("gateway", 600), lambda rows: step("Read the errors", errors_said(rows))),
+            "errors": nu.let(lambda rows: step("Read the errors", errors_said(rows)), rows=kit.tail("gateway", 600)),
             "rollback": kit.deploy(root, STABLE[-1], "you", "rollback from the runbook") >> step("Roll back", nu.List.of(True, f"Deployed {STABLE[-1]}, the gateway is restarting on it.")),
             "verify": step("Verify", verified(OPS.gw.fallback({}))),
             "resolve": kit.resolve_open(root, "gateway") >> step("Resolve the incident", nu.List.of(True, "Resolved the open storefront incident.")),
@@ -1163,7 +1163,7 @@ table = View.steps[0].to(ui.DataTableRef.slot(columns=COLUMNS, row_key="key", de
 
 
 def out(plane):
-    return kit.on_ops(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.steps.on_change()])), nu.let(nuspace.atomic(views.step_rows(OPS.steps.fallback([]))), table.set_rows)))
+    return kit.on_ops(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.steps.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(views.step_rows(OPS.steps.fallback([]))))))
 """
 
 
@@ -1206,7 +1206,7 @@ def out(plane):
             return nuspace.atomic(rule.set(kit.merged(rule.fallback({}), nu.Dict.of(on=nu.ToBool(ev["value"])))))
 
         read = views.rule_rows(nu.Dict(OPS.rules.extract()).fallback({}))
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.rules.on_change()])), nu.let(nuspace.atomic(read), table.set_rows), every=5.0), nu.ReactEvery(table.on_edit(), flip))
+        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.rules.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read)), every=5.0), nu.ReactEvery(table.on_edit(), flip))
 
     return kit.on_ops(plane, build)
 """
@@ -1284,14 +1284,14 @@ def banner(parts):
 
 
 def draw(parts):
-    shown = nu.let(banner(parts), lambda v: View.banner.set(v["title"], body=v["body"], variant=v["variant"]))
+    shown = nu.let(lambda v: View.banner.set(v["title"], body=v["body"], variant=v["variant"]), v=banner(parts))
     return shown >> table.set_rows(parts)
 
 
 def out(plane):
     def build(root):
         read = views.components(OPS.gw.fallback({}), nu.Dict(OPS.jobs.extract()).fallback({}), OPS.release.fallback({}))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change(), OPS.jobs.on_change()])), nu.let(nuspace.atomic(read), draw), every=3.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change(), OPS.jobs.on_change()])), nu.let(draw, parts=nuspace.atomic(read)), every=3.0)
 
     return kit.on_ops(plane, build)
 """
@@ -1349,7 +1349,7 @@ def out(plane):
     def build(root):
         now = nustd.time.time()
         since = nu.Int(nu.ToInt(now)) - 3600
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(nuspace.atomic(minutes(OPS.err.sample(2400, since, since + 3605), now)), bars_of.set), every=10.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[OPS.beat.on_change()])), nu.let(lambda held: bars_of.set(held), held=nuspace.atomic(minutes(OPS.err.sample(2400, since, since + 3605), now))), every=10.0)
 
     return kit.on_ops(plane, build)
 """

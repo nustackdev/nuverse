@@ -44,7 +44,7 @@ def _edit(item: Number) -> nu.Nu:
         return nu.IfDo(number.is_null(), value.erase(), value.set(number))
 
     return CONTROL.set(value.fallback(0.0)) >> nu.ParallelAsync(
-        nu.ReactEvery(CONTROL.on_change(), nu.let(nu.Float(CONTROL), keep)),
+        nu.ReactEvery(CONTROL.on_change(), nu.let(keep, typed=nu.Float(CONTROL))),
         nu.ReactEvery(value.on_change(), CONTROL.set(value.fallback(""))),
     )
 

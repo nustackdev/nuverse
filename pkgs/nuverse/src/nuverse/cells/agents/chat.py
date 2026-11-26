@@ -453,7 +453,7 @@ def _setup() -> nu.Nu:
             none,
         )
 
-    return CHAT.erase() >> nu.let(agents.installed(), shown)
+    return CHAT.erase() >> nu.let(shown, names=agents.installed())
 
 
 # --- the chat ----------------------------------------------------------------------------------
@@ -487,7 +487,7 @@ def _header(plane: nu.Str) -> nu.Nu:
     )
     return nu.Reconcile(
         nuspace.atomic(change),
-        nu.let(nuspace.atomic(read), draw),
+        nu.let(draw, held=nuspace.atomic(read)),
         after=nu.RECHECK_AFTER,
         every=nu.RECHECK_EVERY,
     )
@@ -511,7 +511,7 @@ def _plan(plane: nu.Str) -> nu.Nu:
         shown = nu.ForEachDo(rows, row) >> steps.keep(Keys(rows)) >> PLAN.display()
         return nu.IfDo(rows, shown, PLAN.hide())
 
-    redraw = nu.let(nuspace.atomic(nu.If(plan.exists(), plan.extract(), [])), draw)
+    redraw = nu.let(draw, held=nuspace.atomic(nu.If(plan.exists(), plan.extract(), [])))
     return nu.Reconcile(nuspace.atomic(plan.on_change()), redraw)
 
 
@@ -559,7 +559,7 @@ def _tool(entry: agents.Entry, call: ToolCall) -> nu.Nu:
             >> nu.IfDo(places, listed, call.locations.hide())
         )
 
-    redraw = nu.let(nuspace.atomic(tool.extract()), draw)
+    redraw = nu.let(draw, held=nuspace.atomic(tool.extract()))
     return nu.Reconcile(nuspace.atomic(tool.on_change()), redraw)
 
 
@@ -583,7 +583,7 @@ def _permission(plane: nu.Str, key: nu.Str, entry: agents.Entry) -> nu.Nu:
             >> nu.IfDo(v["open"], card.options.display(), card.options.hide())
         )
 
-    redraw = nu.let(nuspace.atomic(permission.extract()), draw)
+    redraw = nu.let(draw, held=nuspace.atomic(permission.extract()))
 
     def button(o: nu.Nu) -> nustd.ui.ButtonRef:
         oid = nu.Str(nu.Dict(o)["option_id"])
@@ -641,8 +641,8 @@ def _entry(plane: nu.Str, at: nu.Nu) -> nu.Nu:
         )
 
     # Placed in the trace's order, whichever arm comes up first.
-    order = nu.let(nuspace.atomic(_keys_of(plane)), ENTRIES.set_order)
-    live = nu.let(nuspace.atomic(nu.Str(entry.kind.fallback(""))), by_kind)
+    order = nu.let(lambda held: ENTRIES.set_order(held), held=nuspace.atomic(_keys_of(plane)))
+    live = nu.let(by_kind, k=nuspace.atomic(nu.Str(entry.kind.fallback(""))))
     leave = nu.TryCatch(ENTRIES.remove(key), catch=lambda _: nu.Noop())
     return nu.TryCatch(nu.ParallelAsync(live, order), finally_=leave)
 

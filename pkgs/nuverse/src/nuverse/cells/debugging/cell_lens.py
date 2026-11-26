@@ -45,7 +45,8 @@ def out(plane: nu.StrArg, cell: nu.StrArg, shape: type, at: Callable[[nu.Nu], nu
 
     # browse never finishes: each pick cancels it and starts it on the new cell.
     browse = nu.let(
-        nu.Str(pick), lambda picked: nustd.ui.lens.browse(lens, shape, prefix=at(nu.Str(picked)))
+        lambda picked: nustd.ui.lens.browse(lens, shape, prefix=at(nu.Str(picked))),
+        picked=nu.Str(pick),
     )
     lens_on_pick = nu.ReactLatest(pick.on_change(), browse, initial=True)
     # Cells added or removed on the plane: list them again.

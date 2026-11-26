@@ -54,10 +54,10 @@ def show(root):
     shown = nu.Dict.of(
         rpc=c.rpc.fallback(""), rate=c.rate.fallback(RATE), start=c.start.fallback(0), images=c.images.fallback(False),
     )
-    return nu.let(nuspace.atomic(shown), lambda v: (
+    return nu.let(lambda v: (
         K.rpc.set(v["rpc"]) >> K.rate.set(v["rate"]) >> K.start.set(v["start"])
         >> View.go.hint.set(views.endpoint_hint(v["rpc"])) >> View.images.show.set(v["images"])
-    ))
+    ), v=nuspace.atomic(shown))
 
 
 def save(root):
@@ -85,7 +85,7 @@ def out(plane):
             nu.ReactEvery(View.images.show.on_change(), images(root)),
         )
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
@@ -116,9 +116,9 @@ def said(stats, sync):
 def out(plane):
     def follow(root):
         read = said(memes_at(root).stats.fallback({}), memes_at(root).sync.fallback({}))
-        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), state.set_value), every=5.0)
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(lambda held: state.set_value(held), held=nuspace.atomic(read)), every=5.0)
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 

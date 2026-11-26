@@ -284,7 +284,7 @@ def pointed(
         def found(id: nu.Nu) -> nu.Nu:
             return nu.IfDo(nu.Str(id) == "", gone, body(at, nu.Str(id), key))
 
-        resolved = nu.let(nuspace.atomic(index.get_item(scope, "")), found)
+        resolved = nu.let(found, id=nuspace.atomic(index.get_item(scope, "")))
         keyed = nu.ReactLatest(index[scope].on_change(), resolved, initial=True)
         return nu.IfDo(by_key, keyed, by_id)
 
@@ -314,7 +314,9 @@ def editing(
         return body(entries(kind, at, scope_id)[key])
 
     return nu.ReactLatest(
-        TARGET.on_change(), nu.let(held, lambda t: pointed(t, edit, missing=missing)), initial=True
+        TARGET.on_change(),
+        nu.let(lambda t: pointed(t, edit, missing=missing), t=held),
+        initial=True,
     )
 
 

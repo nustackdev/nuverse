@@ -96,7 +96,7 @@ def out(plane):
             nu.ReactEvery(knobs[i].on_change(), kit.edit(S, changes(kit.spec(S), key, nu.float(knobs[i])), "you", label))
             for i, (key, label, *_) in enumerate(ROWS)
         ]
-        return shape >> nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(values(kit.spec(S))), draw)), *moves)
+        return shape >> nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(draw, v=nuspace.atomic(values(kit.spec(S))))), *moves)
 
     return kit.on_system(plane, build)
 """
@@ -168,27 +168,27 @@ def studio_job(base, S):
         kept = S.studio.set(nu.Str(job)) >> bases.belongs(nu.Str(job), base) >> up
         return nuspace.atomic(add >> one) >> nuspace.atomic(kept)
 
-    return nu.let("", made)
+    return nu.let(made, job="")
 
 
 def seed(base, S):
     # Once per Design plane, whichever tab gets here first: the flag is taken in the commit that reads it.
     # The space opens holding things: the decisions the team made before, and the first release, cut from the language.
     past = S.decided.set(studio.history(nustd.time.time()))
-    first_release = nu.let(nuspace.atomic(job.export_of(base)), lambda export: nu.IfDo(nu.Str(export) != "", job.cut(base, nu.Str(export), "v1.0.0", specs.DEFAULTS)))
+    first_release = nu.let(lambda export: nu.IfDo(nu.Str(export) != "", job.cut(base, nu.Str(export), "v1.0.0", specs.DEFAULTS)), export=nuspace.atomic(job.export_of(base)))
 
     def first(mine):
         take = nu.IfDo(S.seeded.is_null(), S.seeded.set(True) >> past >> mine.set(True))
         return nuspace.atomic(take) >> nu.IfDo(nu.Bool(mine), studio_job(base, S) >> first_release)
 
-    return nu.let(False, first)
+    return nu.let(first, mine=False)
 
 
 def out(plane):
     def build(base, S):
         kids = nu.List(nuspace.Space.planes[base].children.keys(limit=len(ORDER) + 4))
         names = kids.iter().map(lambda p: nuspace.plane.title(nu.Str(p))).to_list()
-        return View.about.set(TEXT) >> nu.let(nuspace.atomic(ordered(kids, names)), tiles) >> seed(base, S) >> nu.Park()
+        return View.about.set(TEXT) >> nu.let(tiles, rows=nuspace.atomic(ordered(kids, names))) >> seed(base, S) >> nu.Park()
 
     return kit.on_system(plane, build)
 ''')
@@ -213,7 +213,7 @@ def draw(t):
 def out(plane):
     read = lambda S: kit.tally(S.spec.fallback({}), S.inbox.fallback([]), S.releases.fallback([]))
     moves = lambda S: nu.OnAny(S.rev.on_change(), S.mail.on_change(), S.releases.on_change())
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(nuspace.atomic(read(S)), draw)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(draw, t=nuspace.atomic(read(S)))))
 """)
 
 
@@ -239,7 +239,7 @@ def out(plane):
         return (
             View.bar.mode.set("auto") >> View.bar.note.set("Frames draw in their own theme. Pick one, or let them follow your system.")
             >> nu.ParallelAsync(
-                nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.preview.on_change()])), nu.let(nuspace.atomic(S.preview.fallback("auto")), View.bar.mode.set)),
+                nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.preview.on_change()])), nu.let(lambda held: View.bar.mode.set(held), held=nuspace.atomic(S.preview.fallback("auto")))),
                 nu.ReactEvery(View.bar.mode.on_change(), S.preview.set(nu.Str(View.bar.mode))),
             )
         )
@@ -288,7 +288,7 @@ def draw(rows):
 def out(plane):
     read = lambda S: feed(S.log.fallback([]), S.inbox.fallback([]), S.releases.fallback([]), S.decided.fallback([]))
     moves = lambda S: nu.OnAny(S.rev.on_change(), S.mail.on_change(), S.decided.on_change(), S.releases.on_change())
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(nuspace.atomic(read(S)), draw)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(draw, rows=nuspace.atomic(read(S)))))
 """)
 
 
@@ -330,7 +330,7 @@ def out(plane):
         read = note(S.spec.fallback({}), S.log.fallback([]))
         labels = View.bar.undo.set("Undo", icon="undo-2", variant="secondary") >> View.bar.reset.set("Back to the language", icon="rotate-ccw", variant="ghost")
         return labels >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(read), View.bar.note.set)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(lambda held: View.bar.note.set(held), held=nuspace.atomic(read))),
             nu.ReactEvery(View.bar.undo.on_click(), kit.undo(S)),
             nu.ReactEvery(View.bar.reset.on_click(), kit.reset(S)),
         )
@@ -379,7 +379,7 @@ def out(plane):
     def build(base, S):
         read = rows(S.spec.fallback({}), nu.Str(group))
         return group.set("all") >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change(), group.on_change()])), nu.let(nuspace.atomic(read), table.set_rows)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change(), group.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read))),
             nu.ReactEvery(table.on_edit(), lambda ev: kit.edit(S, change(ev), "you", "Edited a color")),
         )
 
@@ -417,7 +417,7 @@ table = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="key
 
 def out(plane):
     return kit.on_system(plane, lambda base, S: nu.ParallelAsync(
-        nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(S.spec.fallback({}))), table.set_rows)),
+        nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(S.spec.fallback({}))))),
         nu.ReactEvery(table.on_edit(), lambda ev: kit.edit(S, change(ev), "you", "Edited a token")),
     ))
 """)
@@ -442,7 +442,7 @@ def rows(log):
 
 
 def out(plane):
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(S.log.fallback([]))), table.set_rows)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(S.log.fallback([]))))))
 """)
 
 
@@ -488,7 +488,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(ladders(kit.spec(S))), draw)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(draw, v=nuspace.atomic(ladders(kit.spec(S))))))
 """)
 
 
@@ -555,7 +555,7 @@ def sample(spec):
 
 
 def out(plane):
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(sample(kit.spec(S))), View.curves.set)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(lambda held: View.curves.set(held), held=nuspace.atomic(sample(kit.spec(S))))))
 """)
 
 
@@ -611,7 +611,7 @@ def out(plane):
             230, min=0, max=512, step=2, label="Tile corner", show_value=True)
         draw = lambda v: View.bar.size.set(v["size"]) >> View.bar.radius.set(v["radius"]) >> View.bar.shadow.set(v["shadow"])
         return shape >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(seen(kit.spec(S))), draw)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(draw, v=nuspace.atomic(seen(kit.spec(S))))),
             nu.ReactEvery(View.bar.size.on_change(), kit.edit(S, nu.Dict.of(**{"mark.size": whole(nu.float(View.bar.size))}), "you", "Resized the glyph")),
             nu.ReactEvery(View.bar.radius.on_change(), kit.edit(S, nu.Dict.of(**{"mark.radius": whole(nu.float(View.bar.radius))}), "you", "Rounded the tile")),
             nu.ReactEvery(View.bar.shadow.on_change(), kit.edit(S, nu.Dict.of(**{"mark.shadow": flag(nu.Bool(View.bar.shadow))}), "you", "Set the shadow")),
@@ -667,7 +667,7 @@ def out(plane):
     def build(base, S):
         uses = [nu.ReactEvery(View.walks[i].use.on_click(), kit.edit(S, ground(kit.spec(S), i), "you", named(kit.spec(S), i))) for i in range(N)]
         return View.about.set("Six grounds one step from the current one. Use one, and the next six walk on from there.") >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.follows(S))), nu.let(nuspace.atomic(faces(kit.seen(S))), paint)), *uses)
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.follows(S))), nu.let(paint, rows=nuspace.atomic(faces(kit.seen(S))))), *uses)
 
     return kit.on_system(plane, build)
 """)
@@ -686,7 +686,7 @@ def source(spec):
 
 def out(plane):
     code = nustd.ui.CodeRef("svg", props={"language": "xml", "max_height": 360, "wrap": True})
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(source(kit.spec(S))), code.set)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(lambda held: code.set(held), held=nuspace.atomic(source(kit.spec(S))))))
 """)
 
 
@@ -758,7 +758,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(summary(kit.spec(S))), draw)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(draw, v=nuspace.atomic(summary(kit.spec(S))))))
 """)
 
 
@@ -789,7 +789,7 @@ def rows(spec):
 
 
 def out(plane):
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(kit.spec(S))), table.set_rows)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(kit.spec(S))))))
 """)
 
 
@@ -810,7 +810,7 @@ def rows(spec):
 
 
 def out(plane):
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(nuspace.atomic(rows(kit.spec(S))), table.set_rows)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.rev.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(kit.spec(S))))))
 """)
 
 
@@ -860,9 +860,9 @@ def out(plane):
         pace = studio_bar.pace
         first = table.set_rows([]) >> pace.set(24, min=6, max=90, step=2, label="Seconds between arrivals", show_value=True)
         return first >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change(), S.rev.on_change(), S.pick.on_change()])), nu.let(nuspace.atomic(read), table.set_rows)),
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.paused.on_change()])), nu.let(nuspace.atomic(S.paused.fallback(False).not_()), studio_bar.live.set)),
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.pace.on_change()])), nu.let(nuspace.atomic(S.pace.fallback(studio.PACE)), pace.set)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change(), S.rev.on_change(), S.pick.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read))),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.paused.on_change()])), nu.let(lambda held: studio_bar.live.set(held), held=nuspace.atomic(S.paused.fallback(False).not_()))),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.pace.on_change()])), nu.let(lambda held: pace.set(held), held=nuspace.atomic(S.pace.fallback(studio.PACE)))),
             nu.ReactEvery(table.on_row_click(), lambda ev: S.pick.set(nu.Str(ev["key"]))),
             nu.ReactEvery(studio_bar.live.on_change(), S.paused.set(nu.Bool(studio_bar.live).not_())),
             nu.ReactEvery(pace.on_change(), S.pace.set(nu.float(pace))),
@@ -958,9 +958,9 @@ def out(plane):
         moves = [S.mail.on_change(), S.pick.on_change(), S.rev.on_change(), S.preview.on_change()]
         labels = accept.set("Accept", icon="check") >> decline.set("Decline", icon="x", variant="secondary")
         return labels >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw_open)),
-            nu.ReactEvery(accept.on_click(), nu.let(nuspace.atomic(prop), lambda p: decide(S, p, True))),
-            nu.ReactEvery(decline.on_click(), nu.let(nuspace.atomic(prop), lambda p: decide(S, p, False))),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(draw_open, v=nuspace.atomic(read))),
+            nu.ReactEvery(accept.on_click(), nu.let(lambda p: decide(S, p, True), p=nuspace.atomic(prop))),
+            nu.ReactEvery(decline.on_click(), nu.let(lambda p: decide(S, p, False), p=nuspace.atomic(prop))),
         )
 
     return kit.on_system(plane, build)
@@ -986,7 +986,7 @@ def rows(done):
 
 
 def out(plane):
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change()])), nu.let(nuspace.atomic(rows(S.decided.fallback([]))), table.set_rows)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(nu.OnAny(*[S.mail.on_change()])), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(S.decided.fallback([]))))))
 """)
 
 
@@ -1043,7 +1043,7 @@ def cut(base, S, export):
         return job.cut(base, export, v, nuspace.atomic(kit.spec(S))) >> View.history.push(nuspace.web.href(nuspace.atomic(job.release_page(base, v))))
 
     typed = nu.Str(go.version).strip()
-    return nu.IfDo(typed != "", nu.let(typed, made))
+    return nu.IfDo(typed != "", nu.let(made, version=typed))
 
 
 def out(plane):
@@ -1052,7 +1052,7 @@ def out(plane):
         draw = lambda v: drift_text.set(v["drift"]) >> go.version.set(v["next"])
         moves = [S.rev.on_change(), S.mail.on_change(), S.releases.on_change()]
         return drift_text.set("") >> go.version.init() >> go.cut.init() >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), draw)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(draw, v=nuspace.atomic(read))),
             nu.ReactEvery(nu.OnAny(go.cut.on_click(), go.version.on_submit()), cut(base, S, plane)),
         )
 
@@ -1088,7 +1088,7 @@ def rows(releases):
 def out(plane):
     read = lambda S: pages.linked(rows(S.releases.fallback([])), "version")
     moves = lambda S: nu.OnAny(S.mail.on_change(), S.releases.on_change())
-    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(nuspace.atomic(read(S)), table.set_rows)))
+    return kit.on_system(plane, lambda base, S: nu.Reconcile(nuspace.atomic(moves(S)), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read(S)))))
 """)
 
 
@@ -1103,7 +1103,7 @@ def on_build(plane, body):
     # body(job), once the page holds its job's id: the cut writes it right after the page.
     made = nuspace.at.plane(id=plane).state(job.Made).job.on_change()
     ready = nu.WaitUntil(nuspace.atomic(made), nuspace.atomic(job.job_of(plane) != ""), every=2.0)
-    return ready >> nu.let(nuspace.atomic(job.job_of(plane)), lambda jb: body(nu.Str(jb)))
+    return ready >> nu.let(lambda jb: body(nu.Str(jb)), jb=nuspace.atomic(job.job_of(plane)))
 """
 
 
@@ -1150,7 +1150,7 @@ def out(plane):
             b.status.fallback(""), b.done.fallback(0), b.total.fallback(0), b.index.fallback([]),
             b.started.fallback(0.0), b.finished.fallback(0.0), b.current.fallback(""),
         )
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(b.done.on_change(), b.status.on_change())), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(b.done.on_change(), b.status.on_change())), nu.let(draw, v=nuspace.atomic(read)), every=2.0)
 
     return on_build(plane, follow)
 """
@@ -1181,7 +1181,7 @@ def rows(index):
 def out(plane):
     def follow(jb):
         b = job.build_at(jb)
-        return nu.Reconcile(nuspace.atomic(b.done.on_change()), nu.let(nuspace.atomic(rows(b.index.fallback([]))), table.set_rows), every=3.0)
+        return nu.Reconcile(nuspace.atomic(b.done.on_change()), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(b.index.fallback([])))), every=3.0)
 
     return on_build(plane, follow)
 """
@@ -1224,7 +1224,7 @@ def out(plane):
     def follow(jb):
         b = job.build_at(jb)
         read = sheet(b.index.fallback([]), b.blobs.extract(), {})
-        return nu.Reconcile(nuspace.atomic(b.done.on_change()), nu.let(nuspace.atomic(read), view.set_html), every=3.0)
+        return nu.Reconcile(nuspace.atomic(b.done.on_change()), nu.let(lambda held: view.set_html(held), held=nuspace.atomic(read)), every=3.0)
 
     return on_build(plane, follow)
 """
@@ -1248,7 +1248,7 @@ def out(plane):
     def follow(jb):
         b = job.build_at(jb)
         read = text(b.index.fallback([]), b.blobs.extract())
-        return nu.Reconcile(nuspace.atomic(b.done.on_change()), nu.let(nuspace.atomic(read), code.set), every=5.0)
+        return nu.Reconcile(nuspace.atomic(b.done.on_change()), nu.let(lambda held: code.set(held), held=nuspace.atomic(read)), every=5.0)
 
     return on_build(plane, follow)
 """

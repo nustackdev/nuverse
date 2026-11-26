@@ -126,7 +126,7 @@ def on_system(plane: str, build: Callable[[nu.Str, System], nu.Nu]) -> nu.Nu:
         b = nu.Str(base)
         return nuspace.bracketed(build(b, system(b)))
 
-    return nu.let(nuspace.atomic(root_of(plane)), landed)
+    return nu.let(landed, base=nuspace.atomic(root_of(plane)))
 
 
 # --- reading -------------------------------------------------------------------------------------
@@ -146,7 +146,7 @@ def drawn(plane: str, view_ref: nu.Nu, doc: Callable[[nu.Nu], nu.Nu]) -> nu.Nu:
         plane,
         lambda base, s: nu.Reconcile(
             nuspace.atomic(nu.OnAny(*follows(s))),
-            nu.let(nuspace.atomic(seen(s)), lambda v: view_ref.set_html(doc(v))),
+            nu.let(lambda v: view_ref.set_html(doc(v)), v=nuspace.atomic(seen(s))),
         ),
     )
 
@@ -233,7 +233,7 @@ def edit(s: System, changes: nu.Nu, who: nu.StrArg, what: nu.StrArg) -> nu.Nu:
             >> s.rev.set(s.rev.fallback(0) + 1)
         )
 
-    return nu.let(changes, write)
+    return nu.let(write, ch=changes)
 
 
 @nu.host

@@ -57,6 +57,6 @@ if READY:
         def turn(sid: nu.Nu) -> nu.Nu:
             session = agent[sid]
             picked = session.set_config_option("model", model)
-            return nu.let(picked, lambda _: reply(nu.Collect(session.prompt(prompt))))
+            return nu.let(lambda _: reply(nu.Collect(session.prompt(prompt))), _=picked)
 
-        return nu.let(nu.Dict(agent.new_session(system_prompt=system))["session_id"], turn)
+        return nu.let(turn, sid=nu.Dict(agent.new_session(system_prompt=system))["session_id"])

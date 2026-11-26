@@ -147,7 +147,7 @@ def _landed(event: nu.Nu) -> nu.Nu:
         keys = nu.List(nu.Collect(nu.Map(nu.Iter(sel), lambda f: f["key"])))
         # ``open`` pulls too, and its landing is heard here after the first one
         # kept the file and let it go: only a file still picked is kept.
-        return nu.IfDo(keys.contains(key), nu.let(keys.index(key), lambda i: store(i, sel[i])))
+        return nu.IfDo(keys.contains(key), nu.let(lambda i: store(i, sel[i]), i=keys.index(key)))
 
     def store(i: nu.Nu, entry: nu.Nu) -> nu.Nu:
         f = nu.Dict(entry)
@@ -158,7 +158,9 @@ def _landed(event: nu.Nu) -> nu.Nu:
             fields = nu.Dict.of(blob=bid, name=f["name"], mime=f["mime"], size=f["size"])
             return nuspace.atomic(_items()[nu.Str(minted)].set(fields))
 
-        stored = nu.let(put, lambda bid: nu.let(MintId("f"), lambda minted: kept(bid, minted)))
+        stored = nu.let(
+            lambda bid: nu.let(lambda minted: kept(bid, minted), minted=MintId("f")), bid=put
+        )
         done = GRID.remove(nu.Str("upload-") + nu.Str(key)) >> file.discard() >> DROP.remove(i)
 
         def failed(err: nu.Nu) -> nu.Nu:
@@ -169,7 +171,7 @@ def _landed(event: nu.Nu) -> nu.Nu:
 
     return nu.IfDo(
         nu.Eq(ev["state"], "landed"),
-        nu.let(DROP, find),
+        nu.let(find, selection=DROP),
         tile.bar.set(0.0, caption=nu.Str("Failed: ") + nu.str(ev["error"])),
     )
 

@@ -162,9 +162,9 @@ def paint() -> nu.Nu:
 
     def show(read: nu.Nu) -> nu.Nu:
         shaped = fmt.messages(read, Pick.level, Pick.text, nustd.time.time())
-        return Pick.read.set(read) >> nu.let(shaped, lambda v: draw(nu.Dict(v)))
+        return Pick.read.set(read) >> nu.let(lambda v: draw(nu.Dict(v)), v=shaped)
 
-    return nu.let(got, show)
+    return nu.let(show, read=got)
 
 
 def names() -> nu.Nu:
@@ -174,9 +174,9 @@ def names() -> nu.Nu:
             to = nu.Str(k)
             return nu.IfDo(to != Pick.stream, Pick.stream.set(to) >> stream.set(to) >> paint())
 
-        return stream.set_options(fmt.options(got)) >> nu.let(fmt.pick(got, Pick.stream), moved)
+        return stream.set_options(fmt.options(got)) >> nu.let(moved, k=fmt.pick(got, Pick.stream))
 
-    return nu.let(reads.streams(), show)
+    return nu.let(show, got=reads.streams())
 
 
 def opened(e: nu.Nu) -> nu.Nu:
@@ -202,7 +202,7 @@ def picked() -> list[nu.Nu]:
         # The filter runs on Enter, with the text it was sent with.
         on(text.on_submit(), Pick.text.set(nu.Str(text))),
         nu.ReactEvery(
-            table.on_row_click(), lambda ev: nu.let(fmt.entry(Pick.read, ev["key"]), opened)
+            table.on_row_click(), lambda ev: nu.let(opened, e=fmt.entry(Pick.read, ev["key"]))
         ),
         # Closed in the tab (Esc, the backdrop, the button): the drawer stays open until told.
         nu.ReactEvery(entry.on_change(), entry.set_open(False)),
@@ -237,7 +237,7 @@ def out(plane: nu.StrArg) -> nu.Nu:
         return Pick.count.set(nu.int(s["count"])) >> shown >> with_store(s, lambda: live(s), off)
 
     def follow(root: nu.Str) -> nu.Nu:
-        return nu.Frame(
+        return nu.let(
             Pick,
             following(root, view),
             stream="",
@@ -250,7 +250,7 @@ def out(plane: nu.StrArg) -> nu.Nu:
             tiles=None,
         )
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 
 
 PLANE = PlaneSpec(

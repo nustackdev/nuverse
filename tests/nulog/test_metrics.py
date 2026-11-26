@@ -87,7 +87,6 @@ def test_loop_mints_fresh_metric_key(ctx):
         nu.ForEachDo(
             nu.Iter(nu.Literal([1, 2, 3, 4])),
             nustd.kv.Transaction(nulog.observe("hb", 1.0)),
-            item="_nl_i",
         ),
         ctx,
     )

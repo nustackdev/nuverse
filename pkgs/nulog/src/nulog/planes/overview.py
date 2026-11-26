@@ -57,7 +57,7 @@ def intro(plane: nu.StrArg) -> nu.Nu:
                 there != "", nuspace.atomic(web.link(to, there, description=description))
             )
 
-        return nu.let(nuspace.atomic(child(plane, spec)), go)
+        return nu.let(go, p=nuspace.atomic(child(plane, spec)))
 
     tiles = (tile(i, p.name, p.description) for i, p in enumerate(PAGES))
     return text.set(TEXT) >> nu.Sequential(*tiles) >> nu.ForeverDo(nu.Delay(3600.0))
@@ -134,12 +134,12 @@ def live(s: nu.Dict) -> nu.Nu:
 
     def read() -> nu.Nu:
         both = nu.let(
-            reads.streams(cap),
-            lambda names: nu.let(reads.series(cap), lambda kinds: reads.newest(names, kinds)),
+            lambda names: nu.let(lambda kinds: reads.newest(names, kinds), kinds=reads.series(cap)),
+            names=reads.streams(cap),
         )
-        return nu.let(both, lambda b: fmt.overview(nu.List(b)[0], nu.List(b)[1]))
+        return nu.let(lambda b: fmt.overview(nu.List(b)[0], nu.List(b)[1]), b=both)
 
-    return empty.erase() >> nu.ForeverDo(nu.let(read(), draw) >> nu.Delay(s["every"]))
+    return empty.erase() >> nu.ForeverDo(nu.let(draw, said=read()) >> nu.Delay(s["every"]))
 
 
 def out(plane: nu.StrArg) -> nu.Nu:
@@ -147,6 +147,6 @@ def out(plane: nu.StrArg) -> nu.Nu:
 
     def follow(root: nu.Str) -> nu.Nu:
         body = following(root, lambda s: with_store(s, lambda: live(s), off))
-        return nu.Frame(Shown, body, rows=None)
+        return nu.let(Shown, body, rows=None)
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))

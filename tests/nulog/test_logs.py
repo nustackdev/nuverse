@@ -140,7 +140,6 @@ def test_loop_appends_each_iteration(ctx):
         nu.ForEachDo(
             nu.Iter(nu.Literal([1, 2, 3, 4, 5])),
             nustd.kv.Transaction(log.info("tick")),
-            item="_nl_i",
         ),
         ctx,
     )

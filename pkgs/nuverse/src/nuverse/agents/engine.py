@@ -263,7 +263,7 @@ def describe(exc: nu.Nu, agent: nu.StrArg) -> nu.Str:
 def _minted(kind: str, fn: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     """The body ``fn`` builds over a fresh entry key, ``<kind>:<run>-<n>``."""
     key = nu.Str(f"{kind}:") + _Run.nonce + "-" + nu.str(_Run.seq)
-    return _Run.seq.inc() >> nu.let(key, lambda k: fn(nu.Str(k)))
+    return _Run.seq.inc() >> nu.let(lambda k: fn(nu.Str(k)), k=key)
 
 
 def _put(plane: str, key: nu.StrArg, kind: str, turn: nu.StrArg, **slots: object) -> nu.Nu:
@@ -330,7 +330,7 @@ def _chunk(plane: str, u: nu.Nu, kind: str) -> nu.Nu:
 
         return nu.IfDo(same, grow, _minted(kind, start))
 
-    return nu.let(_text(u), held)
+    return nu.let(held, got=_text(u))
 
 
 def _tool_entry(plane: str, u: nu.Nu, *, create: bool) -> nu.Nu:
@@ -355,7 +355,7 @@ def _tool_entry(plane: str, u: nu.Nu, *, create: bool) -> nu.Nu:
         patch = nuspace.atomic(_patched(tool, u)) >> track(sent)
         return nu.IfDo(nuspace.atomic(entries.contains(key)), patch, made)
 
-    return nu.let(nu.Str("tool:") + nu.Str(_get(u, "tool_call_id", "")), held)
+    return nu.let(held, got=nu.Str("tool:") + nu.Str(_get(u, "tool_call_id", "")))
 
 
 def _permission_entry(plane: str, u: nu.Nu) -> nu.Nu:
@@ -368,7 +368,7 @@ def _permission_entry(plane: str, u: nu.Nu) -> nu.Nu:
         made = _starts(plane, key, "permission", waiting, permission=_permission(u))
         return made >> _Run.perms.set_item(key, request)
 
-    return nu.let(nu.Str("perm:") + _Run.nonce + "-" + nu.str(request), held)
+    return nu.let(held, got=nu.Str("perm:") + _Run.nonce + "-" + nu.str(request))
 
 
 def _fold(plane: str, u: nu.Nu) -> nu.Nu:
@@ -419,7 +419,7 @@ def _folding(plane: str, items: nu.Nu, catch: Callable[[nu.Nu], nu.Nu] | None = 
     if catch is not None:
         folded = nu.TryCatch(folded, errors=AcpError, catch=catch)
     open_ = {"key": "", "kind": "", "message_id": "", "text": "", "flushed": None}
-    return nu.Frame(_Open, folded, **open_, tools=nu.Dict.create())
+    return nu.let(_Open, folded, **open_, tools=nu.Dict.create())
 
 
 # --- a turn ---------------------------------------------------------------------------------------
@@ -475,7 +475,7 @@ def _ended(plane: str, slot: str, value: nu.StrArg, *also: nu.Nu) -> nu.Nu:
         forget = _Open.key.set("") >> _Open.tools.clear() >> _Run.perms.clear() >> _Run.turn.set("")
         return forget >> commit
 
-    return nu.let(open_, close)
+    return nu.let(close, got=open_)
 
 
 def _turn_failed(plane: str, error: nu.Nu) -> nu.Nu:
@@ -492,7 +492,7 @@ def _turn_failed(plane: str, error: nu.Nu) -> nu.Nu:
 
         return _minted("notice", told)
 
-    return nu.let(describe(error, _Run.agent), held)
+    return nu.let(held, got=describe(error, _Run.agent))
 
 
 def _begin(plane: str, pid: nu.Str, text: nu.Str) -> nu.Nu:
@@ -585,9 +585,9 @@ def _turns(plane: str, s: nustd.acp.SessionRef, idle: float) -> nu.Nu:
             )
             return _begin(plane, pid, text) >> drained >> folded
 
-        return nu.let(nuspace.atomic(prompts[pid]), run)
+        return nu.let(run, prompt=nuspace.atomic(prompts[pid]))
 
-    take = nu.let(nuspace.atomic(_past(prompts, cursor)), turn)
+    take = nu.let(turn, ids=nuspace.atomic(_past(prompts, cursor)))
     step = nu.Timeout(idle, wait, on_timeout=_sleep(plane)) >> nu.IfDo(nu.Not(_Run.slept), take)
     return nu.WhileDo(nu.Not(_Run.slept), step)
 
@@ -614,7 +614,7 @@ def _answers(plane: str, s: nustd.acp.SessionRef) -> nu.Nu:
             )
             return nu.IfDo((option != "").and_(_Run.perms.contains(key)), sent)
 
-        return nu.let(answer, send)
+        return nu.let(send, a=answer)
 
     return nu.Reconcile(
         nuspace.atomic(entries.on_descendants_change("*", "permission", "answer")),
@@ -659,15 +659,15 @@ def _open(plane: str) -> nu.Nu:
 
     def new() -> nu.Nu:
         made = AGENT.new_session(cwd=cwd, system_prompt=system_prompt)
-        return nu.let(made, lambda r: _opened(plane, nu.Str(nu.Dict(r)["session_id"]), r))
+        return nu.let(lambda r: _opened(plane, nu.Str(nu.Dict(r)["session_id"]), r), r=made)
 
     def fresh() -> nu.Nu:
         return new() >> _told(plane, LOST_CONTEXT)
 
     stored = AGENT[_Run.session_id]
     resume = nu.let(
-        stored.resume(cwd=cwd, system_prompt=system_prompt),
         lambda r: _opened(plane, _Run.session_id, r),
+        r=stored.resume(cwd=cwd, system_prompt=system_prompt),
     )
     # The replay is the trace already: only the response, last, counts.
     load = nu.ForEachDo(
@@ -679,7 +679,7 @@ def _open(plane: str) -> nu.Nu:
         return nu.SwitchDo(nu.Str(mode), {"resume": resume, "load": load}, default=fresh())
 
     restored = nu.TryCatch(
-        nu.let(_restore_mode(AGENT.initialization()), restore),
+        nu.let(restore, mode=_restore_mode(AGENT.initialization())),
         errors=AcpError,
         catch=lambda err: nu.IfDo(
             nu.Contains(nu.Literal(list(_RESTORE_FALLBACK)), _code(_caught(err))),
@@ -725,7 +725,7 @@ def _close_leftovers(plane: str) -> nu.Nu:
         open_ = (turn != "").and_(nu.Not(turns[turn].ended_at.exists()))
         return nuspace.atomic(nu.IfDo(open_, ended))
 
-    return nu.let(nuspace.atomic(turns.last(default="")), check)
+    return nu.let(check, last=nuspace.atomic(turns.last(default="")))
 
 
 def _session(plane: str, idle: float) -> nu.Nu:
@@ -766,7 +766,7 @@ def _bound(plane: str, idle: float) -> nu.Nu:
         found = nu.With(spawn, body=_session(plane, idle))
         return nu.IfDo(nu.Object(got).is_(None), unknown, found)
 
-    return nu.let(nu.Switch(_Run.agent, presets, default=None), bound)
+    return nu.let(bound, got=nu.Switch(_Run.agent, presets, default=None))
 
 
 def _failed(plane: str, err: nu.Nu) -> nu.Nu:
@@ -809,7 +809,7 @@ def _failed(plane: str, err: nu.Nu) -> nu.Nu:
 
         return _minted("notice", told) >> nu.Raise(err)
 
-    return nu.let(describe(_caught(err), _Run.agent), held)
+    return nu.let(held, got=describe(_caught(err), _Run.agent))
 
 
 def _claim(plane: str, won: nu.ObjectRef) -> nu.Nu:
@@ -847,8 +847,8 @@ def engine(plane: str, *, idle: float = IDLE_TIMEOUT) -> nu.Nu:
     def claimed(won: nu.ObjectRef) -> nu.Nu:
         return _claim(plane, won) >> nu.IfDo(won, run)
 
-    body = read >> nu.let(False, claimed)
-    return nu.Frame(
+    body = read >> nu.let(claimed, won=False)
+    return nu.let(
         _Run,
         body,
         nonce=Here.plane_run,

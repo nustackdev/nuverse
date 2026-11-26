@@ -199,7 +199,10 @@ def _row(at: nu.ObjectRef) -> nu.Dict:
 
 def draw_jobs() -> nu.Nu:
     """Read the jobs once and draw the table."""
-    return nu.let(nuspace.atomic(made().iter().map(_row).to_list()), TABLE_REF.set_rows)
+    return nu.let(
+        lambda held: TABLE_REF.set_rows(held),
+        held=nuspace.atomic(made().iter().map(_row).to_list()),
+    )
 
 
 def select(click: nu.ObjectRef) -> nu.Nu:
@@ -255,7 +258,7 @@ def create(plane: nu.StrArg, name: nu.StrArg) -> nu.Nu:
             JOBS.made.set_item(job, True) >> JOBS.selected.set(job)
         )
 
-    return nu.let("", make)
+    return nu.let(make, into="")
 
 
 def new(plane: nu.StrArg) -> nu.Nu:
@@ -265,7 +268,7 @@ def new(plane: nu.StrArg) -> nu.Nu:
     def make(sub: nu.Nu) -> nu.Nu:
         typed = nu.Str(sub["values"]["line"]["name"]).strip()
         name = nu.If(typed == "", "New job", typed)
-        return nu.let(name, lambda held: create(plane, nu.Str(held)))
+        return nu.let(lambda held: create(plane, nu.Str(held)), held=name)
 
     return form.init() >> nu.ReactEvery(form.on_submit(), make)
 
@@ -360,9 +363,7 @@ def apply_restart(job: nu.StrArg) -> nu.Nu:
         ),
     )
     asked = Job.detail.restart
-    return nu.Frame(
-        _Asked, nuspace.atomic(apply), choice=nu.Str(POLICY), delay=nu.float(asked.delay)
-    )
+    return nu.let(_Asked, nuspace.atomic(apply), choice=nu.Str(POLICY), delay=nu.float(asked.delay))
 
 
 def save(job: nu.StrArg, source: nu.StrArg) -> nu.Nu:
@@ -374,9 +375,9 @@ def save(job: nu.StrArg, source: nu.StrArg) -> nu.Nu:
 
     def written(cid: nu.ObjectRef) -> nu.Nu:
         cell = nu.Str(cid)
-        return nu.let(Fabrics(source, job, cell), lambda used: commit(cell, used))
+        return nu.let(lambda used: commit(cell, used), used=Fabrics(source, job, cell))
 
-    return nu.let(nuspace.atomic(main(job)), written)
+    return nu.let(written, cid=nuspace.atomic(main(job)))
 
 
 def remove(job: nu.StrArg) -> nu.Nu:
@@ -402,12 +403,12 @@ def _delete(job: nu.StrArg) -> nu.Nu:
         )
         return nu.ReactEvery(button.on_click(), click)
 
-    return nu.let(False, clicks)
+    return nu.let(clicks, armed=False)
 
 
 def _shown(job: nu.Str) -> nu.Nu:
     d = Job.detail
-    edited = nu.let(nu.Str(d.editor), lambda source: save(job, nu.Str(source)))
+    edited = nu.let(lambda source: save(job, nu.Str(source)), source=nu.Str(d.editor))
     boot = d.boot
     on = nu.IfDo(nu.bool(boot), init.boot(job, exists_ok=True), init.unboot(job, missing_ok=True))
     return (

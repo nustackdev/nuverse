@@ -38,10 +38,10 @@ LINK = nustd.ui.PageLinkRef("plane")
 def _make(held: nu.Ref) -> nu.Nu:
     """An empty plane under the cell's own, its id into ``held``. Brackets itself."""
     return nu.let(
-        nu.Str(Here.plane),
         lambda parent: nuspace.specs.add_plane(
             EMPTY_PLANE, parent=nu.Str(parent), name=NAME, into=held
         ),
+        parent=nu.Str(Here.plane),
     )
 
 
@@ -56,9 +56,10 @@ def out() -> nu.Nu:
     """Make the plane on the first run, then show the link to it for as long as the cell runs."""
     held = nuspace.here(Made).plane
     first = nu.let(
-        nuspace.atomic(held.fallback("")), lambda made: nu.IfDo(nu.Str(made) == "", _make(held))
+        lambda made: nu.IfDo(nu.Str(made) == "", _make(held)),
+        made=nuspace.atomic(held.fallback("")),
     )
-    return first >> nu.let(nuspace.atomic(held), _shown)
+    return first >> nu.let(_shown, plane=nuspace.atomic(held))
 
 
 CELL = CellSpec(

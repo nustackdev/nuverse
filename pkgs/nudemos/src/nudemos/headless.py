@@ -90,7 +90,7 @@ def make(
     steps = [*mints, nuspace.atomic(nu.Sequential(made, *added))]
     if kept:
         steps.append(nuspace.atomic(nu.Sequential(*kept)))
-    return nu.Frame(_Minted, nu.Sequential(*steps), ids={})
+    return nu.let(_Minted, nu.Sequential(*steps), ids={})
 
 
 def cell_of(plane: nu.StrArg, name: nu.StrArg) -> nu.Str:
@@ -140,7 +140,7 @@ def unsupervise(plane: nu.StrArg) -> nu.Nu:
             r != "", stop
         )
 
-    return nu.let(nuspace.atomic(_run(plane)), off)
+    return nu.let(off, run=nuspace.atomic(_run(plane)))
 
 
 def restart(
@@ -159,7 +159,7 @@ def restart(
         )
         return nu.IfDo(r != "", stopped) >> supervise(plane, policy, delay)
 
-    return nu.let(nuspace.atomic(_run(plane)), again)
+    return nu.let(again, run=nuspace.atomic(_run(plane)))
 
 
 def live(plane: nu.StrArg) -> nu.Bool:

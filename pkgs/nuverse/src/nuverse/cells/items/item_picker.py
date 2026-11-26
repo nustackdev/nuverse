@@ -172,7 +172,7 @@ def _candidates(kind: type[Content[Any]]) -> nu.Nu:
         nuspace.State.content_planes[name].on_change(),
         nuspace.State.content_space[name].on_change(),
     )
-    return nu.ReactLatest(changed, nu.let(nuspace.atomic(kind.find()), listed), initial=True)
+    return nu.ReactLatest(changed, nu.let(listed, found=nuspace.atomic(kind.find())), initial=True)
 
 
 def _shown(held: nu.Nu) -> nu.Nu:
@@ -199,7 +199,7 @@ def _picked() -> nu.Nu:
         )
         return BODY.picked.erase() >> nu.IfDo(held, drawn, BODY.none.set("Nothing picked."))
 
-    return nu.let(address, show)
+    return nu.let(show, at=address)
 
 
 def out() -> nu.Nu:
@@ -212,7 +212,7 @@ def out() -> nu.Nu:
         >> kinds
         >> show
         >> nu.ParallelAsync(
-            nu.ReactLatest(TARGET.on_change(), nu.let(held, _shown), initial=True),
+            nu.ReactLatest(TARGET.on_change(), nu.let(_shown, held=held), initial=True),
             nu.ReactLatest(LINK.on_change(), _picked(), initial=True),
             nu.ReactEvery(BODY.picked.unpick.on_click(), LINK.erase()),
             *reactions,

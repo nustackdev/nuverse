@@ -69,7 +69,7 @@ def links(kids):
 def out(plane):
     # Launch, Compare and Read, the first three planes under this one.
     first = nuspace.Space.planes[plane].children.keys(limit=3)
-    return text.set(TEXT) >> nuspace.atomic(nu.let(first, links)) >> nu.ForeverDo(nu.Delay(3600.0))
+    return text.set(TEXT) >> nuspace.atomic(nu.let(links, kids=first)) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
 

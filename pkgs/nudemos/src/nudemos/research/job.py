@@ -197,9 +197,9 @@ def one(qid):
 
     def asked(t0):
         took = lambda r: kept(lambda run: answered(run, q, r, nustd.time.time() - nu.Float(t0)))
-        return nu.TryCatch(nu.let(ask(prompt(q, RUN["context"]), RUN["model"], evals.SYSTEM[RUN["style"]]), took), catch=lambda e: kept(lambda run: failed(run, q, nu.Str(e))))
+        return nu.TryCatch(nu.let(took, r=ask(prompt(q, RUN["context"]), RUN["model"], evals.SYSTEM[RUN["style"]])), catch=lambda e: kept(lambda run: failed(run, q, nu.Str(e))))
 
-    return nu.let(nustd.time.time(), asked)
+    return nu.let(asked, t0=nustd.time.time())
 
 
 def icon(name):
@@ -247,13 +247,13 @@ def ask():
                 nustd.time.time() - nu.Float(t0), nustd.time.time(),
             )
             write = lambda v: DESK.probe.set(nu.Dict(v)["probe"]) >> DESK.probes.set(nu.Dict(v)["probes"])
-            return nuspace.atomic(nu.let(after, write))
+            return nuspace.atomic(nu.let(write, v=after))
 
         reply = nu.TryCatch(claude(prompt(ask["q"], ask["context"]), job.PROBE_MODEL, evals.SYSTEM["direct"]), catch=lambda e: nu.Dict.of(text=nu.Str("Error: ") + nu.Str(e)))
-        return mark >> nu.let(reply, landed)
+        return mark >> nu.let(landed, r=reply)
 
     nxt = nuspace.atomic(probe_next(DESK.probe.fallback({})))
-    return nu.let(nxt, lambda a: nu.let(nustd.time.time(), lambda t0: go(a, t0)))
+    return nu.let(lambda a: nu.let(lambda t0: go(a, t0), t0=nustd.time.time()), a=nxt)
 
 
 def out(cell):

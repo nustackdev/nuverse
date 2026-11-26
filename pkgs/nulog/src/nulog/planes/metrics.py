@@ -119,7 +119,7 @@ def draw(v: nu.Dict) -> nu.Nu:
 def paint() -> nu.Nu:
     # One sample of the window, shaped once, drawn where it changed.
     got = nu.If(Pick.series == "", nu.List.of(), reads.points(Pick.series, nu.int(Pick.window)))
-    return nu.let(fmt.chart(got, nustd.time.time()), lambda v: draw(nu.Dict(v)))
+    return nu.let(lambda v: draw(nu.Dict(v)), v=fmt.chart(got, nustd.time.time()))
 
 
 def titled() -> nu.Nu:
@@ -135,9 +135,9 @@ def names() -> nu.Nu:
                 to != Pick.series, Pick.series.set(to) >> series.set(to) >> titled() >> paint()
             )
 
-        return series.set_options(fmt.options(got)) >> nu.let(fmt.pick(got, Pick.series), moved)
+        return series.set_options(fmt.options(got)) >> nu.let(moved, k=fmt.pick(got, Pick.series))
 
-    return nu.let(reads.series(), show)
+    return nu.let(show, got=reads.series())
 
 
 def picked() -> list[nu.Nu]:
@@ -169,7 +169,7 @@ def out(plane: nu.StrArg) -> nu.Nu:
         return Pick.window.set(nu.Str(s["window"])) >> shown >> with_store(s, lambda: live(s), off)
 
     def follow(root: nu.Str) -> nu.Nu:
-        return nu.Frame(
+        return nu.let(
             Pick,
             following(root, view),
             series="",
@@ -178,7 +178,7 @@ def out(plane: nu.StrArg) -> nu.Nu:
             tiles=None,
         )
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 
 
 PLANE = PlaneSpec(

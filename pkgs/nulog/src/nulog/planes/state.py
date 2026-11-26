@@ -132,7 +132,7 @@ def following(root: nu.StrArg, body: Callable[[nu.Dict], nu.Nu]) -> nu.Nu:
         )
         return nu.Race(body(now) >> nu.Park(), moved)
 
-    return nu.ForeverDo(nu.let(nuspace.atomic(config(root)), turn))
+    return nu.ForeverDo(nu.let(turn, held=nuspace.atomic(config(root))))
 
 
 def child(root: nu.StrArg, spec: str) -> nu.Str:
@@ -186,5 +186,5 @@ def with_store(
         # Open: forget what off was told, so the next trouble is told even if it is the last one.
         return nu.IfDo(seen["state"] == "ok", _Said.look.set(None) >> caught, tell(seen))
 
-    step = nu.let(fmt.look(s["path"]), turn) >> nu.Delay(again)
-    return nu.Frame(_Said, nu.ForeverDo(step), look=None)
+    step = nu.let(turn, held=fmt.look(s["path"])) >> nu.Delay(again)
+    return nu.let(_Said, nu.ForeverDo(step), look=None)

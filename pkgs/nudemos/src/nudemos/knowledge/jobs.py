@@ -97,11 +97,11 @@ def out(plane):
             ))
 
         # A check now, then on every change to the pages or the facts, and every EVERY seconds regardless.
-        turn = nu.let(checked(nuspace.atomic(read)), write)
+        turn = nu.let(write, r=checked(nuspace.atomic(read)))
         changes = [b.docs.on_change(), b.facts.on_change()]
         return turn >> nu.ParallelAsync(*(nu.Reconcile(nuspace.atomic(c), turn, every=EVERY) for c in changes))
 
-    return nu.let(nuspace.atomic(kit.base_of(plane)), lambda b: run(nu.Str(b)))
+    return nu.let(lambda b: run(nu.Str(b)), b=nuspace.atomic(kit.base_of(plane)))
 """
 
 
@@ -205,7 +205,7 @@ def out(plane):
             end = nuspace.atomic(b.imports.set(stepped(b.imports.fallback({}), None, total)) >> kit.log(b, "importer", said, ""))
             return begin >> folder >> nu.ForEachDo(nu.List(p["notes"]), one) >> end
 
-        return nu.let(nuspace.atomic(read), lambda r: nu.let(planned(nu.Dict(r)["key"], nu.Dict(r)["have"]), go))
+        return nu.let(lambda r: nu.let(go, p=planned(nu.Dict(r)["key"], nu.Dict(r)["have"])), r=nuspace.atomic(read))
 
-    return nu.let(nuspace.atomic(kit.base_of(plane)), lambda b: run(nu.Str(b)))
+    return nu.let(lambda b: run(nu.Str(b)), b=nuspace.atomic(kit.base_of(plane)))
 """

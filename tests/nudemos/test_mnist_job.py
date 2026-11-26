@@ -90,13 +90,13 @@ def test_weights_are_the_model_alone_and_smaller():
 
 async def test_the_interactions_call_the_provided_trainer():
     body = nu.let(
-        TrainChunk(2, 1e-3),
         lambda m: nu.let(
-            Evaluate(10),
             lambda e: nu.let(
-                Predict(), lambda p: nu.let(Histograms(), lambda h: nu.List.of(m, e, p, h))
+                lambda p: nu.let(lambda h: nu.List.of(m, e, p, h), h=Histograms()), p=Predict()
             ),
+            e=Evaluate(10),
         ),
+        m=TrainChunk(2, 1e-3),
     )
     (m, e, p, h), _ = await nu.arun(nu.Provide(Trainer, kwargs=SYNTHETIC, body=body))
     assert m["loss"] > 0

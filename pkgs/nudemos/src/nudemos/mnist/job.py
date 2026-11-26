@@ -89,14 +89,14 @@ def logged(m):
             >> RUN.beat.set(nu.Float(now))
         )
 
-    return nu.let(RUN.step.fallback(0) + nu.int(m["steps"]), lambda s: nu.let(nustd.time.time(), lambda t: write(s, t)))
+    return nu.let(lambda s: nu.let(lambda t: write(s, t), t=nustd.time.time()), s=RUN.step.fallback(0) + nu.int(m["steps"]))
 
 
 def look(step):
     def keep(h, p):
         return nuspace.atomic(RUN.hists.set_item(step, h) >> RUN.preds.set(p) >> RUN.looked.set(step))
 
-    return nu.let(Histograms(), lambda h: nu.let(Predict(), lambda p: keep(h, p)))
+    return nu.let(lambda h: nu.let(lambda p: keep(h, p), p=Predict()), h=Histograms())
 
 
 def kept(model, blob, step, acc):
@@ -106,7 +106,7 @@ def kept(model, blob, step, acc):
 def bested(step, acc):
     # The weights, when this score beats the best one kept.
     better = nuspace.atomic(nu.Float(acc) > BEST.acc.fallback(-1.0))
-    stored = nu.let(Weights(step), lambda w: nuspace.atomic(kept(BEST, w, step, acc)))
+    stored = nu.let(lambda w: nuspace.atomic(kept(BEST, w, step, acc)), w=Weights(step))
     return nu.IfDo(better, stored)
 
 
@@ -118,12 +118,12 @@ def scored(step, limit):
             >> RUN.tested.set(e["acc"]) >> RUN.best.set(best)
         )
 
-    return nu.let(Evaluate(limit), lambda e: nuspace.atomic(keep(e)) >> bested(step, e["acc"]))
+    return nu.let(lambda e: nuspace.atomic(keep(e)) >> bested(step, e["acc"]), e=Evaluate(limit))
 
 
 def saved(step):
     # The whole checkpoint, with the latest test score it had.
-    return nu.let(Checkpoint(step), lambda b: nuspace.atomic(kept(LATEST, b, step, RUN.tested.fallback(-1.0))))
+    return nu.let(lambda b: nuspace.atomic(kept(LATEST, b, step, RUN.tested.fallback(-1.0))), b=Checkpoint(step))
 
 
 def every(step, chunks):
@@ -133,7 +133,7 @@ def every(step, chunks):
 def turn():
     # The last chunk stops at the run's end. The lr is read now: the slider may have moved it.
     n = nuspace.atomic(nu.Int(nu.If(RUN.total - RUN.step < CHUNK, RUN.total - RUN.step, CHUNK)))
-    chunk = nu.let(TrainChunk(n, nuspace.atomic(RUN.lr.fallback(HP["lr"]))), lambda m: nuspace.atomic(logged(m)))
+    chunk = nu.let(lambda m: nuspace.atomic(logged(m)), m=TrainChunk(n, nuspace.atomic(RUN.lr.fallback(HP["lr"]))))
 
     def after(s):
         step = nu.Int(s)
@@ -143,7 +143,7 @@ def turn():
             >> nu.IfDo(every(step, SAVE).or_(step <= CHUNK * EARLY), saved(step))
         )
 
-    return chunk >> nu.let(nuspace.atomic(RUN.step), after)
+    return chunk >> nu.let(after, s=nuspace.atomic(RUN.step))
 
 
 def started(info, step, digits):
@@ -165,12 +165,12 @@ def finish():
         scores = nuspace.atomic(RUN.final.set(acc) >> RUN.tested.set(acc) >> LATEST.acc.set(acc))
         return scores >> bested(step, acc) >> nuspace.atomic(RUN.status.set("done"))
 
-    return saved(step) >> nu.IfDo(nuspace.atomic(RUN.stop.fallback(False)), stopped, nu.let(Evaluate(0), ended))
+    return saved(step) >> nu.IfDo(nuspace.atomic(RUN.stop.fallback(False)), stopped, nu.let(ended, e=Evaluate(0)))
 
 
 def train():
     restored = Restore(nuspace.atomic(LATEST.blob.fallback(b"")))
-    begin = nu.let(Info(), lambda i: nu.let(restored, lambda s: nu.let(Digits(), lambda d: started(i, s, d))))
+    begin = nu.let(lambda i: nu.let(lambda s: nu.let(lambda d: started(i, s, d), d=Digits()), s=restored), i=Info())
     going = nuspace.atomic(RUN.stop.fallback(False).not_().and_(RUN.step.fallback(0) < RUN.total.fallback(1)))
     # A first look before the first step, and a fresh run's untrained model saved: the digits start out read wrong.
     first = look(nuspace.atomic(RUN.step)) >> nu.IfDo(nuspace.atomic(RUN.step == 0), saved(0))

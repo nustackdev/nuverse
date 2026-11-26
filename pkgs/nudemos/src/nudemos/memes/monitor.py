@@ -62,9 +62,9 @@ def draw(v):
 def out(plane):
     def follow(root):
         read = shaped(memes_at(root).stats.fallback({}), nustd.time.time())
-        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), draw), every=2.0)
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(draw, v=nuspace.atomic(read)), every=2.0)
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
@@ -116,7 +116,7 @@ def paint(root):
 
     m = memes_at(root)
     read = views.health(*(sample(s) for s in (m.blocks_s, m.trades_s, m.launches_m, m.volume_m, m.lag, m.latency, m.errors_n)))
-    drawn = nu.let(nuspace.atomic(read), lambda d: nu.Sequential(*(c.set(d[k]) for k, c in charts.items())))
+    drawn = nu.let(lambda d: nu.Sequential(*(c.set(d[k]) for k, c in charts.items())), d=nuspace.atomic(read))
     # The series exist once the sync has written: till then there is nothing to sample.
     return nu.IfDo(nu.Bool(nuspace.atomic(m.beat.exists())), drawn)
 
@@ -127,9 +127,9 @@ def out(plane):
         beat = nuspace.atomic(memes_at(root).beat.on_change())
         painted = nu.Reconcile(beat, paint(root) >> nu.Delay(EVERY), every=10.0)
         picked = nu.ReactEvery(window.on_change(), Pick.window.set(nu.ToInt(window)) >> paint(root))
-        return window.set("1800") >> nu.Frame(Pick, nu.ParallelAsync(painted, picked), window=1800)
+        return window.set("1800") >> nu.let(Pick, nu.ParallelAsync(painted, picked), window=1800)
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
@@ -155,9 +155,9 @@ note = View.card.footer["note"].to(nustd.ui.TextRef.slot(tone="muted", size="sm"
 def out(plane):
     def follow(root):
         read = views.error_rows(memes_at(root).errors.fallback([]))
-        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), errors.set_rows), every=5.0)
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(lambda held: errors.set_rows(held), held=nuspace.atomic(read)), every=5.0)
 
-    return note.set(NOTE) >> nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return note.set(NOTE) >> nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 

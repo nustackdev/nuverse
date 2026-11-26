@@ -51,7 +51,7 @@ def append(
     """
     fields = extra if isinstance(extra, nu.Nu) else nu.Dict.of(**(extra or {}))
 
-    def write(key: nu.Attr) -> nu.Nu:
+    def write(key: nu.Nu) -> nu.Nu:
         entry = Messages.streams[stream].entries[nu.Str(key)]
         return (
             entry.ts_us.set(nustd.time.time_ns() // 1000)
@@ -60,13 +60,13 @@ def append(
             >> entry.fields.set(fields)
         )
 
-    return nu.let(nustd.uuid.uuid4().hex(), write)
+    return nu.let(write, key=nustd.uuid.uuid4().hex())
 
 
 # --- read ------------------------------------------------------------------
 
 
-def _row(entry: nu.Attr) -> nu.Dict:
+def _row(entry: nu.Nu) -> nu.Dict:
     """The ``{ts_us, level, msg, fields}`` row projected off one stored entry."""
     return nu.Dict.of(
         ts_us=entry["ts_us"],

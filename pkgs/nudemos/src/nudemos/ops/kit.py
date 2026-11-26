@@ -99,7 +99,7 @@ def on_root(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     ``plane`` is the plane the cell runs on; every plane finds the one root by its key.
     """
     del plane
-    return nu.let(nuspace.atomic(ROOT_ID), lambda r: build(nu.Str(r)))
+    return nu.let(lambda r: build(nu.Str(r)), r=nuspace.atomic(ROOT_ID))
 
 
 # --- logs and the feed ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ def logged(name: str | nu.Str, lines: nu.Nu) -> nu.Nu:
     """``lines`` (``{id, ts_us, level, msg, fields}`` each) into job ``name``'s stream. Bare."""
     stream = OPS.logs[name].entries
 
-    def one(line: nu.Attr) -> nu.Nu:
+    def one(line: nu.Nu) -> nu.Nu:
         ln = nu.Dict(line)
         entry = nu.Dict.of(ts_us=ln["ts_us"], level=ln["level"], msg=ln["msg"], fields=ln["fields"])
         return stream.set_item(nu.Str(ln["id"]), entry)
@@ -188,7 +188,7 @@ def job_finished(name: str, result: nu.Nu) -> nu.Nu:
     }.get(name, nu.Noop())
     failed = event("job", nu.Str(f"{name} failed: ") + nu.Str(res["summary"]), f"jobs.{name}")
     return (
-        nu.let(_done(OPS.jobs[name].fallback({}), name, res, nustd.time.time()), write)
+        nu.let(write, both=_done(OPS.jobs[name].fallback({}), name, res, nustd.time.time()))
         >> logged(name, res["lines"])
         >> nu.IfDo(nu.Bool(res["ok"]), keep, failed)
     )
@@ -275,7 +275,7 @@ def _scheduled(root: nu.StrArg, name: nu.StrArg, move: Callable[..., nu.Nu]) -> 
         every = nu.Float(_every(name))
         return nu.IfDo(every > 0.0, move(jid, ALWAYS, every), move(jid, ON_FAILURE, None))
 
-    return nu.let(nuspace.atomic(worker_of(name)), moved)
+    return nu.let(moved, held=nuspace.atomic(worker_of(name)))
 
 
 def _supervise(root: nu.StrArg, name: nu.StrArg) -> nu.Nu:
@@ -289,7 +289,7 @@ def pause(root: nu.StrArg, name: nu.StrArg, why: nu.StrArg = "by hand") -> nu.Nu
         root, name, {"paused": True, "status": "paused"}, nu.Str(name) + " paused " + why
     )
     return (
-        nu.let(nuspace.atomic(worker_of(name)), lambda j: headless.unsupervise(nu.Str(j))) >> note
+        nu.let(lambda j: headless.unsupervise(nu.Str(j)), j=nuspace.atomic(worker_of(name))) >> note
     )
 
 
@@ -328,7 +328,7 @@ def deploy(root: nu.StrArg, version: nu.StrArg, who: nu.StrArg = YOU, why: nu.St
     made = _deployed(
         OPS.release.fallback({}), OPS.deploys.fallback([]), version, who, why, nustd.time.time()
     )
-    return nuspace.atomic(nu.let(made, write)) >> restart(root, "gateway")
+    return nuspace.atomic(nu.let(write, both=made)) >> restart(root, "gateway")
 
 
 # --- incidents and people ------------------------------------------------------------------------
@@ -357,7 +357,7 @@ def page(root: nu.StrArg, role: nu.StrArg, text: nu.StrArg, incident: nu.StrArg 
             "page", line, nu.Str("incident.") + incident
         )
 
-    return nuspace.atomic(nu.let(_who(OPS.oncall.fallback([]), role), write))
+    return nuspace.atomic(nu.let(write, name=_who(OPS.oncall.fallback([]), role)))
 
 
 def incident(
@@ -393,11 +393,11 @@ def incident(
             nustd.time.time(),
         )
         h = nu.List(held)
-        return nuspace.atomic(nu.let(made, write)) >> nu.IfDo(
+        return nuspace.atomic(nu.let(write, made=made)) >> nu.IfDo(
             nu.Bool(h[2]), incident_made(root, nu.Str(h[1]), title)
         )
 
-    return nu.let([], go)
+    return nu.let(go, held=[])
 
 
 def incident_made(root: nu.StrArg, iid: nu.Str, title: nu.StrArg) -> nu.Nu:
@@ -410,7 +410,7 @@ def incident_made(root: nu.StrArg, iid: nu.Str, title: nu.StrArg) -> nu.Nu:
         pid, parent = nu.Str(nu.List(ids)[0]), nu.Str(nu.List(ids)[1])
         return _page(pid, parent, iid, INCIDENT, "incident", iid, "lucide:flame", INCIDENT_CELLS)
 
-    return nu.let(nuspace.atomic(nu.List.of(incident_view(iid), folder_of("incidents"))), made)
+    return nu.let(made, ids=nuspace.atomic(nu.List.of(incident_view(iid), folder_of("incidents"))))
 
 
 @nu.host
@@ -439,7 +439,7 @@ def calm(root: nu.StrArg, key: nu.StrArg, text: nu.StrArg) -> nu.Nu:
         return nu.IfDo(nu.Str(iid) != "", inc.set(moved) >> said)
 
     return nuspace.atomic(
-        nu.let(_open_key(nu.Dict(OPS.incidents.extract()).fallback({}), key), write)
+        nu.let(write, iid=_open_key(nu.Dict(OPS.incidents.extract()).fallback({}), key))
     )
 
 
@@ -510,7 +510,7 @@ def rule(
                 had = _merge(rec.fallback({}), words) if words else rec.fallback({})
                 decided = _decide(had, why, hold, nustd.time.time())
                 write = nu.let(
-                    decided, lambda d: rec.set(nu.List(d)[0]) >> verdict.set(nu.List(d)[1])
+                    lambda d: rec.set(nu.List(d)[0]) >> verdict.set(nu.List(d)[1]), d=decided
                 )
                 said = nu.Str(verdict)
                 fired = nu.IfDo(
@@ -521,9 +521,9 @@ def rule(
                 cleared = nu.IfDo(said == "clear", clear(root)) if clear is not None else nu.Noop()
                 return nuspace.atomic(write) >> fired >> cleared
 
-            return nu.let("", judged)
+            return nu.let(judged, verdict="")
 
-        step = nu.let(check(nuspace.atomic(view())), turn)
+        step = nu.let(turn, reason=check(nuspace.atomic(view())))
         return nu.ForeverDo(step >> nu.Delay(every))
 
     return on_root(plane, run)
@@ -699,10 +699,10 @@ def seed(root: nu.Str) -> nu.Nu:
             ids = nu.Dict(held)
             return folders(ids) >> job_pages(ids) >> jobs(ids)
 
-        made = nu.let(nuspace.atomic(OPS.made.extract()), build)
+        made = nu.let(build, held=nuspace.atomic(OPS.made.extract()))
         return nuspace.atomic(take) >> nu.IfDo(nu.Bool(mine), made)
 
-    return nu.let(False, first)
+    return nu.let(first, mine=False)
 
 
 # --- what pages share ----------------------------------------------------------------------------
@@ -716,7 +716,7 @@ def on_ops(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
 def on_subject(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
     """``build(root, subject)`` on a job or incident page, the subject read from the page's meta ``kind``."""
     about = nu.str(Space.planes[plane].meta[kind].fallback(""))
-    return nu.let(nuspace.atomic(about), lambda s: on_ops(plane, lambda r: build(r, nu.Str(s))))
+    return nu.let(lambda s: on_ops(plane, lambda r: build(r, nu.Str(s))), s=nuspace.atomic(about))
 
 
 def tail(name: nu.StrArg, n: nu.IntArg) -> nu.List:
@@ -748,5 +748,5 @@ def resolve_open(root: nu.StrArg, key: nu.StrArg, who: nu.StrArg = YOU) -> nu.Nu
     """Resolve the open incident for ``key``, if there is one."""
     iid = nuspace.atomic(_open_key(nu.Dict(OPS.incidents.extract()).fallback({}), key))
     return nu.let(
-        iid, lambda i: nu.IfDo(nu.Str(i) != "", settle_incident(root, nu.Str(i), "resolved", who))
+        lambda i: nu.IfDo(nu.Str(i) != "", settle_incident(root, nu.Str(i), "resolved", who)), i=iid
     )

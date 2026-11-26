@@ -173,7 +173,7 @@ def draw(item: File, at: Surface) -> nu.Nu:
         others = (slot.erase() for other, slot in slots.items() if other != way)
         return nu.Sequential(*others, ways[way])
 
-    drawn = nu.let(kind(mime), lambda k: _pick(nu.Str(k), only))
+    drawn = nu.let(lambda k: _pick(nu.Str(k), only), k=kind(mime))
     none = nu.Sequential(*(slot.erase() for slot in slots.values()))
     return nu.IfDo(bid == "", none, drawn)
 

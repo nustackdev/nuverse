@@ -121,7 +121,7 @@ def draw(t):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(nuspace.atomic(pulse(kit.whole())), draw), every=20.0))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(draw, t=nuspace.atomic(pulse(kit.whole()))), every=20.0))
 """
 
 
@@ -140,7 +140,7 @@ def out(plane):
     # Reads the whole desk: sources, evidence, runs, the probe. Anything that lands there shows here.
     digest, text = nu.host(views.digest), View.week[0].to(ui.MarkdownRef)
     return kit.on_desk(
-        plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(nuspace.atomic(digest(kit.whole())), text.set), every=30.0)
+        plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(lambda held: text.set(held), held=nuspace.atomic(digest(kit.whole()))), every=30.0)
     )
 """
 
@@ -180,7 +180,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(nuspace.atomic(bars(kit.whole())), draw)))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(draw, v=nuspace.atomic(bars(kit.whole())))))
 """
 
 
@@ -217,7 +217,7 @@ def out(plane):
     # Every row links to the pages it happened on.
     rows = lambda d: pages.linked(pages.linked(lately(d), "what"), "on")
     return kit.on_desk(
-        plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(nuspace.atomic(rows(kit.whole())), feed.set_rows), every=30.0)
+        plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(lambda held: feed.set_rows(held), held=nuspace.atomic(rows(kit.whole()))), every=30.0)
     )
 """
 
@@ -313,7 +313,7 @@ def out(plane):
         edit = lambda ev: nu.IfDo(nu.Str(ev["column"]) == "status", kit.set_status(base, nu.Str(ev["key"]), nu.Str(ev["value"])))
         read = pages.linked(rows(DESK.sources.extract(), DESK.evidence.extract(), DESK.planes.sources.extract()), "title")
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("sources", "evidence", "planes"))), nu.let(nuspace.atomic(read), table.set_rows)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("sources", "evidence", "planes"))), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read))),
             nu.ReactEvery(table.on_edit(), edit),
         )
 
@@ -344,7 +344,7 @@ def by_year(sources):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("sources"))), nu.let(nuspace.atomic(by_year(DESK.sources.extract())), chart.set)))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("sources"))), nu.let(lambda held: chart.set(held), held=nuspace.atomic(by_year(DESK.sources.extract())))))
 """
 
 
@@ -400,7 +400,7 @@ def out(plane):
     def build(base, key):
         src = DESK.sources[key]
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("sources"))), nu.let(nuspace.atomic(head(src.fallback({}))), draw)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("sources"))), nu.let(draw, v=nuspace.atomic(head(src.fallback({}))))),
             nu.ReactEvery(status.on_change(), kit.set_status(base, key, nu.Str(status))),
         )
 
@@ -486,7 +486,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "probes", "planes"))), nu.let(nuspace.atomic(gives(kit.whole(), key)), draw)))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "probes", "planes"))), nu.let(draw, v=nuspace.atomic(gives(kit.whole(), key)))))
 """
 
 
@@ -527,7 +527,7 @@ def out(plane):
         add = nu.IfDo(nu.Str(claim).is_null(), nu.Noop(), kit.add_evidence(base, typed) >> note.set(""))
         shown = stance.init() >> weight.init() >> note.init() >> by.init() >> go.init()
         return shown >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims"))), nu.let(nuspace.atomic(options(DESK.claims.extract())), claim.set_options)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims"))), nu.let(lambda held: claim.set_options(held), held=nuspace.atomic(options(DESK.claims.extract())))),
             nu.ReactEvery(nu.OnAny(go.on_click(), note.on_submit()), add),
         )
 
@@ -583,7 +583,7 @@ def rows(d):
 
 def out(plane):
     read = lambda: pages.linked(rows(kit.whole()), "label")
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes", "planes"))), nu.let(nuspace.atomic(read()), table.set_rows)))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes", "planes"))), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read()))))
 """
 
 
@@ -658,7 +658,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(nuspace.atomic(head(kit.whole(), key)), draw)))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(draw, v=nuspace.atomic(head(kit.whole(), key)))))
 """
 
 
@@ -682,7 +682,7 @@ def points(d, key):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(nuspace.atomic(points(kit.whole(), key)), chart.set)))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("claims", "evidence", "runs", "models", "probes"))), nu.let(lambda held: chart.set(held), held=nuspace.atomic(points(kit.whole(), key)))))
 """
 
 
@@ -738,7 +738,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(nuspace.atomic(sides(kit.whole(), key)), draw)))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(draw, v=nuspace.atomic(sides(kit.whole(), key)))))
 """
 
 
@@ -836,13 +836,13 @@ def follows():
     # The overtraining claim's page, by the id the desk keeps for it.
     claim = View.follows[1].to(ui.LinkRef)
     said = View.follows[0].to(ui.TextRef.slot(tone="muted", size="sm")).set("The table weighs on")
-    return said >> nu.let(nuspace.atomic(kit.claim_plane("overtrain").fallback("")), lambda pid: nu.IfDo(
+    return said >> nu.let(lambda pid: nu.IfDo(
         nu.Str(pid) != "", nuspace.atomic(web.link(claim, nu.Str(pid), label="Open models overtrain"))
-    ))
+    ), pid=nuspace.atomic(kit.claim_plane("overtrain").fallback("")))
 
 
 def out(plane):
-    shown = nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("models"))), nu.let(nuspace.atomic(rows(DESK.models.extract())), View.table.set_rows))
+    shown = nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("models"))), nu.let(lambda held: View.table.set_rows(held), held=nuspace.atomic(rows(DESK.models.extract()))))
     return View.intro.set(INTRO) >> kit.on_desk(
         plane, lambda b: follows() >> nu.ParallelAsync(shown, nu.ReactEvery(View.table.on_edit(), edit))
     )
@@ -881,7 +881,7 @@ def points(models):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("models"))), nu.let(nuspace.atomic(points(DESK.models.extract())), chart.set)))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("models"))), nu.let(lambda held: chart.set(held), held=nuspace.atomic(points(DESK.models.extract())))))
 """
 
 
@@ -930,7 +930,7 @@ def out(plane):
         return kit.launch_run(base, kit.new_run(nu.Str(model), s, c, data.TEAM[1], n))
 
     def run_one(base):
-        return nu.let(nu.Str(style), lambda s: nu.let(nu.Str(context), lambda c: launch(base, s, c, 0)))
+        return nu.let(lambda s: nu.let(lambda c: launch(base, s, c, 0), c=nu.Str(context)), s=nu.Str(style))
 
     def run_four(base):
         arms = [(s, c) for s in evals.STYLES for c in evals.CONTEXTS]
@@ -982,7 +982,7 @@ def board(runs, made):
 
 def out(plane):
     read = pages.linked(board(DESK.runs.extract(), DESK.planes.runs.extract()), "arm")
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs", "planes"))), nu.let(nuspace.atomic(read), table.set_rows), every=20.0))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs", "planes"))), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read)), every=20.0))
 """
 
 
@@ -1021,7 +1021,7 @@ def cells(runs):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(nuspace.atomic(cells(DESK.runs.extract())), chart.set)))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(lambda held: chart.set(held), held=nuspace.atomic(cells(DESK.runs.extract())))))
 """
 
 
@@ -1080,7 +1080,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(nuspace.atomic(head(DESK.runs[key].fallback(None))), draw), every=10.0))
+    return kit.on_page(plane, lambda base, key: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(draw, v=nuspace.atomic(head(DESK.runs[key].fallback(None)))), every=10.0))
 """
 
 
@@ -1142,10 +1142,10 @@ def out(plane):
         run = DESK.runs[key].fallback(None)
         shown = lambda v: asked.set(v["asked"]) >> said.set(v["said"])
         # The latest answer as it lands; a row clicked shows that one instead, until the next lands.
-        picked = nu.ReactEvery(table.on_row_click(), lambda ev: nu.let(answer(run, nu.Str(ev["key"])), shown))
+        picked = nu.ReactEvery(table.on_row_click(), lambda ev: nu.let(shown, v=answer(run, nu.Str(ev["key"]))))
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(nuspace.atomic(rows(run)), table.set_rows)),
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(nuspace.atomic(answer(run, "")), shown)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(run)))),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("runs"))), nu.let(shown, v=nuspace.atomic(answer(run, "")))),
             picked,
         )
 
@@ -1214,7 +1214,7 @@ def draw(v):
 def out(plane):
     def build(base):
         shown = state(DESK.probe.fallback({}), DESK.probes.extract(), DESK.paused.fallback(False), nustd.time.time())
-        follow = nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("probe", "probes") + [DESK.paused.on_change()])), nu.let(nuspace.atomic(shown), draw), every=1.0)
+        follow = nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("probe", "probes") + [DESK.paused.on_change()])), nu.let(draw, v=nuspace.atomic(shown)), every=1.0)
         return nu.ParallelAsync(
             now.init() >> paused.set(DESK.paused.fallback(False)) >> follow,
             nu.ReactEvery(now.on_click(), DESK.asked.set(DESK.asked.fallback(0) + 1)),
@@ -1251,7 +1251,7 @@ def points(probes):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("probes"))), nu.let(nuspace.atomic(points(DESK.probes.extract())), chart.set)))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("probes"))), nu.let(lambda held: chart.set(held), held=nuspace.atomic(points(DESK.probes.extract())))))
 """
 
 
@@ -1294,7 +1294,7 @@ def rows(probes):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("probes"))), nu.let(nuspace.atomic(rows(DESK.probes.extract())), table.set_rows)))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes("probes"))), nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(rows(DESK.probes.extract())))))
 """
 
 
@@ -1325,7 +1325,7 @@ def written(d):
 
 
 def out(plane):
-    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(nuspace.atomic(written(kit.whole())), View.entries.set), every=60.0))
+    return kit.on_desk(plane, lambda base: nu.Reconcile(nuspace.atomic(nu.OnAny(*kit.changes())), nu.let(lambda held: View.entries.set(held), held=nuspace.atomic(written(kit.whole()))), every=60.0))
 """
 
 

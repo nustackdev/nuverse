@@ -84,7 +84,7 @@ def checked(at: nu.StrArg) -> nu.Nu:
         tone = nu.If(seen["state"] == "ok", "ok", nu.If(seen["state"] == "unset", "info", "danger"))
         return check.set(seen["title"], body=seen["note"], variant=tone)
 
-    return nu.let(fmt.look(at), said)
+    return nu.let(said, v=fmt.look(at))
 
 
 def show(root: nu.Str) -> nu.Nu:
@@ -100,7 +100,7 @@ def show(root: nu.Str) -> nu.Nu:
             >> checked(s["path"])
         )
 
-    return nu.let(nuspace.atomic(config(root)), put)
+    return nu.let(put, v=nuspace.atomic(config(root)))
 
 
 def save(root: nu.Str) -> nu.Nu:
@@ -126,7 +126,7 @@ def out(plane: nu.StrArg) -> nu.Nu:
         )
         return ready >> nu.ReactEvery(asked, save(root))
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 
 
 # ---- about ------------------------------------------------------------------

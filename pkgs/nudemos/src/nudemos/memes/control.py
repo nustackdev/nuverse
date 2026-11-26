@@ -55,7 +55,7 @@ def _job(root: nu.StrArg) -> nu.Nu:
         return nuspace.atomic(plane >> one) >> nuspace.atomic(kept)
 
     absent = nu.Bool(nuspace.atomic(made.job.exists())).not_()
-    return nu.IfDo(absent, nu.let("", make))
+    return nu.IfDo(absent, nu.let(make, job=""))
 
 
 def start(root: nu.StrArg) -> nu.Nu:
@@ -71,7 +71,7 @@ def start(root: nu.StrArg) -> nu.Nu:
             nuspace.system.supervisor.supervise(nu.Str(job), policy=policy, exists_ok=True)
         )
 
-    return _job(root) >> clear >> nu.let(nuspace.atomic(made_at(root).job), supervised)
+    return _job(root) >> clear >> nu.let(supervised, job=nuspace.atomic(made_at(root).job))
 
 
 def stop(root: nu.StrArg) -> nu.Nu:
@@ -118,10 +118,10 @@ def make_token(root: nu.StrArg, mint: nu.StrArg, name: nu.StrArg | None = None) 
         )
 
     def made(page: nu.ObjectRef) -> nu.Nu:
-        new = nu.let(nuspace.atomic(overview_of(root)), lambda under: make(page, under))
+        new = nu.let(lambda under: make(page, under), under=nuspace.atomic(overview_of(root)))
         return nu.IfDo(nu.Str(page) == "", new)
 
-    return nu.let(nuspace.atomic(held.fallback("")), made)
+    return nu.let(made, page=nuspace.atomic(held.fallback("")))
 
 
 def open_token(root: nu.StrArg, mint: nu.StrArg, history: nustd.ui.HistoryRef) -> nu.Nu:
@@ -137,4 +137,4 @@ def open_token(root: nu.StrArg, mint: nu.StrArg, history: nustd.ui.HistoryRef) -
         name = nu.Str(nu.If(symbol == "", mint, symbol))
         return make_token(root, mint, name) >> history.push(nuspace.web.href(nuspace.atomic(held)))
 
-    return nu.let(nuspace.atomic(memes_at(root).tokens[mint].fallback({})), opened)
+    return nu.let(opened, rec=nuspace.atomic(memes_at(root).tokens[mint].fallback({})))

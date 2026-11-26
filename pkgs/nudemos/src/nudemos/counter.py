@@ -48,8 +48,8 @@ def show(n):
     return tile.set_value(nu.str(n))
 
 
-ticks = nu.ForeverDo(nu.DelayedDo(EVERY, nuspace.atomic(nu.let(nustd.time.time(), tick))))
-shows = nu.Reconcile(nuspace.atomic(count.value.on_change()), nu.let(nuspace.atomic(count.value.fallback(0)), show))
+ticks = nu.ForeverDo(nu.DelayedDo(EVERY, nuspace.atomic(nu.let(tick, now=nustd.time.time()))))
+shows = nu.Reconcile(nuspace.atomic(count.value.on_change()), nu.let(show, n=nuspace.atomic(count.value.fallback(0))))
 out = tile.set_label("Count") >> nu.ParallelAsync(ticks, shows)
 """
 

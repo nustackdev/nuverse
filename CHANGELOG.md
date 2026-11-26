@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Cells, demos and log viewer follow nu's context frames, values handed to lambdas
 - Demo jobs and tests follow nu's keyword-only Provide signature
 - Release nudemos 0.1.11 on nuspace 0.8.1, with the demo reshoot fixes
 - Demo spaces fixed for the 0.8 reshoots: fresh pages, searches and rules hold up

@@ -67,8 +67,8 @@ def out(plane):
         found = views.search(B.docs.extract(), B.facts.extract(), nu.Str(View.q), B.planes.extract())
         intro = views.welcome(B.facts.extract(), B.planes.extract(), kit.now())
         return View.intro.init() >> View.q.init() >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.facts.on_change()])), nu.let(nuspace.atomic(intro), View.intro.set), every=600.0),
-            nu.ReactEvery(View.q.on_submit(), nu.let(found, draw)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.facts.on_change()])), nu.let(lambda held: View.intro.set(held), held=nuspace.atomic(intro)), every=600.0),
+            nu.ReactEvery(View.q.on_submit(), nu.let(draw, v=found)),
         )
 
     return kit.on_base(plane, build)
@@ -101,7 +101,7 @@ def draw(t):
 def out(plane):
     def build(base, B):
         read = views.tiles(B.docs.extract(), B.facts.extract(), B.health.fallback({}), kit.now())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.facts.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(read), draw), every=15.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.facts.on_change(), B.health.on_change()])), nu.let(draw, t=nuspace.atomic(read)), every=15.0)
 
     return kit.on_base(plane, build)
 """)
@@ -135,7 +135,7 @@ def out(plane):
         # Enter or Capture: one submit with the text, the field cleared.
         def add(sub):
             typed = nu.Str(sub["values"]["line"]["title"]).strip()
-            return nu.let(views.capture(typed, B.docs.extract(), kit.now()), made)
+            return nu.let(made, c=views.capture(typed, B.docs.extract(), kit.now()))
 
         # The first run brings in the base: the folders, every page, then the checker.
         return kit.seed(base) >> nu.ReactEvery(form.on_submit(), add)
@@ -185,7 +185,7 @@ def out(plane):
             return TABLE.set_rows(pages.linked(views.first(r, 10), "page")) >> more
 
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), draw), every=60.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(draw, r=nuspace.atomic(rows)), every=60.0),
             nu.ReactEvery(TABLE.on_edit(), lambda ev: tick(B, ev)),
         )
 
@@ -225,7 +225,7 @@ def draw(rows):
 def out(plane):
     def build(base, B):
         read = views.activity(B.log.fallback([]), B.docs.extract(), B.planes.extract(), 12)
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.log.on_change()])), nu.let(nuspace.atomic(read), draw))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.log.on_change()])), nu.let(draw, rows=nuspace.atomic(read)))
 
     return kit.on_base(plane, build)
 """)
@@ -270,14 +270,14 @@ def draw(v):
 
 def out(plane):
     read = lambda B, slug: views.doc_head(B.docs.extract(), B.health.fallback({}), slug, B.planes.extract())
-    return View.head.init() >> kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(read(B, slug)), draw)))
+    return View.head.init() >> kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(draw, v=nuspace.atomic(read(B, slug)))))
 """)
 
 
 PAGE = cell(f"""\
 def out(plane):
     page = nustd.ui.MarkdownRef("page")
-    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(nuspace.atomic(views.page(B.docs.extract(), B.facts.extract(), slug, B.planes.extract(), kit.now())), page.set), every=60.0))
+    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(lambda held: page.set(held), held=nuspace.atomic(views.page(B.docs.extract(), B.facts.extract(), slug, B.planes.extract(), kit.now()))), every=60.0))
 """)
 
 
@@ -324,7 +324,7 @@ def draw(v):
 
 def out(plane):
     read = lambda B, slug: views.doc_links(B.docs.extract(), B.facts.extract(), slug, B.planes.extract())
-    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.facts.on_change()])), nu.let(nuspace.atomic(read(B, slug)), draw)))
+    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.facts.on_change()])), nu.let(draw, v=nuspace.atomic(read(B, slug)))))
 """)
 
 
@@ -385,7 +385,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.project_view(B.docs.extract(), slug, kit.now())), draw), every=60.0))
+    return kit.on_doc(plane, lambda base, B, slug: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(draw, v=nuspace.atomic(views.project_view(B.docs.extract(), slug, kit.now()))), every=60.0))
 """)
 
 
@@ -407,7 +407,7 @@ def out(plane):
         doc, d = B.docs[slug], View.decide
         changed = nu.Str(d.status) != nu.Str(doc.status.fallback("open"))
         return d.note.set(NOTE) >> nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(doc.status.fallback("open")), d.status.set)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: d.status.set(held), held=nuspace.atomic(doc.status.fallback("open")))),
             nu.ReactEvery(d.status.on_change(), nu.IfDo(changed, kit.set_status(B, slug, nu.Str(d.status)))),
         )
 
@@ -444,7 +444,7 @@ def draw(v):
 def out(plane):
     def build(base, B, slug):
         name = B.docs[slug].title.fallback("")
-        return View.head.face.set("", name=name) >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.person_view(B.docs.extract(), slug, kit.now())), draw), every=60.0)
+        return View.head.face.set("", name=name) >> nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(draw, v=nuspace.atomic(views.person_view(B.docs.extract(), slug, kit.now()))), every=60.0)
 
     return kit.on_doc(plane, build)
 """)
@@ -511,7 +511,7 @@ COLUMNS = [
 def out(plane):
     def build(base, B):
         rows = views.pages_rows(B.docs.extract(), B.health.fallback({}), "wiki", B.planes.extract())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(rows), shown))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change(), B.health.on_change()])), nu.let(lambda held: shown(held), held=nuspace.atomic(rows)))
 
     return kit.on_base(plane, build)
 """
@@ -522,7 +522,7 @@ RECENT = cell("""\
 def out(plane):
     md = nustd.ui.MarkdownRef("recent")
     read = lambda B: nu.Str("### Recently edited\\n\\n") + views.page_query("recent", "8", B.docs.extract(), B.facts.extract(), B.planes.extract(), kit.now())
-    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(read(B)), md.set), every=60.0))
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: md.set(held), held=nuspace.atomic(read(B))), every=60.0))
 """)
 
 
@@ -555,7 +555,7 @@ def draw(v):
 def out(plane):
     def build(base, B):
         read = views.projects_view(B.docs.extract(), B.planes.extract(), kit.now())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(read), draw), every=60.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=60.0)
 
     return kit.on_base(plane, build)
 """
@@ -598,7 +598,7 @@ def out(plane):
             return kit.add_doc(base, slug, c["doc"], "wrote up") >> f.line.title.set("") >> View.history.push(kit.doc_href(B, slug))
 
         new = views.meeting_new(nu.Str(f.line.title), nu.Str(f.line.project).fallback(""), nu.List(f.people), "", B.docs.extract(), kit.now())
-        return f.line.project.set_options(projects(B.docs.extract())) >> nu.ReactEvery(f.write.on_click(), nu.let(new, made))
+        return f.line.project.set_options(projects(B.docs.extract())) >> nu.ReactEvery(f.write.on_click(), nu.let(made, c=new))
 
     return f.line.title.init() >> f.people.init() >> f.write.init() >> f.hint.set(HINT) >> kit.on_base(plane, build)
 """)
@@ -618,7 +618,7 @@ COLUMNS = [
     + """
 
 def out(plane):
-    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.meetings_rows(B.docs.extract(), B.planes.extract())), shown)))
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: shown(held), held=nuspace.atomic(views.meetings_rows(B.docs.extract(), B.planes.extract())))))
 """
 )
 
@@ -651,7 +651,7 @@ def edit(B, ev):
 def out(plane):
     def build(base, B):
         rows = pages.linked(views.decisions(B.docs.extract(), B.planes.extract()), "title")
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), TABLE.set_rows)), nu.ReactEvery(TABLE.on_edit(), lambda ev: edit(B, ev)))
+        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: TABLE.set_rows(held), held=nuspace.atomic(rows))), nu.ReactEvery(TABLE.on_edit(), lambda ev: edit(B, ev)))
 
     return kit.on_base(plane, build)
 """
@@ -689,7 +689,7 @@ def draw(rows):
 
 
 def out(plane):
-    return View.intro.init() >> kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.people_cards(B.docs.extract(), B.planes.extract())), draw)))
+    return View.intro.init() >> kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(draw, rows=nuspace.atomic(views.people_cards(B.docs.extract(), B.planes.extract())))))
 """)
 
 
@@ -710,7 +710,7 @@ COLUMNS = [
     + """
 
 def out(plane):
-    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.notes_rows(B.docs.extract(), B.planes.extract())), shown)))
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: shown(held), held=nuspace.atomic(views.notes_rows(B.docs.extract(), B.planes.extract())))))
 """
 )
 
@@ -733,9 +733,9 @@ PEOPLE = [{"value": "", "label": "Everyone"}] + [{"value": k, "label": v} for k,
 def out(plane):
     def build(base, B):
         rows = pages.linked(views.task_rows(B.docs.extract(), B.planes.extract(), kit.now(), nu.Str(WHO).fallback(""), -1, nu.Bool(DONE)), "page")
-        again = nu.let(rows, TABLE.set_rows)
+        again = nu.let(lambda held: TABLE.set_rows(held), held=rows)
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows), TABLE.set_rows), every=60.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: TABLE.set_rows(held), held=nuspace.atomic(rows)), every=60.0),
             nu.ReactEvery(WHO.on_change(), again),
             nu.ReactEvery(DONE.on_change(), again),
             nu.ReactEvery(TABLE.on_edit(), lambda ev: tick(B, ev)),
@@ -759,7 +759,7 @@ def draw(v):
 
 
 def out(plane):
-    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.tasks_chart(B.docs.extract(), kit.now())), draw), every=60.0))
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(draw, v=nuspace.atomic(views.tasks_chart(B.docs.extract(), kit.now()))), every=60.0))
 """)
 
 
@@ -793,7 +793,7 @@ def edit(B, ev):
 def out(plane):
     def build(base, B):
         rows = views.facts_rows(B.docs.extract(), B.facts.extract())
-        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(nuspace.atomic(rows), TABLE.set_rows)), nu.ReactEvery(TABLE.on_edit(), lambda ev: edit(B, ev)))
+        return nu.ParallelAsync(nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(lambda held: TABLE.set_rows(held), held=nuspace.atomic(rows))), nu.ReactEvery(TABLE.on_edit(), lambda ev: edit(B, ev)))
 
     return kit.on_base(plane, build)
 """
@@ -841,7 +841,7 @@ def draw(v):
 
 def out(plane):
     read = lambda B: views.fact_uses(B.docs.extract(), B.facts.extract(), B.planes.extract())
-    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(nuspace.atomic(read(B)), draw)))
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES})), nu.let(lambda held: draw(held), held=nuspace.atomic(read(B)))))
 """)
 
 
@@ -864,7 +864,7 @@ TABLE = View.glossary[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key=
 
 
 def out(plane):
-    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(views.glossary_rows(B.docs.extract())), TABLE.set_rows)))
+    return kit.on_base(plane, lambda base, B: nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: TABLE.set_rows(held), held=nuspace.atomic(views.glossary_rows(B.docs.extract())))))
 """)
 
 
@@ -912,11 +912,11 @@ def out(plane):
     def build(base, B):
         docs = B.docs.extract()
         changed = nu.OnAny(*[B.docs.on_change()])
-        drawn = nu.Reconcile(nuspace.atomic(changed), nu.let(nuspace.atomic(views.graph_option(docs, B.planes.extract())), lambda v: CHART.set(option=v)))
-        sided = nu.Reconcile(nuspace.atomic(changed), nu.let(nuspace.atomic(views.graph_side(docs, B.planes.extract())), side))
+        drawn = nu.Reconcile(nuspace.atomic(changed), nu.let(lambda v: CHART.set(option=v), v=nuspace.atomic(views.graph_option(docs, B.planes.extract()))))
+        sided = nu.Reconcile(nuspace.atomic(changed), nu.let(side, v=nuspace.atomic(views.graph_side(docs, B.planes.extract()))))
         # A page's dot opens its page; an edge or the legend names no page, and does nothing.
         go = lambda s: nu.IfDo(nu.Str(s) != "", View.history.push(kit.doc_href(B, nu.Str(s))))
-        opened = nu.ReactEvery(CHART.on_click(), lambda ev: nu.let(views.slug_named(nu.str(nu.Dict(ev).get_item("name", "")), B.docs.extract()), go))
+        opened = nu.ReactEvery(CHART.on_click(), lambda ev: nu.let(go, s=views.slug_named(nu.str(nu.Dict(ev).get_item("name", "")), B.docs.extract())))
         return nu.ParallelAsync(drawn, sided, opened)
 
     note = "Drawn from the pages as they are. Hover a page to see its neighbours, click it to open it."
@@ -933,7 +933,7 @@ class View(nustd.ui.Column):
 def out(plane):
     def build(base, B):
         read = views.digest(B.docs.extract(), B.facts.extract(), B.log.fallback([]), B.planes.extract(), kit.now())
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES} + [B.log.on_change(), B.health.on_change()])), nu.let(nuspace.atomic(read), View.digest.set), every=60.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*{CHANGES} + [B.log.on_change(), B.health.on_change()])), nu.let(lambda held: View.digest.set(held), held=nuspace.atomic(read)), every=60.0)
 
     note = "Nobody writes this page. It is written from the base, and rewrites itself as the week moves."
     return View.note.set(note) >> kit.on_base(plane, build)
@@ -997,7 +997,7 @@ def out(plane):
     def build(base, B):
         read = views.health_view(B.health.fallback({}), kit.live(base, "checker"), B.docs.extract(), B.planes.extract())
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.health.on_change()])), nu.let(nuspace.atomic(read), draw), every=5.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.health.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=5.0),
             nu.ReactEvery(View.act.reviewed.on_click(), kit.reviewed(B, stale(B.health.fallback({})))),
         )
 
@@ -1046,7 +1046,7 @@ def out(plane):
         read = views.imports_view(B.imports.fallback({}), kit.live(base, "importer"), kit.now())
         start = kit.start_import(base, nu.Str(p.source))
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.imports.on_change()])), nu.let(nuspace.atomic(read), draw), every=10.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.imports.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=10.0),
             nu.ReactEvery(p.go.on_click(), start),
         )
 
@@ -1092,14 +1092,14 @@ def out(plane):
             def call(started):
                 prompt = asked(B.docs.extract(), B.facts.extract(), question)
                 reply = answer(prompt)
-                return nu.let(reply, lambda r: B.asks.set(answered(B.asks.fallback([]), r, question, started)))
+                return nu.let(lambda r: B.asks.set(answered(B.asks.fallback([]), r, question, started)), r=reply)
 
             reading = nu.Str("Reading ") + nu.ToStr(nu.Dict(B.docs.extract()).len()) + " pages..."
             failed = lambda err: View.status.set(nu.Str("Could not ask: ") + nu.ToStr(err))
             # Busy while Claude reads: the form takes no other ask, Ask spins.
             return (
                 View.status.set(reading) >> b.set_busy(True)
-                >> nu.TryCatch(nu.let(kit.now(), call) >> View.status.set(""), catch=failed)
+                >> nu.TryCatch(nu.let(call, started=kit.now()) >> View.status.set(""), catch=failed)
                 >> b.set_busy(False)
             )
 
@@ -1109,7 +1109,7 @@ def out(plane):
         draw = lambda v: View.answer.set(v["answer"]) >> View.line.set(v["line"]) >> View.before.set(v["before"])
         read = shown(B.asks.fallback([]), B.docs.extract(), B.facts.extract(), B.planes.extract(), kit.now())
         body = nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.asks.on_change(), B.docs.on_change()])), nu.let(nuspace.atomic(read), draw), every=30.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.asks.on_change(), B.docs.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=30.0),
             nu.ReactEvery(b.on_submit(), lambda sub: ask(nu.Str(sub["values"]["line"]["q"]).strip())),
             *(tried(ref, q) for ref, q in zip(TRY, TRIES, strict=True)),
         )
@@ -1148,7 +1148,7 @@ def rows(docs, folder, planes):
 
 def out(plane):
     def build(base, B, folder):
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(nuspace.atomic(rows(B.docs.extract(), folder, B.planes.extract())), shown))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[B.docs.on_change()])), nu.let(lambda held: shown(held), held=nuspace.atomic(rows(B.docs.extract(), folder, B.planes.extract()))))
 
     return kit.on_doc(plane, build)
 """

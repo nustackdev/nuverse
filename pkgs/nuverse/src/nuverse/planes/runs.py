@@ -138,7 +138,7 @@ def draw_counts() -> nu.Nu:
             >> tile(Counts.tiles, "workers", "Workers up", got[2])
         )
 
-    return nu.let(nuspace.atomic(_counts()), tiles)
+    return nu.let(tiles, n=nuspace.atomic(_counts()))
 
 
 def counts(plane: nu.StrArg) -> nu.Nu:
@@ -191,7 +191,7 @@ def _live_rows() -> nu.List:
 
 def draw_live() -> nu.Nu:
     """Read the live plane runs once and draw their table."""
-    return nu.let(nuspace.atomic(_live_rows()), RUNS_TABLE.set_rows)
+    return nu.let(lambda held: RUNS_TABLE.set_rows(held), held=nuspace.atomic(_live_rows()))
 
 
 def live(plane: nu.StrArg) -> nu.Nu:
@@ -256,7 +256,7 @@ def _cell_rows() -> nu.List:
 
 def draw_cells() -> nu.Nu:
     """Read the live cell runs once and draw their table."""
-    return nu.let(nuspace.atomic(_cell_rows()), CELLS_TABLE.set_rows)
+    return nu.let(lambda held: CELLS_TABLE.set_rows(held), held=nuspace.atomic(_cell_rows()))
 
 
 def cells(plane: nu.StrArg) -> nu.Nu:

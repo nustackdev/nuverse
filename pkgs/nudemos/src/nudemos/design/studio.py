@@ -211,7 +211,7 @@ def out(plane):
         first = nu.Delay(wait(PACE, True)) >> deliver(root)
         return first >> nu.ForeverDo(nu.Delay(wait(pace, False)) >> deliver(root))
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: run(nu.Str(root)))
+    return nu.let(lambda root: run(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """
 
 

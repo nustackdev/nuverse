@@ -108,7 +108,7 @@ async def opened(
     await nu.arun(nuspace.host.make_space(path, devices=("web",)))
     loop = asyncio.get_running_loop()
     ready, done = loop.create_future(), asyncio.Event()
-    hold = nu.With(MADE_STORE, body=nu.let(_Hold(ready, done), lambda _: nu.Noop()))
+    hold = nu.With(MADE_STORE, body=nu.let(lambda _: nu.Noop(), _=_Hold(ready, done)))
     body = hold if beside is None else nu.Race(beside, hold)
     space = nuspace.host.open_space(
         path, devices=(), spares=spares, envs=envs, body=body, name=name

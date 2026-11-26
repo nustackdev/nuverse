@@ -160,7 +160,7 @@ def cut(base: nu.StrArg, export: nu.StrArg, version: nu.StrArg, spec: nu.Nu) -> 
         )
 
     fresh = nu.Bool(nuspace.atomic(held.exists())).not_()
-    return nu.IfDo(fresh, nu.let("", lambda p: nu.let("", lambda j: made(p, j))))
+    return nu.IfDo(fresh, nu.let(lambda p: nu.let(lambda j: made(p, j), j=""), p=""))
 
 
 # --- the files ----------------------------------------------------------------------------------
@@ -310,7 +310,7 @@ def one(item):
             >> BUILT.current.set(item["name"])
         )
 
-    return nu.let(made(item), land)
+    return nu.let(land, m=made(item))
 
 
 def out(plane):
@@ -326,7 +326,7 @@ def out(plane):
         releases = system(root).releases
         return ended >> nuspace.atomic(releases.set(release(releases.fallback([]), page, index, nustd.time.time())))
 
-    work = fresh >> nu.ForEachDo(nu.List(files()), one) >> nu.let(nuspace.atomic(root_of(page)), lambda r: finish(nu.Str(r)))
+    work = fresh >> nu.ForEachDo(nu.List(files()), one) >> nu.let(lambda r: finish(nu.Str(r)), r=nuspace.atomic(root_of(page)))
     return nu.IfDo(nuspace.atomic(BUILT.status.fallback("") == "done"), nu.Noop(), work)
 """
 

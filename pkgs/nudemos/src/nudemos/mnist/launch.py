@@ -98,7 +98,7 @@ def launch(root, hp, name):
             >> nuspace.atomic(kept >> listed >> up)
         )
 
-    return nu.let("", lambda page: nu.let("", lambda job: made(page, job)))
+    return nu.let(lambda page: nu.let(lambda job: made(page, job), job=""), page="")
 
 
 def runs(root, how):
@@ -111,7 +111,7 @@ def runs(root, how):
 
     typed = nu.Str(name).strip()
     plan = views.plan(asked(), nuspace.atomic(runs_of(root).len()), typed, how)
-    return nu.let(plan, start)
+    return nu.let(start, plan=plan)
 
 
 def defaults():
@@ -128,7 +128,7 @@ def out(plane):
 
     if not READY:
         return defaults() >> notice.set(MISSING) >> nu.ForeverDo(nu.Delay(3600.0))
-    return defaults() >> nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), clicks)
+    return defaults() >> nu.let(clicks, root=nuspace.atomic(nuspace.Space.planes[plane].parent))
 """
 
 
@@ -159,9 +159,9 @@ runs = View.card["runs"].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key=
 def out(plane):
     def follow(root):
         read = pages.linked(views.rows(views.board(nu.Str(root))), "run")
-        return nu.Reconcile(nuspace.atomic(runs_change(nu.Str(root))), nu.let(nuspace.atomic(read), runs.set_rows), every=2.0)
+        return nu.Reconcile(nuspace.atomic(runs_change(nu.Str(root))), nu.let(lambda held: runs.set_rows(held), held=nuspace.atomic(read)), every=2.0)
 
-    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), follow)
+    return nu.let(follow, root=nuspace.atomic(nuspace.Space.planes[plane].parent))
 """
 
 

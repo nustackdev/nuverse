@@ -42,12 +42,12 @@ def view_of(root, mint):
 
 def on_token(plane, body):
     # body(root, mint), once the page knows both.
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: nu.let(nuspace.atomic(mint_of(plane)), lambda mint: body(nu.Str(root), nu.Str(mint))))
+    return nu.let(lambda root: nu.let(lambda mint: body(nu.Str(root), nu.Str(mint)), mint=nuspace.atomic(mint_of(plane))), root=nuspace.atomic(root_of(plane)))
 
 
 def following(root, mint, draw, every=2.0):
     moves = [memes_at(root).beat.on_change(), control_at(root).images.on_change()]
-    return nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(view_of(root, mint)), draw), every=every)
+    return nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(lambda held: draw(held), held=nuspace.atomic(view_of(root, mint))), every=every)
 """
 
 
@@ -94,7 +94,7 @@ def out(plane):
     def build(root, mint):
         # The page named after the coin's ticker, once it is known.
         first = nuspace.atomic(view_of(root, mint))
-        named = nu.let(first, lambda v: nu.IfDo(nu.Bool(v["found"]), nuspace.atomic(nuspace.plane.rename(plane, v["symbol"]))))
+        named = nu.let(lambda v: nu.IfDo(nu.Bool(v["found"]), nuspace.atomic(nuspace.plane.rename(plane, v["symbol"]))), v=first)
         return named >> following(root, mint, draw)
 
     return on_token(plane, build)
@@ -164,7 +164,7 @@ def paint(root, mint):
         )
         return nu.IfDo(nu.Bool(v["found"]), drawn)
 
-    return nu.let(nuspace.atomic(view_of(root, mint)), draw)
+    return nu.let(draw, v=nuspace.atomic(view_of(root, mint)))
 
 
 def out(plane):

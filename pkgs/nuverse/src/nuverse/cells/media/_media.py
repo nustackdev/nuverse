@@ -74,7 +74,7 @@ def keeping(item: File, given: nu.Nu, bar: nu.Nu, note: nu.Nu) -> nu.Nu:
             return nuspace.atomic(item.set(fields))
 
         going = note.set("") >> bar.set(0.0, caption=nu.Str("Uploading ") + f["name"])
-        stored = bar.display() >> going >> nu.let(put, kept)
+        stored = bar.display() >> going >> nu.let(kept, bid=put)
         done = bar.hide() >> given.discard() >> given.reset()
 
         def failed(err: nu.Nu) -> nu.Nu:
@@ -88,7 +88,7 @@ def keeping(item: File, given: nu.Nu, bar: nu.Nu, note: nu.Nu) -> nu.Nu:
         return nu.IfDo(size > 0, bar.set_value(nu.Float(ev["sent"]) / size))
 
     # A value cleared (a reset, a remove, a take deleted) reads NULL: nothing to keep.
-    picked = nu.IfDo(nu.IsNull(given), nu.Noop(), nu.let(given, lambda f: keep(nu.Dict(f))))
+    picked = nu.IfDo(nu.IsNull(given), nu.Noop(), nu.let(lambda f: keep(nu.Dict(f)), f=given))
     return nu.ParallelAsync(
         nu.ReactLatest(given.on_change(), picked),
         nu.ReactEvery(given.on_progress(), moved),

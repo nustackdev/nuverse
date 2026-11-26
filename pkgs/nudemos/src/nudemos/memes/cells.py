@@ -71,18 +71,18 @@ def press(root):
         said = nu.Str(v["button"])
         return nu.IfDo(said == "Stop", control.stop(root), nu.IfDo(said == "Start", control.start(root)))
 
-    return nu.let(nuspace.atomic(read(root)), act)
+    return nu.let(act, v=nuspace.atomic(read(root)))
 
 
 def out(plane):
     def follow(root):
         moves = [memes_at(root).beat.on_change(), control_at(root).stop.on_change()]
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read(root)), draw), every=1.0),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(draw, v=nuspace.atomic(read(root))), every=1.0),
             nu.ReactEvery(View.bar.toggle.on_click(), press(root)),
         )
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
@@ -118,9 +118,9 @@ def draw(t):
 def out(plane):
     def follow(root):
         read = views.tiles(memes_at(root).stats.fallback({}))
-        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), draw))
+        return nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(draw, t=nuspace.atomic(read)))
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
@@ -151,7 +151,7 @@ chart = View.card["chart"].to(
 
 
 def paint(root):
-    return nu.let(nuspace.atomic(views.pulse(memes_at(root).pulse.fallback([]))), chart.set)
+    return nu.let(lambda held: chart.set(held), held=nuspace.atomic(views.pulse(memes_at(root).pulse.fallback([]))))
 
 
 def out(plane):
@@ -160,7 +160,7 @@ def out(plane):
         beat = nuspace.atomic(memes_at(root).beat.on_change())
         return nu.Reconcile(beat, paint(root) >> nu.Delay(EVERY), every=5.0)
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
@@ -206,7 +206,7 @@ def links(kids):
 def out(plane):
     # The spec makes Overview, Monitor and Sync as the root's first three children.
     first = nuspace.Space.planes[plane].children.keys(limit=3)
-    shown = nu.let(first, lambda kids: links(kids))
+    shown = nu.let(lambda kids: links(kids), kids=first)
     return text.set(TEXT) >> nuspace.atomic(shown) >> nu.ForeverDo(nu.Delay(3600.0))
 '''
 
@@ -262,11 +262,11 @@ def out(plane):
         images = control_at(root).images.fallback(False)
         read = views.launch_cards(memes_at(root).launches.fallback([]), nustd.time.time(), N, images)
         moves = [memes_at(root).beat.on_change(), control_at(root).images.on_change()]
-        shown = nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(nuspace.atomic(read), lambda c: draw(nu.List(c))), every=5.0)
+        shown = nu.Reconcile(nuspace.atomic(nu.OnAny(*moves)), nu.let(lambda c: draw(nu.List(c)), c=nuspace.atomic(read)), every=5.0)
         opens = [opener(root, i) for i in range(N)]
-        return nu.Frame(Shown, nu.ParallelAsync(shown, *opens), mints=[])
+        return nu.let(Shown, nu.ParallelAsync(shown, *opens), mints=[])
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 

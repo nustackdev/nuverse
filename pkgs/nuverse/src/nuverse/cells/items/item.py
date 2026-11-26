@@ -122,7 +122,7 @@ def out() -> nu.Nu:
     show, reactions = where(asks, shown={"kind": DEFAULT_KIND})
     kinds = KINDS.set_options(kind_options())
     held = nuspace.atomic(TARGET.fallback({}))
-    shown = nu.ReactLatest(TARGET.on_change(), nu.let(held, _shown), initial=True)
+    shown = nu.ReactLatest(TARGET.on_change(), nu.let(_shown, held=held), initial=True)
     return nuspace.bracketed(ORDER >> kinds >> show >> nu.ParallelAsync(shown, *reactions))
 
 

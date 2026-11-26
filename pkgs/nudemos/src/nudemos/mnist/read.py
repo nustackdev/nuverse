@@ -111,23 +111,23 @@ def read(job, slot, m, look):
     # The weights leave the store only when the reader has not got this step of this model.
     key = job + "/" + slot + "/" + nu.str(m["step"])
     blob = nuspace.atomic(run_at(job).models[slot].blob.fallback(b""))
-    loaded = nu.IfDo(nu.Bool(Holds(key)), nu.Noop(), nu.let(Use(key, blob), lambda _: nu.Noop()))
+    loaded = nu.IfDo(nu.Bool(Holds(key)), nu.Noop(), nu.let(lambda _: nu.Noop(), _=Use(key, blob)))
     shown = views.answer(Classify(Shown.image), Shown.label, slot, m)
     # A read overtaken by a newer input or model draws nothing.
-    return loaded >> nu.let(shown, lambda a: nu.IfDo(Shown.seen == look, draw(a)))
+    return loaded >> nu.let(lambda a: nu.IfDo(Shown.seen == look, draw(a)), a=shown)
 
 
 def settle():
     # Read again when the input, the run, the slot or the model's step moved since the last read.
     def go(job, slot, m):
         look = job + "/" + slot + "/" + nu.str(m["step"]) + "#" + nu.str(Shown.n)
-        return nu.let(look, lambda k: nu.IfDo(nu.Str(k) != Shown.seen, Shown.seen.set(k) >> read(job, slot, m, k)))
+        return nu.let(lambda k: nu.IfDo(nu.Str(k) != Shown.seen, Shown.seen.set(k) >> read(job, slot, m, k)), k=look)
 
     def picked(job, slot):
-        return nu.let(nuspace.atomic(model(job, slot)), lambda m: go(job, slot, m))
+        return nu.let(lambda m: go(job, slot, m), m=nuspace.atomic(model(job, slot)))
 
     # No run picked yet (none launched): nothing to read with.
-    chosen = nu.let(nu.Str(Shown.job), lambda j: nu.let(nu.Str(Shown.kind), lambda s: picked(nu.Str(j), nu.Str(s))))
+    chosen = nu.let(lambda j: nu.let(lambda s: picked(nu.Str(j), nu.Str(s)), s=nu.Str(Shown.kind)), j=nu.Str(Shown.job))
     return nu.IfDo(Shown.job != "", chosen)
 
 
@@ -140,7 +140,7 @@ def took(image, label):
 
 
 def drew():
-    return nu.let(sketch, lambda s: took(views.ink(s), -1))
+    return nu.let(lambda s: took(views.ink(s), -1), s=sketch)
 
 
 def sampled():
@@ -148,11 +148,11 @@ def sampled():
         strokes = nu.List(d)[1]
         return sketch.set(strokes) >> took(views.ink(strokes), -1)
 
-    return nu.let(views.drawn(Shown.n), put)
+    return nu.let(put, d=views.drawn(Shown.n))
 
 
 def tested():
-    return nu.let(MnistDigit(), lambda d: sketch.set([]) >> took(d["pixels"], d["label"]))
+    return nu.let(lambda d: sketch.set([]) >> took(d["pixels"], d["label"]), d=MnistDigit())
 
 
 def options(c):
@@ -180,7 +180,7 @@ def body(root):
         >> said.set("-") >> probs.init() >> line.init()
     )
     return start >> took([], -1) >> nu.ParallelAsync(
-        nu.Reconcile(nuspace.atomic(runs), nu.let(nuspace.atomic(views.choices(views.shelf(nu.Str(root)))), options), every=3.0),
+        nu.Reconcile(nuspace.atomic(runs), nu.let(options, c=nuspace.atomic(views.choices(views.shelf(nu.Str(root))))), every=3.0),
         nu.ReactEvery(run.on_change(), chose()),
         nu.ReactEvery(checkpoint.on_change(), Shown.kind.set(nu.Str(checkpoint)) >> settle()),
         nu.ReactEvery(sample.on_click(), sampled()),
@@ -192,10 +192,10 @@ def body(root):
 
 def out(plane):
     def run(root):
-        shown = nu.Frame(Shown, body(root), job="", chosen=False, kind="latest", image=[], label=-1, n=0, seen="")
+        shown = nu.let(Shown, body(root), job="", chosen=False, kind="latest", image=[], label=-1, n=0, seen="")
         return nu.Provide(Reader, kwargs={}, body=shown)
 
-    return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), run)
+    return nu.let(run, root=nuspace.atomic(nuspace.Space.planes[plane].parent))
 '''
 
 

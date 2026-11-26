@@ -47,18 +47,18 @@ def observe(name: nu.StrArg, value: nu.FloatArg, *, ts: nu.FloatArg | None = Non
     """
     key_us = nustd.time.time_ns() // 1000 if ts is None else nu.int(nu.float(ts) * 1_000_000)
     return nu.let(
-        key_us,
         lambda key: Metrics.series[name].points.set_item(
             key,
             nu.Dict.of(ts=nu.Int(key) / 1_000_000.0, value=nu.float(value)),
         ),
+        key=key_us,
     )
 
 
 # --- read ------------------------------------------------------------------
 
 
-def _row(pair: nu.Attr) -> nu.Dict:
+def _row(pair: nu.Nu) -> nu.Dict:
     """The ``{ts_us, ts, value}`` row off one ``(key_us, point)`` pair."""
     return nu.Dict.of(ts_us=pair[0], ts=pair[1]["ts"], value=pair[1]["value"])
 

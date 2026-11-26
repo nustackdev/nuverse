@@ -143,7 +143,7 @@ def add(
         )
         return steps if into is None else steps >> nuspace.atomic(into.set(plane))
 
-    return nu.let("", made)
+    return nu.let(made, pid="")
 
 
 # --- ask, cancel, answer ------------------------------------------------------------------------
@@ -183,7 +183,7 @@ def ask(plane: nu.StrArg, text: nu.StrArg, *, by: nu.StrArg = "") -> nu.Nu:
             >> prompts.set_item(nu.Str(qid), prompt)
         )
 
-    return nu.let(MintId("q"), append) >> _wake(plane)
+    return nu.let(append, qid=MintId("q")) >> _wake(plane)
 
 
 def cancel(plane: nu.StrArg) -> nu.Nu:

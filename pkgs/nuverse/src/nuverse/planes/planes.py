@@ -90,7 +90,7 @@ def _spec_row(at: nu.ObjectRef) -> nu.Dict:
 def draw_by_spec() -> nu.Nu:
     """Read the specs once and draw the table."""
     rows = ids(SPECS).iter().map(_spec_row).to_list()
-    return nu.let(nuspace.atomic(rows), SPEC_TABLE.set_rows)
+    return nu.let(lambda held: SPEC_TABLE.set_rows(held), held=nuspace.atomic(rows))
 
 
 def by_spec(plane: nu.StrArg) -> nu.Nu:
@@ -161,13 +161,13 @@ def _top() -> nu.Nu:
 def draw_listing() -> nu.Nu:
     """Read the top planes once and draw the table."""
     rows = nu.List(_top()).iter().map(lambda at: row(nu.Str(at))).to_list()
-    return nu.let(nuspace.atomic(rows), TABLE_REF.set_rows)
+    return nu.let(lambda held: TABLE_REF.set_rows(held), held=nuspace.atomic(rows))
 
 
 def _follow(at: nu.ObjectRef) -> nu.Nu:
     # One shown plane's row again, in place, when its own row changes: one watch per shown plane.
     p = nu.Str(at)
-    again = nu.let(nuspace.atomic(row(p)), lambda r: TABLE_REF.set_row(p, r))
+    again = nu.let(lambda r: TABLE_REF.set_row(p, r), r=nuspace.atomic(row(p)))
     return nu.ReactEvery(nuspace.atomic(nuspace.plane.on_change(p)), lambda _: again)
 
 

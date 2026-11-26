@@ -481,13 +481,13 @@ async def test_add_cell_hands_the_new_cell_to_what_follows(store):
     """The id is minted when the term runs; ``into`` holds it for the writes after."""
     await _plane(store)
     made = nu.let(
-        "",
         lambda cell: (
             nuspace.atomic(nuspace.specs.add_cell("p", text_editor.CELL, into=cell))
             >> nuspace.atomic(
                 nuspace.at.cell(id=nu.Str(cell)).content(TextContent)[ITEM].value.set("Basil")
             )
         ),
+        cell="",
     )
     await store.run(made >> made)
     first, second = await store.read(nu.list(Space.planes["p"].cells.keys()))

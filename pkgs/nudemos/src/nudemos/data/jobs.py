@@ -413,9 +413,9 @@ def turn(root):
         index = SHOP.index.extract()
         step = tick(index, SHOP.stream.fallback({}), SHOP.products.extract(), SHOP.feed.fallback([]),
                     SHOP.pace.fallback("Busy"), nustd.time.time())
-        return nuspace.atomic(nu.let(step, written))
+        return nuspace.atomic(nu.let(written, w=step))
 
-    return nu.let(nuspace.atomic(kit.loaded(("lines", "people", "events"))[1]), go)
+    return nu.let(go, got=nuspace.atomic(kit.loaded(("lines", "people", "events"))[1]))
 
 
 def said(root, status):
@@ -427,7 +427,7 @@ def out(plane):
         going = nuspace.atomic(SHOP.stop.fallback(False).not_())
         return said(root, "running") >> nu.WhileDo(going, turn(root) >> nu.Delay(EVERY)) >> said(root, "stopped")
 
-    return nu.let(nuspace.atomic(kit.ROOT_ID), lambda root: run(nu.Str(root)))
+    return nu.let(lambda root: run(nu.Str(root)), root=nuspace.atomic(kit.ROOT_ID))
 """
 
 
@@ -459,9 +459,9 @@ def one(root, inbox, name):
     # Parsed and checked here, in this job's own process, loaded in one commit, then the file put away.
     def load(got):
         made = ingest(inbox, name, SHOP.index.extract(), SHOP.importer.fallback({}), nustd.time.time())
-        return nuspace.atomic(nu.let(made, written)) >> nu.let(archive(inbox, name), lambda _: nu.Noop())
+        return nuspace.atomic(nu.let(written, w=made)) >> nu.let(lambda _: nu.Noop(), _=archive(inbox, name))
 
-    return nu.let(nuspace.atomic(kit.loaded(("people",))[1]), load)
+    return nu.let(load, got=nuspace.atomic(kit.loaded(("people",))[1]))
 
 
 def look(root, inbox):
@@ -473,11 +473,11 @@ def out(plane):
         hello = nuspace.atomic(SHOP.importer.set(
             kit.merged(SHOP.importer.fallback({}), nu.Dict.of(status="watching", pid=pid(), since=nustd.time.time()))
         ))
-        return nu.let(ensure(inbox), lambda _: hello) >> nu.ForeverDo(look(root, inbox))
+        return nu.let(lambda _: hello, _=ensure(inbox)) >> nu.ForeverDo(look(root, inbox))
 
     def landed(root):
         r = nu.Str(root)
-        return nu.let(nuspace.atomic(SHOP.inbox.fallback("")), lambda inbox: run(r, nu.Str(inbox)))
+        return nu.let(lambda inbox: run(r, nu.Str(inbox)), inbox=nuspace.atomic(SHOP.inbox.fallback("")))
 
-    return nu.let(nuspace.atomic(kit.ROOT_ID), landed)
+    return nu.let(landed, root=nuspace.atomic(kit.ROOT_ID))
 """

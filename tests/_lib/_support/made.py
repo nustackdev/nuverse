@@ -21,4 +21,4 @@ class Made(nu.Shape):
 MADE = Made.id
 
 #: Binds a mem root for :class:`Made` to live in, for as long as the harness is open.
-MADE_STORE = nu.Frame(Made, None)
+MADE_STORE = nu.let(Made, None)

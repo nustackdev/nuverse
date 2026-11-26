@@ -133,7 +133,7 @@ def on_catalog(plane: str, build: Callable[[nu.Str], nu.Nu]) -> nu.Nu:
     def landed(base: nu.ObjectRef) -> nu.Nu:
         return nuspace.bracketed(build(nu.Str(base)))
 
-    return nu.let(nuspace.atomic(base_of(plane)), landed)
+    return nu.let(landed, base=nuspace.atomic(base_of(plane)))
 
 
 def on_page(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> nu.Nu:
@@ -143,8 +143,8 @@ def on_page(plane: str, kind: str, build: Callable[[nu.Str, nu.Str], nu.Nu]) -> 
     for ``kind="film"``, a person's name for ``kind="person"``.
     """
     return nu.let(
-        nuspace.atomic(about(plane, kind)),
         lambda s: on_catalog(plane, lambda b: build(b, nu.Str(s))),
+        s=nuspace.atomic(about(plane, kind)),
     )
 
 
@@ -177,7 +177,7 @@ def wall(grid: nu.Nu, tiles: nu.Nu) -> nu.Nu:
     shown = nu.List(tiles)
     keys = shown.iter().map(lambda t: nu.Dict(t)["key"]).to_list()
 
-    def draw(t: nu.Attr) -> nu.Nu:
+    def draw(t: nu.Nu) -> nu.Nu:
         tile = grid[nu.Str(t["key"])]
         return (
             tile.poster.set(t["src"], alt=t["label"])
@@ -302,7 +302,7 @@ def _page(
             >> nuspace.atomic(held.set(pid) >> bases.belongs(pid, base))
         )
 
-    return nu.IfDo(nu.Bool(nuspace.atomic(held.exists())).not_(), nu.let("", make))
+    return nu.IfDo(nu.Bool(nuspace.atomic(held.exists())).not_(), nu.let(make, made=""))
 
 
 def add_film(base: nu.Str, film: nu.Nu) -> nu.Nu:
@@ -322,7 +322,9 @@ def add_film(base: nu.Str, film: nu.Nu) -> nu.Nu:
         )
         return keep >> page
 
-    return nu.let(film, lambda f: nu.let(slug_of(nu.Dict(f)["title"]), lambda key: add(f, key)))
+    return nu.let(
+        lambda f: nu.let(lambda key: add(f, key), key=slug_of(nu.Dict(f)["title"])), f=film
+    )
 
 
 def ensure_people(base: nu.Str) -> nu.Nu:
@@ -338,7 +340,7 @@ def ensure_people(base: nu.Str) -> nu.Nu:
 
     cat = catalog(base)
 
-    def make(name: nu.Attr, people: nu.ObjectRef) -> nu.Nu:
+    def make(name: nu.Nu, people: nu.ObjectRef) -> nu.Nu:
         n = nu.Str(name)
         held = cat.planes.person[slug_of(n)]
         return _page(held, base, nu.Str(people), n, "person", n, "lucide:user", PERSON)
@@ -346,10 +348,10 @@ def ensure_people(base: nu.Str) -> nu.Nu:
     def under(people: nu.ObjectRef) -> nu.Nu:
         films = nuspace.atomic(cat.films.extract())
         return nu.let(
-            due(films), lambda names: nu.ForEachDo(nu.List(names), lambda n: make(n, people))
+            lambda names: nu.ForEachDo(nu.List(names), lambda n: make(n, people)), names=due(films)
         )
 
-    return nu.let(nuspace.atomic(cat.planes.folder["people"].fallback(base)), under)
+    return nu.let(under, people=nuspace.atomic(cat.planes.folder["people"].fallback(base)))
 
 
 def seed(base: nu.Str) -> nu.Nu:
@@ -389,7 +391,7 @@ def seed(base: nu.Str) -> nu.Nu:
         )
         return nuspace.atomic(made) >> nu.IfDo(nu.Bool(mine), build)
 
-    return nu.let(False, first)
+    return nu.let(first, mine=False)
 
 
 @nu.host

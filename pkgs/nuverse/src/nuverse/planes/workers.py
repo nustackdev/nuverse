@@ -84,7 +84,7 @@ def draw_counts() -> nu.Nu:
         ]
         return tile(Counts.tiles, "up", "Up", held.len()) >> nu.Sequential(*each)
 
-    return nu.let(nuspace.atomic(_backends()), tiles)
+    return nu.let(tiles, got=nuspace.atomic(_backends()))
 
 
 def counts(plane: nu.StrArg) -> nu.Nu:
@@ -146,7 +146,7 @@ def _rows() -> nu.List:
 
 def draw_listing() -> nu.Nu:
     """Read the live workers once and draw the table."""
-    return nu.let(nuspace.atomic(_rows()), TABLE_REF.set_rows)
+    return nu.let(lambda held: TABLE_REF.set_rows(held), held=nuspace.atomic(_rows()))
 
 
 def listing(plane: nu.StrArg) -> nu.Nu:

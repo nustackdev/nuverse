@@ -104,7 +104,7 @@ def show(raw):
 def out():
     raw = nuspace.atomic(nuspace.Space.info.path.fallback(""))
     drawn = View.lead.init() >> View.where.init() >> View.again.init() >> View.then.init()
-    return drawn >> nu.let(raw, show)
+    return drawn >> nu.let(show, raw=raw)
 """
 
 
@@ -141,10 +141,10 @@ def keep(v):
 
 
 def out(plane):
-    moved = nu.ReactEvery(slider.on_change(), nu.let(nu.float(slider), keep) >> quickstart.moved())
+    moved = nu.ReactEvery(slider.on_change(), nu.let(keep, v=nu.float(slider)) >> quickstart.moved())
     follow = nu.Reconcile(
         nuspace.atomic(nu.OnAny(PAGE.level.on_change())),
-        nu.let(nuspace.atomic(PAGE.level.fallback(quickstart.START)), slider.set),
+        nu.let(lambda held: slider.set(held), held=nuspace.atomic(PAGE.level.fallback(quickstart.START))),
     )
     return quickstart.counting(
         View.turn.actions.hide() >> View.turn.init()
@@ -192,7 +192,7 @@ def draw(level):
 def out():
     follow = nu.Reconcile(
         nuspace.atomic(nu.OnAny(PAGE.level.on_change())),
-        nu.let(nuspace.atomic(PAGE.level.fallback(quickstart.START)), draw),
+        nu.let(draw, level=nuspace.atomic(PAGE.level.fallback(quickstart.START))),
     )
     return R.init() >> quickstart.tips(LIMIT) >> follow
 """
@@ -235,7 +235,7 @@ def show(raw):
 
 def out():
     raw = nuspace.atomic(nuspace.Space.info.path.fallback(""))
-    return A.init() >> nu.let(raw, show)
+    return A.init() >> nu.let(show, raw=raw)
 """
 
 
@@ -324,14 +324,14 @@ def open_made(spec):
         return (pid.set(nuspace.atomic(newest))
                 >> nu.IfDo(nuspace.atomic(gone), nuspace.specs.add_plane(spec, into=pid))
                 >> track("quickstart_demo_opened") >> View.history.push(web.href(nu.Str(pid))))
-    return nu.let("", go)
+    return nu.let(go, pid="")
 
 
 def make_page(plane):
     def go(pid):
         return (nuspace.specs.add_plane(EMPTY_PLANE, parent=plane, name="My first page", into=pid)
                 >> track("quickstart_page_made") >> View.history.push(web.href(nu.Str(pid))))
-    return nu.let("", go)
+    return nu.let(go, pid="")
 
 
 def out(plane):
@@ -341,7 +341,7 @@ def out(plane):
                                open_made(importlib.import_module("nudemos." + name).PLANE))
                  for i, (name, *_) in enumerate(DEMOS)]
     raw = nuspace.atomic(nuspace.Space.info.path.fallback(""))
-    return W.init() >> nu.let(raw, fill) >> nu.ParallelAsync(*arms)
+    return W.init() >> nu.let(fill, raw=raw) >> nu.ParallelAsync(*arms)
 """
 
 
@@ -430,14 +430,14 @@ def put_back(plane: nu.StrArg, button: nustd.ui.Ref) -> nu.Nu:
         shown = nu.Reconcile(
             nuspace.atomic(nu.OnAny(Space.cells[meter].prog.on_change())),
             nu.let(
-                nuspace.atomic(source != METER),
                 lambda off: nu.IfDo(nu.Bool(off), button.display(), button.hide()),
+                off=nuspace.atomic(source != METER),
             ),
         )
         # The fabrics worked out before the commit, so no build runs inside it.
         fixed = nu.let(
-            Fabrics(METER, plane, meter),
             lambda used: nuspace.atomic(nuspace.cell.set_prog(meter, METER, fabrics=used)),
+            used=Fabrics(METER, plane, meter),
         )
         back = fixed >> track("quickstart_put_back")
         there = nuspace.atomic(nuspace.cell.exists(meter))
@@ -446,7 +446,7 @@ def put_back(plane: nu.StrArg, button: nustd.ui.Ref) -> nu.Nu:
         )
 
     named = nuspace.at.plane(id=plane).state(SpecCells).ids["meter"]
-    return nu.let(nuspace.atomic(named.fallback("")), found)
+    return nu.let(found, cid=nuspace.atomic(named.fallback("")))
 
 
 def welcome_back(card: nustd.ui.CardRef, level: nu.Nu) -> nu.Nu:
@@ -467,7 +467,7 @@ class _Told(nu.Shape):
 
 def counting(body: nu.Nu) -> nu.Nu:
     """``body`` with a run-local flag for :func:`moved`, so a run tracks its first move only."""
-    return nu.Frame(_Told, body, moved=False)
+    return nu.let(_Told, body, moved=False)
 
 
 def moved() -> nu.Nu:

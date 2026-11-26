@@ -50,7 +50,7 @@ def out(plane):
         read = views.status(SHOP.stream.fallback({}), kit.live(root, "stream"), SHOP.index.extract(),
                             SHOP.pace.fallback("Busy"), nustd.time.time())
         draw = lambda v: View.bar.dot.set(v["tone"], pulse=v["pulse"]) >> View.bar.line.set(v["line"])
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.beat.on_change(), SHOP.stream.on_change()])), nu.let(nuspace.atomic(read), draw), every=1.0)
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.beat.on_change(), SHOP.stream.on_change()])), nu.let(draw, v=nuspace.atomic(read)), every=1.0)
 
     return kit.on_shop(plane, follow)
 """)
@@ -83,7 +83,7 @@ def out(plane):
         # One filter for the whole space: set here, every page that reads it moves.
         save = nuspace.atomic(SHOP.filters.set(asked))
         return nu.ParallelAsync(
-            nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.filters.on_change()])), nu.let(nuspace.atomic(SHOP.filters.fallback({})), shown)),
+            nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.filters.on_change()])), nu.let(shown, f=nuspace.atomic(SHOP.filters.fallback({})))),
             *(nu.ReactEvery(p.on_change(), save) for p in PICKS.values()),
         )
 
@@ -117,10 +117,10 @@ def out(plane):
         return nu.Sequential(*(tile(key, what) for key, what in views.PAGES))
 
     def build(root):
-        return nu.let(nuspace.atomic(kit.pages(root)), tiles) >> nu.ForeverDo(nu.Delay(3600.0))
+        return nu.let(tiles, pages=nuspace.atomic(kit.pages(root))) >> nu.ForeverDo(nu.Delay(3600.0))
 
     # The first open writes two years of history and starts the jobs; every other cell waits for it.
-    seeded = nu.let(nuspace.atomic(kit.ROOT_ID), lambda root: kit.seed(nu.Str(root)))
+    seeded = nu.let(lambda root: kit.seed(nu.Str(root)), root=nuspace.atomic(kit.ROOT_ID))
     return View.about.set(TEXT) >> seeded >> kit.on_shop(plane, build)
 ''')
 
@@ -149,7 +149,7 @@ def draw(t):
 
 def out(plane):
     read = kit.read("kpis", tables=("lines", "people", "events"))
-    return kit.on_shop(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.beat.on_change()])), nu.let(nuspace.atomic(read), draw)))
+    return kit.on_shop(plane, lambda root: nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.beat.on_change()])), nu.let(draw, t=nuspace.atomic(read))))
 """)
 
 
@@ -171,7 +171,7 @@ month = View.both[0, 1].to(nustd.ui.BarChart.slot(
 def out(plane):
     def build(root):
         draw = lambda v: nu.IfDo(nu.Bool(v), today.set(v["today"]) >> month.set(v["month"]))
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.beat.on_change()])), nu.let(nuspace.atomic(kit.read("overview")), draw))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.beat.on_change()])), nu.let(draw, v=nuspace.atomic(kit.read("overview"))))
 
     return kit.on_shop(plane, build)
 """)
@@ -197,7 +197,7 @@ feed = View.card[0].to(nustd.ui.DataTableRef.slot(columns=COLUMNS, row_key="orde
 
 def out(plane):
     def build(root):
-        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.feed.on_change()])), nu.let(nuspace.atomic(SHOP.feed.fallback([])), feed.set_rows))
+        return nu.Reconcile(nuspace.atomic(nu.OnAny(*[SHOP.feed.on_change()])), nu.let(lambda held: feed.set_rows(held), held=nuspace.atomic(SHOP.feed.fallback([]))))
 
     return kit.on_shop(plane, build)
 """)

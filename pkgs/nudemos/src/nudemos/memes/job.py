@@ -291,12 +291,12 @@ BOOK = {"keep_hours": 6.0, "max_tokens": 4000}
 
 def commit(root):
     # One short write per turn, only when something moved.
-    return nu.let(Flush(), lambda d: nu.IfDo(nu.Bool(d["moved"]), nuspace.atomic(written(memes_at(root), d))))
+    return nu.let(lambda d: nu.IfDo(nu.Bool(d["moved"]), nuspace.atomic(written(memes_at(root), d))), d=Flush())
 
 
 def call(p):
     rpc = Rpc.call(url=p["url"], method=p["method"], params=p["params"])
-    return nu.TryCatch(nu.let(rpc, lambda r: Reply(p, r)), catch=lambda err: Failed(p, err))
+    return nu.TryCatch(nu.let(lambda r: Reply(p, r), r=rpc), catch=lambda err: Failed(p, err))
 
 
 def turn(root):
@@ -305,17 +305,17 @@ def turn(root):
         calls = nu.ForEachParAsync(nu.List(p["calls"]), call)
         return nu.IfDo(nu.Str(p["do"]) == "wait", nu.Delay(nu.Float(p["wait"])), calls)
 
-    return nu.let(Plan(nuspace.atomic(control(control_at(root)))), act) >> commit(root)
+    return nu.let(act, p=Plan(nuspace.atomic(control(control_at(root))))) >> commit(root)
 
 
 def pictures():
     # Beside the chain, a few fetchers read coins' metadata for their pictures, one coin each at a time.
     def fetch(ask):
         meta = Offchain.read(url=ask["url"])
-        got = nu.TryCatch(nu.let(meta, lambda m: Pictured(ask, m)), catch=lambda err: Unpictured(ask, err))
+        got = nu.TryCatch(nu.let(lambda m: Pictured(ask, m), m=meta), catch=lambda err: Unpictured(ask, err))
         return nu.IfDo(nu.Dict(ask).contains("url"), got, nu.Delay(1.0))
 
-    fetcher = nu.ForeverDo(nu.let(Picture(), fetch))
+    fetcher = nu.ForeverDo(nu.let(fetch, ask=Picture()))
     return nu.ForEachParAsync(nu.List.of(1, 2, 3), lambda _: fetcher)
 
 
@@ -329,5 +329,5 @@ def out(plane):
         transport = (nustd.http.bind(Rpc, timeout=TIMEOUT), nustd.http.bind(Offchain, timeout=OFFCHAIN))
         return nu.With(*transport, nu.Provide(Book, kwargs=BOOK), body=loop)
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: run(nu.Str(root)))
+    return nu.let(lambda root: run(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """

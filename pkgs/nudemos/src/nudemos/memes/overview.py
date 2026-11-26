@@ -77,7 +77,7 @@ def column_of(order):
 def out(plane):
     def follow(root):
         read = views.token_rows(memes_at(root).board.fallback({}), Pick.sort, nustd.time.time())
-        draw = nu.let(nuspace.atomic(read), table.set_rows)
+        draw = nu.let(lambda held: table.set_rows(held), held=nuspace.atomic(read))
         shown = nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), draw, every=2.0)
 
         def order(picked):
@@ -86,12 +86,12 @@ def out(plane):
             return Pick.sort.set(s) >> sort.set(s) >> table.set_sort(column_of(s), "desc") >> draw
 
         picked = nu.ReactEvery(sort.on_change(), order(nu.Str(sort)))
-        clicked = nu.ReactEvery(table.on_sort(), lambda ev: nu.let(by_column(ev["sort_column"]), lambda s: nu.IfDo(nu.Str(s) != "", order(s))))
+        clicked = nu.ReactEvery(table.on_sort(), lambda ev: nu.let(lambda s: nu.IfDo(nu.Str(s) != "", order(s)), s=by_column(ev["sort_column"])))
         # A token's page is made on its first open, so a row click opens it.
         opened = nu.ReactEvery(table.on_row_click(), lambda ev: control.open_token(root, nu.Str(ev["key"]), View.history))
-        return sort.set("new") >> nu.Frame(Pick, nu.ParallelAsync(shown, picked, clicked, opened), sort="new")
+        return sort.set("new") >> nu.let(Pick, nu.ParallelAsync(shown, picked, clicked, opened), sort="new")
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
@@ -124,11 +124,11 @@ def mint_of(key):
 def out(plane):
     def follow(root):
         read = views.tape_rows(memes_at(root).tape.fallback([]))
-        rows = nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(nuspace.atomic(read), tape.set_rows), every=2.0)
+        rows = nu.Reconcile(nuspace.atomic(memes_at(root).beat.on_change()), nu.let(lambda held: tape.set_rows(held), held=nuspace.atomic(read)), every=2.0)
         opened = nu.ReactEvery(tape.on_row_click(), lambda ev: control.open_token(root, mint_of(ev["key"]), View.history))
         return nu.ParallelAsync(rows, opened)
 
-    return nu.let(nuspace.atomic(root_of(plane)), lambda root: follow(nu.Str(root)))
+    return nu.let(lambda root: follow(nu.Str(root)), root=nuspace.atomic(root_of(plane)))
 """)
 
 
