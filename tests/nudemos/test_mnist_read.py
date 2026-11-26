@@ -129,7 +129,9 @@ async def test_a_reader_reads_the_models_a_run_stored(store):
         return nu.let(job + "/" + slot + "/" + nu.str(step), classify)
 
     body = nu.let(read("latest"), lambda a: nu.let(read("best"), lambda b: nu.List.of(a, b)))
-    (latest, best), _ = await nu.arun(nu.Provide(Reader, {"data": "synthetic"}, body), store.ctx)
+    (latest, best), _ = await nu.arun(
+        nu.Provide(Reader, kwargs={"data": "synthetic"}, body=body), store.ctx
+    )
     assert latest[0] == "job/latest/12"
     assert len(latest[1]["probs"]) == 10
     assert latest[2] is True
@@ -138,7 +140,7 @@ async def test_a_reader_reads_the_models_a_run_stored(store):
 
 
 async def test_a_test_digit_through_the_interaction():
-    d, _ = await nu.arun(nu.Provide(Reader, {"data": "synthetic"}, MnistDigit()))
+    d, _ = await nu.arun(nu.Provide(Reader, kwargs={"data": "synthetic"}, body=MnistDigit()))
     assert 0 <= d["label"] < 10
 
 

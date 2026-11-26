@@ -34,6 +34,6 @@ class Unseen(WsSession, nu.Fabric):
 def session(sid: str) -> Env:
     """What the web device registers, minus the device: a ui session no tab is on, and the connection in a frame."""
     return Env(
-        wrap=lambda body: nu.Provide(Unseen, {}, body=nu.Frame(Connection, body, sid=sid)),
+        wrap=lambda body: nu.Provide(Unseen, kwargs={}, body=nu.Frame(Connection, body, sid=sid)),
         label=f"session:{sid}",
     )

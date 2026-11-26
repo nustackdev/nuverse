@@ -174,7 +174,7 @@ def train():
     going = nuspace.atomic(RUN.stop.fallback(False).not_().and_(RUN.step.fallback(0) < RUN.total.fallback(1)))
     # A first look before the first step, and a fresh run's untrained model saved: the digits start out read wrong.
     first = look(nuspace.atomic(RUN.step)) >> nu.IfDo(nuspace.atomic(RUN.step == 0), saved(0))
-    return nu.Provide(Trainer, HP, begin >> first >> nu.WhileDo(going, turn()) >> finish())
+    return nu.Provide(Trainer, kwargs=HP, body=begin >> first >> nu.WhileDo(going, turn()) >> finish())
 
 
 def out(cell):

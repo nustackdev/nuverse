@@ -98,7 +98,7 @@ async def test_the_interactions_call_the_provided_trainer():
             ),
         ),
     )
-    (m, e, p, h), _ = await nu.arun(nu.Provide(Trainer, SYNTHETIC, body))
+    (m, e, p, h), _ = await nu.arun(nu.Provide(Trainer, kwargs=SYNTHETIC, body=body))
     assert m["loss"] > 0
     assert 0.0 <= e["acc"] <= 1.0
     assert len(p) == 12

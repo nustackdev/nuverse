@@ -58,7 +58,7 @@ def out(plane):
         up = nuspace.atomic(kit.job_started("gateway"))
         # Once a second, what it served: lines, numbers, a point per series. Out of memory, Drain raises.
         loop = nu.ForeverDo(nu.Delay(1.0) >> nu.let(Drain(), lambda d: flush(root, d)))
-        return up >> nu.Provide(Gateway, {}, nu.let(opened, lambda d: flush(root, d)) >> loop)
+        return up >> nu.Provide(Gateway, kwargs={}, body=nu.let(opened, lambda d: flush(root, d)) >> loop)
 
     return kit.on_root(plane, serve)
 """
@@ -89,7 +89,7 @@ def turn(root):
 def out(plane):
     def shoppers(root):
         up = nuspace.atomic(kit.job_started("traffic") >> kit.said("traffic", "info", "shoppers starting"))
-        return up >> nu.Provide(Shoppers, {}, nu.ForeverDo(turn(root)))
+        return up >> nu.Provide(Shoppers, kwargs={}, body=nu.ForeverDo(turn(root)))
 
     return kit.on_root(plane, shoppers)
 """
@@ -144,7 +144,7 @@ def out(plane):
         asked = nuspace.atomic(nu.Dict.of(pids=pids(nu.Dict(OPS.jobs.extract())), disk=OPS.settings.fallback({})["data"]))
         read = nu.let(asked, lambda a: nu.let(Read(nu.Dict(a)["pids"], nu.Dict(a)["disk"]), lambda m: write(root, m)))
         up = nuspace.atomic(kit.job_started("telemetry"))
-        return up >> nu.Provide(Machine, {}, nu.ForeverDo(read >> nu.Delay(EVERY)))
+        return up >> nu.Provide(Machine, kwargs={}, body=nu.ForeverDo(read >> nu.Delay(EVERY)))
 
     return kit.on_root(plane, watch)
 """
@@ -288,7 +288,7 @@ def out(plane):
         first = nuspace.atomic(nu.Dict(OPS.jobs[NAME].fallback({})).get_item("runs_ok", -1) < 0)
         up = nu.IfDo(first, nu.Delay(WARMUP)) >> nuspace.atomic(kit.job_started(NAME))
         work = nu.let(nuspace.atomic(kit.ask()), lambda a: Work(NAME, a))
-        return up >> nu.Provide(Worker, {}, nu.let(work, lambda r: nuspace.atomic(kit.job_finished(NAME, r))))
+        return up >> nu.Provide(Worker, kwargs={}, body=nu.let(work, lambda r: nuspace.atomic(kit.job_finished(NAME, r))))
 
     return kit.on_root(plane, once)
 """

@@ -193,7 +193,7 @@ def body(root):
 def out(plane):
     def run(root):
         shown = nu.Frame(Shown, body(root), job="", chosen=False, kind="latest", image=[], label=-1, n=0, seen="")
-        return nu.Provide(Reader, {}, shown)
+        return nu.Provide(Reader, kwargs={}, body=shown)
 
     return nu.let(nuspace.atomic(nuspace.Space.planes[plane].parent), run)
 '''

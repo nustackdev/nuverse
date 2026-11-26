@@ -327,7 +327,7 @@ def out(plane):
         ready = nuspace.atomic(made(memes_at(root)))
         loop = ready >> Load(nuspace.atomic(saved(memes_at(root)))) >> nu.Race(chain, pictures()) >> Stopped() >> commit(root)
         transport = (nustd.http.bind(Rpc, timeout=TIMEOUT), nustd.http.bind(Offchain, timeout=OFFCHAIN))
-        return nu.With(*transport, nu.Provide(Book, BOOK), body=loop)
+        return nu.With(*transport, nu.Provide(Book, kwargs=BOOK), body=loop)
 
     return nu.let(nuspace.atomic(root_of(plane)), lambda root: run(nu.Str(root)))
 """

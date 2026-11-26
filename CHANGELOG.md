@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Demo jobs and tests follow nu's keyword-only Provide signature
 - Release nudemos 0.1.11 on nuspace 0.8.1, with the demo reshoot fixes
 - Demo spaces fixed for the 0.8 reshoots: fresh pages, searches and rules hold up
 - Meme coin pages open on a card: picture, name, ticker, status and links

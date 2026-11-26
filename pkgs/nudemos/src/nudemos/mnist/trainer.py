@@ -2,7 +2,7 @@
 
 :class:`Trainer` owns what torch owns: the model, the optimizer, the data in
 memory and the random state. It never loops on its own. A Nu program
-provides it with ``nu.Provide(Trainer, hparams, body)`` and steps it through
+provides it with ``nu.Provide(Trainer, kwargs=hparams, body=body)`` and steps it through
 the interactions in :mod:`nudemos.mnist.interactions`, a chunk of batches at
 a time, so the loop, the logging, the steering and the stopping stay in Nu.
 
