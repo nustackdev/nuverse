@@ -2,6 +2,7 @@
 
 The full commit stream, every package. Newest first.
 
+- Release nuverse 0.3.14, nulog 0.2.9, nudemos 0.1.12 on nu 0.9.1 and nuspace 0.8.2
 - Cells, demos and log viewer follow nu's context frames, values handed to lambdas
 - Demo jobs and tests follow nu's keyword-only Provide signature
 - Release nudemos 0.1.11 on nuspace 0.8.1, with the demo reshoot fixes

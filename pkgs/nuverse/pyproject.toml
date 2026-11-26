@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nuverse"
-version = "0.3.13"
+version = "0.3.14"
 description = "Ready made spaces and extensions for common tasks."
 readme = "README.md"
 license = "Apache-2.0"
@@ -15,7 +15,7 @@ requires-python = ">=3.10"
 # there when it loads, and nuspace finds it only through the entry point
 # below, the same one a third party uses. The ACP SDK comes along: agent
 # planes and the chat cell are part of nuverse, driving Claude Code or Codex.
-dependencies = ["nustd[acp]>=0.9.0"]
+dependencies = ["nustd[acp]>=0.9.1"]
 
 [project.urls]
 Repository = "https://github.com/nustackdev/nuverse"
